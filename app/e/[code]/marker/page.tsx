@@ -256,7 +256,7 @@ function RecentSequence({
             }}
           >
             {runner ? (
-              <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
+              <Avatar runner={runner} eventId={event.id} size={40} overlay={false} lightbox />
             ) : (
               <div className="grid h-10 w-10 place-items-center rounded-xl bg-panel2 font-black">?</div>
             )}
@@ -326,7 +326,7 @@ function Tile({
         large ? "min-h-40" : "min-h-28"
       } ${race.bell ? "ring-2 ring-bell" : ""}`}
     >
-      <Avatar runner={r} eventId={eventId} size={large ? 72 : 52} />
+      <Avatar runner={r} eventId={eventId} size={large ? 72 : 52} lightbox />
       <div className="mt-1 font-mono text-3xl font-black leading-none tabular">{r.bib}</div>
       <div className="text-xs font-semibold text-dim">{shortName(r.name)}</div>
     </button>

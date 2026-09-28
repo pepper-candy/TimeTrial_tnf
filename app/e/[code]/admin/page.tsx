@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { PinGate } from "@/components/pin-gate";
 import { Qr } from "@/components/qr";
@@ -10,8 +10,9 @@ import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
 import { MismatchPanel } from "@/components/mismatch-panel";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
-import { compressImage } from "@/lib/client/photo";
+import { preparePhotos } from "@/lib/client/photo";
 import { kmCrossings } from "@/lib/course";
+import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
 
 export default function AdminPage() {
@@ -31,7 +32,20 @@ function AdminInner({ code }: { code: string }) {
   const [customCat, setCustomCat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [fixId, setFixId] = useState<string | null>(null);
+  const [storage, setStorage] = useState<{ used: number; cap: number } | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  useEffect(() => {
+    let alive = true;
+    void fetchWithPin(`/api/events/${code}/storage`).then(async (res) => {
+      if (!res.ok) return;
+      const data = (await res.json()) as { used: number; cap: number };
+      if (alive) setStorage(data);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [code, event?.rev]);
 
   async function saveRunner(runner: Partial<Runner> & { bib?: string; id?: string }) {
     const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
@@ -64,9 +78,20 @@ function AdminInner({ code }: { code: string }) {
 
   async function photo(runnerId: string, file: File) {
     try {
-      const { blob, mime } = await compressImage(file);
+      const { thumb, full } = await preparePhotos(file);
       const form = new FormData();
-      form.set("file", new File([blob], mime === "image/webp" ? "p.webp" : "p.jpg", { type: mime }));
+      form.set(
+        "thumb",
+        new File([thumb.blob], thumb.mime === "image/webp" ? "t.webp" : "t.jpg", { type: thumb.mime }),
+      );
+      form.set(
+        "full",
+        new File(
+          [full.blob],
+          full.mime === "image/webp" ? "f.webp" : full.mime === "image/png" ? "f.png" : "f.jpg",
+          { type: full.mime },
+        ),
+      );
       form.set("runnerId", runnerId);
       const res = await fetchWithPin(`/api/events/${code}/photo`, { method: "POST", body: form });
       if (!res.ok) return;
@@ -102,6 +127,22 @@ function AdminInner({ code }: { code: string }) {
           <HelpTip text="Timer taps. Marker enters bibs in order. The server pairs them. This screen shows count lag, too-fast laps, and extra taps/bibs — Fix a runner to shift, delete, or add ~." />
         }
       />
+      {storage ? (
+        <div className="px-4 pb-2">
+          <div className="flex items-baseline justify-between gap-2 text-[11px] font-black uppercase tracking-wide text-dim">
+            <span>Storage</span>
+            <span className="font-mono tabular">
+              {formatStorage(storage.used)} / {formatStorage(storage.cap)}
+            </span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-panel2 ring-1 ring-line">
+            <div
+              className={`h-full ${storageRatio(storage.used, storage.cap) > 0.85 ? "bg-bell" : "bg-gold"}`}
+              style={{ width: `${Math.max(2, storageRatio(storage.used, storage.cap) * 100)}%` }}
+            />
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between px-4">
         <button
           type="button"
@@ -366,8 +407,8 @@ function RunnerRow({
   return (
     <div className="rounded-2xl bg-panel p-2 ring-1 ring-line">
       <div className="flex items-center gap-2">
-        <button type="button" className="tap" onClick={() => cam.current?.click()}>
-          <Avatar runner={runner} eventId={eventId} size={48} />
+        <button type="button" className="tap" onClick={() => !runner.photoVer && cam.current?.click()}>
+          <Avatar runner={runner} eventId={eventId} size={48} lightbox={Boolean(runner.photoVer)} />
         </button>
         <input
           value={bib}

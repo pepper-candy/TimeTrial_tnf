@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { getPhoto } from "@/lib/store";
-
+import type { PhotoKind } from "@/lib/photo";
 
 type Ctx = { params: Promise<{ eventId: string; runnerId: string }> };
 
 export async function GET(req: Request, ctx: Ctx) {
   const { eventId, runnerId } = await ctx.params;
-  const rec = await getPhoto(eventId, runnerId);
-  if (!rec) return new NextResponse(null, { status: 404 });
   const url = new URL(req.url);
+  const kind: PhotoKind = url.searchParams.get("s") === "full" ? "full" : "thumb";
+  const rec = await getPhoto(eventId, runnerId, kind);
+  if (!rec) return new NextResponse(null, { status: 404 });
   const v = url.searchParams.get("v");
   const buf = Buffer.from(rec.data, "base64");
   const immutable = v != null && v === rec.v;

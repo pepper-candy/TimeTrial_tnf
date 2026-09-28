@@ -35,7 +35,7 @@ export function CrossingEditor({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">
-          <Avatar runner={r} eventId={event.id} size={56} />
+          <Avatar runner={r} eventId={event.id} size={56} lightbox />
           <div className="min-w-0 flex-1">
             <div className="text-lg font-black">{r.name || "—"}</div>
             <div className="font-mono text-sm font-black tabular text-gold">{r.bib}</div>

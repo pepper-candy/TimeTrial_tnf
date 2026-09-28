@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isDenied, requireHelper, toPublic } from "@/lib/auth";
-import { PHOTO_MAX_BYTES } from "@/lib/photo";
+import { FULL_MAX_BYTES, THUMB_MAX_BYTES } from "@/lib/photo";
 import { getEvent, putPhoto } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -14,19 +14,37 @@ export async function POST(req: Request, ctx: Ctx) {
   const event = await getEvent(code);
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
   const form = await req.formData();
-  const file = form.get("file");
   const runnerId = String(form.get("runnerId") || "");
-  if (!(file instanceof File) || !runnerId) {
-    return NextResponse.json({ error: "file + runnerId" }, { status: 400 });
-  }
-  if (!event.runners.some((r) => r.id === runnerId)) {
+  if (!runnerId || !event.runners.some((r) => r.id === runnerId)) {
     return NextResponse.json({ error: "runner" }, { status: 404 });
   }
-  const buf = Buffer.from(await file.arrayBuffer());
-  if (buf.length > PHOTO_MAX_BYTES) {
+  const thumbFile = fileOf(form.get("thumb") ?? form.get("file"));
+  const fullFile = fileOf(form.get("full")) ?? thumbFile;
+  if (!thumbFile || !fullFile) {
+    return NextResponse.json({ error: "thumb + full" }, { status: 400 });
+  }
+  const thumbBuf = Buffer.from(await thumbFile.arrayBuffer());
+  const fullBuf = Buffer.from(await fullFile.arrayBuffer());
+  if (thumbBuf.length > THUMB_MAX_BYTES || fullBuf.length > FULL_MAX_BYTES) {
     return NextResponse.json({ error: "too large" }, { status: 413 });
   }
-  const mime = file.type === "image/webp" ? "image/webp" : "image/jpeg";
-  const next = await putPhoto(event, runnerId, buf, mime);
+  const next = await putPhoto(event, runnerId, {
+    thumb: { buf: thumbBuf, mime: thumbMime(thumbFile.type) },
+    full: { buf: fullBuf, mime: fullMime(fullFile.type) },
+  });
   return NextResponse.json({ event: toPublic(next), rev: next.rev });
+}
+
+function fileOf(value: FormDataEntryValue | null): File | null {
+  return value instanceof File && value.size > 0 ? value : null;
+}
+
+function thumbMime(type: string): string {
+  return type === "image/webp" ? "image/webp" : "image/jpeg";
+}
+
+function fullMime(type: string): string {
+  if (type === "image/webp") return "image/webp";
+  if (type === "image/png") return "image/png";
+  return "image/jpeg";
 }

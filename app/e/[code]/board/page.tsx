@@ -184,7 +184,7 @@ function Row({
         >
           {place}
         </span>
-        <Avatar runner={r} eventId={event.id} size={52} />
+        <Avatar runner={r} eventId={event.id} size={52} lightbox />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="truncate font-bold">{r.name || "—"}</span>
@@ -282,7 +282,7 @@ function Detail({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">
-          <Avatar runner={r} eventId={event.id} size={72} />
+          <Avatar runner={r} eventId={event.id} size={72} lightbox />
           <div className="min-w-0 flex-1">
             <div className="text-xl font-black">{r.name}</div>
             <div className="font-mono text-sm tabular text-dim">

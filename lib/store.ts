@@ -5,8 +5,9 @@ import path from "path";
 import { DEFAULT_CATEGORIES } from "./types";
 import { advanceDemo, raceNow } from "./demo-run";
 import { normalizeCode } from "./ids";
-import { photoKey } from "./photo";
+import { allPhotoKeys, photoKey, photoKeyLegacy, type PhotoKind } from "./photo";
 import { defaultResultKmSplits } from "./results";
+import { STORAGE_KEY, applyStorageDelta } from "./storage";
 import type { EventState, PhotoRecord } from "./types";
 
 /** 21 days — one meet plus results review. Refreshed on every write. */
@@ -16,6 +17,7 @@ const memEvents = new Map<string, EventState>();
 const memVers = new Map<string, number>();
 const memPhotos = new Map<string, PhotoRecord>();
 const chains = new Map<string, Promise<unknown>>();
+let memBytes = 0;
 
 let redisClient: Redis | null | undefined;
 
@@ -48,6 +50,7 @@ type Disk = {
   events: Record<string, EventState>;
   vers: Record<string, number>;
   photos: Record<string, PhotoRecord>;
+  bytes?: number;
 };
 
 function readDisk(): Disk {
@@ -76,12 +79,13 @@ function ensureLocal() {
   for (const [k, v] of Object.entries(disk.events)) memEvents.set(k, v);
   for (const [k, v] of Object.entries(disk.vers)) memVers.set(k, v);
   for (const [k, v] of Object.entries(disk.photos)) memPhotos.set(k, v);
+  memBytes = disk.bytes ?? 0;
   localReady = true;
 }
 
 function persistLocal() {
   ensureLocal();
-  const disk: Disk = { events: {}, vers: {}, photos: {} };
+  const disk: Disk = { events: {}, vers: {}, photos: {}, bytes: memBytes };
   for (const [k, v] of memEvents) disk.events[k] = v;
   for (const [k, v] of memVers) disk.vers[k] = v;
   for (const [k, v] of memPhotos) disk.photos[k] = v;
@@ -195,19 +199,25 @@ export async function getEvent(code: string): Promise<EventState | null> {
   return event.demo ? advanceDemo(event, raceNow(event, Date.now())) : event;
 }
 
-export async function saveEvent(event: EventState): Promise<EventState> {
+export async function saveEvent(
+  event: EventState,
+  prev: EventState | null = null,
+): Promise<EventState> {
   event.code = normalizeCode(event.code);
   event.rev = (event.rev ?? 0) + 1;
+  const delta = storedJsonBytes(event) - (prev ? storedJsonBytes(prev) : 0);
   const r = redis();
   if (r) {
     const p = r.pipeline();
     p.set(eventKey(event.code), event, { ex: EVENT_TTL_SEC });
     p.set(verKey(event.code), event.rev, { ex: EVENT_TTL_SEC });
     await p.exec();
+    await adjustStorage(delta);
     return event;
   }
   memEvents.set(event.code, event);
   memVers.set(event.code, event.rev);
+  memBytes = applyStorageDelta(memBytes, delta);
   persistLocal();
   return event;
 }
@@ -232,9 +242,17 @@ export async function updateEvent(
     if (!event) return null;
     const base = event.demo ? advanceDemo(event, raceNow(event, Date.now())) : event;
     const next = await fn(base);
-    return await saveEvent(next);
+    return await saveEvent(next, event);
   } finally {
     release();
+  }
+}
+
+function storedJsonBytes(value: unknown): number {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8");
+  } catch {
+    return 0;
   }
 }
 
@@ -242,39 +260,20 @@ export function hashPhoto(buf: Buffer) {
   return createHash("sha256").update(buf).digest("hex").slice(0, 16);
 }
 
-export async function putPhoto(
-  event: EventState,
-  runnerId: string,
-  buf: Buffer,
-  mime: string,
-): Promise<EventState> {
-  const v = hashPhoto(buf);
-  const rec: PhotoRecord = { v, mime, data: buf.toString("base64") };
-  const key = photoKey(event.id, runnerId);
-  const next: EventState = {
-    ...event,
-    runners: event.runners.map((r) => (r.id === runnerId ? { ...r, photoVer: v } : r)),
-  };
-  next.rev = (event.rev ?? 0) + 1;
-  next.code = normalizeCode(event.code);
-  const r = redis();
-  if (r) {
-    const p = r.pipeline();
-    p.set(key, rec, { ex: EVENT_TTL_SEC });
-    p.set(eventKey(next.code), next, { ex: EVENT_TTL_SEC });
-    p.set(verKey(next.code), next.rev, { ex: EVENT_TTL_SEC });
-    await p.exec();
-    return next;
-  }
-  memPhotos.set(key, rec);
-  memEvents.set(next.code, next);
-  memVers.set(next.code, next.rev);
-  persistLocal();
-  return next;
+export type PhotoParts = {
+  thumb: { buf: Buffer; mime: string };
+  full: { buf: Buffer; mime: string };
+};
+
+function recOf(buf: Buffer, mime: string, v: string): PhotoRecord {
+  return { v, mime, data: buf.toString("base64") };
 }
 
-export async function getPhoto(eventId: string, runnerId: string): Promise<PhotoRecord | null> {
-  const key = photoKey(eventId, runnerId);
+function recBytes(rec: PhotoRecord | null | undefined): number {
+  return rec ? storedJsonBytes(rec) : 0;
+}
+
+async function readPhotoKey(key: string): Promise<PhotoRecord | null> {
   const r = redis();
   if (r) {
     const rec = await r.get<PhotoRecord>(key);
@@ -284,34 +283,127 @@ export async function getPhoto(eventId: string, runnerId: string): Promise<Photo
   return memPhotos.get(key) ?? null;
 }
 
-export async function deleteRunnerPhoto(eventId: string, runnerId: string) {
-  const key = photoKey(eventId, runnerId);
+async function adjustStorage(delta: number) {
+  const d = Math.round(delta);
+  if (!d) return;
   const r = redis();
   if (r) {
-    await r.del(key);
+    await r.incrby(STORAGE_KEY, d);
     return;
   }
-  memPhotos.delete(key);
+  ensureLocal();
+  memBytes = applyStorageDelta(memBytes, d);
   persistLocal();
+}
+
+export async function getStorageBytes(): Promise<number> {
+  const r = redis();
+  if (r) {
+    const raw = await r.get<number | string>(STORAGE_KEY);
+    const n = raw == null ? 0 : Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  ensureLocal();
+  return memBytes;
+}
+
+export async function putPhoto(
+  event: EventState,
+  runnerId: string,
+  parts: PhotoParts,
+): Promise<EventState> {
+  const v = hashPhoto(Buffer.concat([parts.thumb.buf, parts.full.buf]));
+  const thumbRec = recOf(parts.thumb.buf, parts.thumb.mime, v);
+  const fullRec = recOf(parts.full.buf, parts.full.mime, v);
+  const thumbK = photoKey(event.id, runnerId, "thumb");
+  const fullK = photoKey(event.id, runnerId, "full");
+  const legacyK = photoKeyLegacy(event.id, runnerId);
+  const oldBytes =
+    recBytes(await readPhotoKey(thumbK)) +
+    recBytes(await readPhotoKey(fullK)) +
+    recBytes(await readPhotoKey(legacyK));
+  const newBytes = recBytes(thumbRec) + recBytes(fullRec);
+  const next: EventState = {
+    ...event,
+    runners: event.runners.map((r) => (r.id === runnerId ? { ...r, photoVer: v } : r)),
+  };
+  next.rev = (event.rev ?? 0) + 1;
+  next.code = normalizeCode(event.code);
+  const eventDelta = storedJsonBytes(next) - storedJsonBytes(event);
+  const r = redis();
+  if (r) {
+    const p = r.pipeline();
+    p.set(thumbK, thumbRec, { ex: EVENT_TTL_SEC });
+    p.set(fullK, fullRec, { ex: EVENT_TTL_SEC });
+    p.del(legacyK);
+    p.set(eventKey(next.code), next, { ex: EVENT_TTL_SEC });
+    p.set(verKey(next.code), next.rev, { ex: EVENT_TTL_SEC });
+    await p.exec();
+    await adjustStorage(newBytes - oldBytes + eventDelta);
+    return next;
+  }
+  memPhotos.set(thumbK, thumbRec);
+  memPhotos.set(fullK, fullRec);
+  memPhotos.delete(legacyK);
+  memEvents.set(next.code, next);
+  memVers.set(next.code, next.rev);
+  memBytes = applyStorageDelta(memBytes, newBytes - oldBytes + eventDelta);
+  persistLocal();
+  return next;
+}
+
+export async function getPhoto(
+  eventId: string,
+  runnerId: string,
+  kind: PhotoKind = "thumb",
+): Promise<PhotoRecord | null> {
+  const rec = await readPhotoKey(photoKey(eventId, runnerId, kind));
+  if (rec) return rec;
+  if (kind === "thumb") {
+    const legacy = await readPhotoKey(photoKeyLegacy(eventId, runnerId));
+    if (legacy) return legacy;
+  }
+  if (kind === "full") return getPhoto(eventId, runnerId, "thumb");
+  return null;
+}
+
+export async function deleteRunnerPhoto(eventId: string, runnerId: string) {
+  const keys = allPhotoKeys(eventId, runnerId);
+  let bytes = 0;
+  for (const key of keys) bytes += recBytes(await readPhotoKey(key));
+  const r = redis();
+  if (r) {
+    if (keys.length) await r.del(...keys);
+  } else {
+    ensureLocal();
+    for (const key of keys) memPhotos.delete(key);
+    persistLocal();
+  }
+  await adjustStorage(-bytes);
 }
 
 export async function deleteEvent(code: string): Promise<boolean> {
   const c = normalizeCode(code);
   const event = await loadRaw(c);
   if (!event) return false;
-  const keys = [
-    eventKey(c),
-    verKey(c),
-    ...event.runners.map((r) => photoKey(event.id, r.id)),
-  ];
+  let photoBytes = 0;
+  const photoKeys: string[] = [];
+  for (const runner of event.runners) {
+    for (const key of allPhotoKeys(event.id, runner.id)) {
+      photoKeys.push(key);
+      photoBytes += recBytes(await readPhotoKey(key));
+    }
+  }
+  const keys = [eventKey(c), verKey(c), ...photoKeys];
   const r = redis();
   if (r) {
     await r.del(...keys);
-    return true;
+  } else {
+    memEvents.delete(c);
+    memVers.delete(c);
+    for (const k of photoKeys) memPhotos.delete(k);
+    persistLocal();
   }
-  memEvents.delete(c);
-  memVers.delete(c);
-  for (const k of keys) memPhotos.delete(k);
-  persistLocal();
+  await adjustStorage(-(photoBytes + storedJsonBytes(event)));
   return true;
 }
