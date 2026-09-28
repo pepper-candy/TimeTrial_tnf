@@ -143,7 +143,7 @@ export function kmSplitsFrom(event: EventState, race: RunnerRace) {
   return out;
 }
 
-function interpolateTime(
+export function interpolateTime(
   points: { d: number; t: number }[],
   distanceM: number,
 ): number | null {
@@ -159,6 +159,95 @@ function interpolateTime(
     }
   }
   return null;
+}
+
+export type KmMark = {
+  km: number;
+  elapsedMs: number;
+  exact: boolean;
+};
+
+export function raceDistancePoints(event: EventState, race: RunnerRace) {
+  const start = event.startedAt;
+  if (start == null) return [];
+  return [{ d: 0, t: start }, ...race.crossings.map((c) => ({ d: c.distanceM, t: c.t }))];
+}
+
+/** Whole-km elapsed times; `exact` when that km lands on a finish-line crossing. */
+export function kmMarksFor(event: EventState, race: RunnerRace): KmMark[] {
+  const start = event.startedAt;
+  const last = race.crossings[race.crossings.length - 1];
+  if (start == null || !last) return [];
+  const points = raceDistancePoints(event, race);
+  const exactAt = new Set(
+    race.crossings
+      .filter((c) => {
+        const km = c.distanceM / 1000;
+        return km >= 1 && Math.abs(km - Math.round(km)) < 0.0005;
+      })
+      .map((c) => Math.round(c.distanceM / 1000)),
+  );
+  const maxKm = Math.max(1, Math.floor(Math.min(last.distanceM, event.course.totalDistanceM) / 1000));
+  const out: KmMark[] = [];
+  for (let km = 1; km <= maxKm; km++) {
+    const t = interpolateTime(points, km * 1000);
+    if (t == null) break;
+    out.push({ km, elapsedMs: t - start, exact: exactAt.has(km) });
+  }
+  return out;
+}
+
+export type FullLap = {
+  /** 1-based among full (lap-length) splits only; first 200 m is not a lap. */
+  lap: number;
+  ms: number;
+};
+
+export function fullLapsFor(event: EventState, race: RunnerRace): FullLap[] {
+  const out: FullLap[] = [];
+  let n = 0;
+  for (let i = 0; i < race.splitMs.length; i++) {
+    const d = splitDistance(event.course, i + 1);
+    if (Math.abs(d - event.course.lapLengthM) < 0.5) {
+      n += 1;
+      out.push({ lap: n, ms: race.splitMs[i] });
+    }
+  }
+  return out;
+}
+
+export type HalfSplit = {
+  firstMs: number;
+  secondMs: number;
+  deltaMs: number;
+};
+
+/** First half vs second half of the race distance (or of distance run, if DNF). */
+export function halfSplitFor(event: EventState, race: RunnerRace): HalfSplit | null {
+  const start = event.startedAt;
+  const last = race.crossings[race.crossings.length - 1];
+  if (start == null || !last) return null;
+  const span = race.finished ? event.course.totalDistanceM : last.distanceM;
+  const halfM = span / 2;
+  if (halfM < 1 || last.distanceM < halfM - 0.5) return null;
+  const points = raceDistancePoints(event, race);
+  const tHalf = interpolateTime(points, halfM);
+  if (tHalf == null) return null;
+  const firstMs = tHalf - start;
+  const secondMs = last.t - tHalf;
+  if (firstMs <= 0 || secondMs <= 0) return null;
+  return { firstMs, secondMs, deltaMs: secondMs - firstMs };
+}
+
+export function fastestSlowestLap(laps: FullLap[]): {
+  fast: FullLap;
+  slow: FullLap;
+} | null {
+  if (laps.length === 0) return null;
+  return {
+    fast: laps.reduce((a, b) => (a.ms <= b.ms ? a : b)),
+    slow: laps.reduce((a, b) => (a.ms > b.ms ? a : b)),
+  };
 }
 
 export function csvOfEvent(event: EventState, races: RunnerRace[]): string {

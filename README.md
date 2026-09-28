@@ -49,7 +49,7 @@ Copy `.env.example` for local overrides. Redis is required in production; withou
 7. **End race** (Admin) freezes the clock and keeps unfinished runners at their last crossing / partial laps (e.g. `11.5 laps`).
 8. **Stats** (PIN): **Copy results** pastes WhatsApp-ready text (per-category rank, `M'SS` times, 1K/3K splits, avg /K). CSV export is still there.
 
-On a default 5000 m / 200 m start, 1K is crossing #3 and 3K is crossing #8. Other distances include whichever whole-km marks land on a crossing; Admin can pick which km appear in the pasted results.
+On a default 5000 m / 200 m start, 1K is crossing #3 and 3K is crossing #8. Other distances include whichever whole-km marks land on a crossing; Admin can pick which km appear in the **Summary** paste. **Copy results** has Summary (coach format) and Detailed (every km, ~ if estimated, fast/slow lap, half-split, consistency).
 
 ## Demo race
 

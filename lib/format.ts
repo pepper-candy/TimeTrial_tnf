@@ -38,6 +38,16 @@ export function formatClubSec(totalSec: number): string {
   return `${m}'${String(rem).padStart(2, "0")}`;
 }
 
+/** Signed delta for positive/negative split: +11, -0'19, 0 */
+export function formatSplitDelta(ms: number): string {
+  const sec = Math.round(ms / 1000);
+  if (sec === 0) return "0";
+  const sign = sec > 0 ? "+" : "-";
+  const abs = Math.abs(sec);
+  if (abs < 60) return `${sign}${abs}`;
+  return `${sign}${formatClubSec(abs)}`;
+}
+
 export function parseClubTime(text: string): number | null {
   const t = text.trim();
   const m = t.match(/^(\d+)'(\d{2})$/);

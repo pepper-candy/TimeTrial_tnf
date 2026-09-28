@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultFiveK, kmCrossings } from "./course";
 import { makeDemoEvent } from "./demo";
-import { formatClubMs, formatClubPace } from "./format";
+import { formatClubMs, formatClubPace, formatSplitDelta } from "./format";
 import { buildRunnerRaces } from "./race";
 import {
   defaultResultKmSplits,
@@ -228,3 +228,59 @@ function parseClub(s: string) {
   const m = s.match(/^(\d+)'(\d{2})$/)!;
   return (Number(m[1]) * 60 + Number(m[2])) * 1000;
 }
+
+describe("detailed results text", () => {
+  it("lists exact km, ~ estimates, fast/slow lap, even half-split, and consistency", () => {
+    const start = Date.UTC(2026, 8, 28, 2, 0, 0);
+    const splits = [40_000, ...Array.from({ length: 12 }, () => 80_000)];
+    let acc = 0;
+    const elapsed = splits.map((s) => {
+      acc += s;
+      return acc;
+    });
+    const c = crossings(start, "1", elapsed);
+    const ev = event({
+      runners: [runner({ bib: "1", studentId: "20881001", category: "Boys" })],
+      taps: c.taps,
+      marks: c.marks,
+    });
+    const text = formatResultsText(ev, undefined, "detailed");
+    expect(text).toBe(
+      [
+        "*5000m TT on 28 September 2026*",
+        "_Detailed_",
+        "",
+        "*Boys:*",
+        "1️⃣*Bib No.1* (20881001)",
+        "*16'40* · Avg 3'20/K",
+        "1K 3'20 · 2K ~6'40 · 3K 10'00 · 4K ~13'20 · 5K 16'40",
+        "Fast L1 1'20 · Slow L12 1'20 · Half 8'20/8'20 (0) · Cons 0%",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("marks a positive split when the second half is slower, with lap numbers", () => {
+    const start = Date.UTC(2026, 8, 28, 2, 0, 0);
+    const splits = [35_000, ...Array.from({ length: 6 }, () => 70_000), ...Array.from({ length: 6 }, () => 90_000)];
+    let acc = 0;
+    const elapsed = splits.map((s) => {
+      acc += s;
+      return acc;
+    });
+    const c = crossings(start, "1", elapsed);
+    const ev = event({
+      runners: [runner({ bib: "1", studentId: "20881001", category: "Boys" })],
+      taps: c.taps,
+      marks: c.marks,
+    });
+    const text = formatResultsText(ev, undefined, "detailed");
+    expect(text).toContain("Fast L1 1'10");
+    expect(text).toContain("Slow L12 1'30");
+    expect(text).toMatch(/Half 7'18\/9'18 \(\+2'00\)/);
+    expect(text).toContain("Cons ");
+    expect(formatSplitDelta(11_400)).toBe("+11");
+    expect(formatSplitDelta(-12_400)).toBe("-12");
+    expect(formatSplitDelta(0)).toBe("0");
+  });
+});

@@ -1,7 +1,15 @@
 import { kmCrossings } from "./course";
-import { formatClubMs, formatClubPace, formatEventDate } from "./format";
+import { formatClubMs, formatClubPace, formatEventDate, formatSplitDelta } from "./format";
 import { buildRunnerRaces, compareRank, type RunnerRace } from "./race";
+import {
+  fastestSlowestLap,
+  fullLapsFor,
+  halfSplitFor,
+  kmMarksFor,
+} from "./stats";
 import type { CourseConfig, EventState } from "./types";
+
+export type ResultsStyle = "summary" | "detailed";
 
 export function defaultResultKmSplits(course: CourseConfig): number[] {
   const kms = kmCrossings(course)
@@ -43,10 +51,16 @@ export function kmSplitElapsed(
   return crossing.t - event.startedAt;
 }
 
-export function formatResultsText(event: EventState, races?: RunnerRace[]): string {
+export function formatResultsText(
+  event: EventState,
+  races?: RunnerRace[],
+  style: ResultsStyle = "summary",
+): string {
   const all = (races ?? buildRunnerRaces(event)).filter((r) => r.crossings.length > 0);
   const date = formatEventDate(event.startedAt ?? event.createdAt);
-  const lines = [`*${event.name} on ${date}*`, ""];
+  const lines = [`*${event.name} on ${date}*`];
+  if (style === "detailed") lines.push("_Detailed_");
+  lines.push("");
 
   const order = categoryOrder(event);
   const kms = (event.resultKmSplits?.length
@@ -62,7 +76,11 @@ export function formatResultsText(event: EventState, races?: RunnerRace[]): stri
     if (group.length === 0) continue;
     lines.push(`*${cat}:*`);
     group.forEach((race, i) => {
-      lines.push(formatRunnerBlock(event, race, i + 1, kms));
+      const block =
+        style === "detailed"
+          ? formatDetailedRunner(event, race, i + 1)
+          : formatSummaryRunner(event, race, i + 1, kms);
+      lines.push(block);
       lines.push("");
     });
   }
@@ -71,7 +89,7 @@ export function formatResultsText(event: EventState, races?: RunnerRace[]): stri
   return lines.join("\n") + "\n";
 }
 
-function formatRunnerBlock(
+function formatSummaryRunner(
   event: EventState,
   race: RunnerRace,
   place: number,
@@ -99,6 +117,54 @@ function formatRunnerBlock(
     `Result: ${time}${lapsBit}${splitsBit}`,
     `Avg.: ${formatClubPace(avgSec)}/K`,
   ].join("\n");
+}
+
+function formatDetailedRunner(event: EventState, race: RunnerRace, place: number): string {
+  const r = race.runner;
+  const last = race.crossings[race.crossings.length - 1];
+  const elapsed = last && event.startedAt != null ? last.t - event.startedAt : 0;
+  const distM = last?.distanceM ?? 0;
+  const dnf = !race.finished;
+  const time = formatClubMs(elapsed);
+  const lapsBit = dnf ? ` (${formatLapsShort(lapsCompleted(event, race))} laps)` : "";
+  const avgSec = distM > 0 ? elapsed / 1000 / (distM / 1000) : 0;
+
+  const lines = [
+    `${rankEmoji(place)}*Bib No.${r.bib}* (${r.studentId})`,
+    `*${time}*${lapsBit} · Avg ${formatClubPace(avgSec)}/K`,
+  ];
+
+  const kms = kmMarksFor(event, race);
+  if (kms.length > 0) {
+    lines.push(
+      kms
+        .map((k) => `${k.km}K ${k.exact ? "" : "~"}${formatClubMs(k.elapsedMs)}`)
+        .join(" · "),
+    );
+  }
+
+  const bits: string[] = [];
+  const pair = fastestSlowestLap(fullLapsFor(event, race));
+  if (pair) {
+    bits.push(`Fast L${pair.fast.lap} ${formatClubMs(pair.fast.ms)}`);
+    bits.push(`Slow L${pair.slow.lap} ${formatClubMs(pair.slow.ms)}`);
+  }
+  const half = halfSplitFor(event, race);
+  if (half) {
+    bits.push(
+      `Half ${formatClubMs(half.firstMs)}/${formatClubMs(half.secondMs)} (${formatSplitDelta(half.deltaMs)})`,
+    );
+  }
+  const laps = fullLapsFor(event, race);
+  if (laps.length >= 2) {
+    const mean = laps.reduce((s, x) => s + x.ms, 0) / laps.length;
+    const variance = laps.reduce((s, x) => s + (x.ms - mean) ** 2, 0) / laps.length;
+    const pct = mean > 0 ? (Math.sqrt(variance) / mean) * 100 : 0;
+    const shown = Math.round(pct * 10) / 10;
+    bits.push(`Cons ${Number.isInteger(shown) ? String(shown) : shown.toFixed(1)}%`);
+  }
+  if (bits.length) lines.push(bits.join(" · "));
+  return lines.join("\n");
 }
 
 export function runnerCategory(category: string | undefined, fallback: string): string {

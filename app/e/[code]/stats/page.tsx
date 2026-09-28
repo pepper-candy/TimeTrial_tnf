@@ -2,11 +2,11 @@
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { HelpTip, Screen, TopBar } from "@/components/shell";
+import { Chip, HelpTip, Screen, TopBar } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
 import { fetchWithPin, useEvent } from "@/lib/client/hooks";
 import { formatClock, formatPace } from "@/lib/format";
-import { formatResultsText } from "@/lib/results";
+import { formatResultsText, type ResultsStyle } from "@/lib/results";
 
 export default function StatsPage() {
   const { code } = useParams<{ code: string }>();
@@ -20,6 +20,7 @@ export default function StatsPage() {
 function StatsInner({ code }: { code: string }) {
   const { event, races, stats } = useEvent(code, 2000);
   const [copied, setCopied] = useState(false);
+  const [style, setStyle] = useState<ResultsStyle>("summary");
 
   if (!event) {
     return (
@@ -32,7 +33,7 @@ function StatsInner({ code }: { code: string }) {
   const live = event;
 
   async function copyResults() {
-    const text = formatResultsText(live, races);
+    const text = formatResultsText(live, races, style);
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -59,9 +60,15 @@ function StatsInner({ code }: { code: string }) {
       <TopBar
         backHref={`/e/${code}/board`}
         title="Stats"
-        right={<HelpTip text="Copy results is WhatsApp-ready, grouped by category. CSV keeps every split." />}
+        right={<HelpTip text="Summary is the coach WhatsApp paste. Detailed adds every km ( ~ = estimated ), fast/slow lap, half-split, and consistency." />}
       />
       <div className="flex flex-wrap gap-2 px-3 pb-2">
+        <Chip active={style === "summary"} onClick={() => setStyle("summary")}>
+          Summary
+        </Chip>
+        <Chip active={style === "detailed"} onClick={() => setStyle("detailed")}>
+          Detailed
+        </Chip>
         <button
           type="button"
           className="tap rounded-full bg-gold px-3.5 py-2 text-sm font-semibold text-ink"
