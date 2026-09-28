@@ -41,20 +41,24 @@ export default function HomePage() {
   }
 
   return (
-    <Screen className="px-5 pb-10 pt-16">
-      <p className="text-center text-xs font-semibold uppercase tracking-[0.25em] text-gold">
+    <Screen className="px-5 pb-10 pt-14">
+      <div className="lane-stripe rounded-full" />
+      <p className="mt-8 text-center text-xs font-bold uppercase tracking-[0.35em] text-gold">
         HKUST T&F
       </p>
-      <h1 className="mt-3 text-center font-mono text-5xl font-semibold tracking-tight">
-        Time Trial
+      <h1 className="mt-3 text-center font-mono text-5xl font-black tabular tracking-tight sm:text-6xl">
+        TIME TRIAL
       </h1>
+      <p className="mt-3 text-center text-sm font-semibold uppercase tracking-widest text-dim">
+        Timer · Marker · Board
+      </p>
       <input
         value={code}
         onChange={(e) => setCode(e.target.value.toUpperCase())}
         placeholder="Join code"
         autoCapitalize="characters"
         autoCorrect="off"
-        className="mt-10 h-16 w-full rounded-2xl bg-panel text-center font-mono text-3xl tracking-[0.3em] placeholder:tracking-normal"
+        className="mt-10 h-16 w-full rounded-2xl bg-panel text-center font-mono text-3xl font-black tabular tracking-[0.3em] placeholder:tracking-normal ring-1 ring-line"
         onKeyDown={(e) => e.key === "Enter" && join()}
       />
       <GoldBtn className="mt-3" onClick={join} disabled={busy === "join" || code.trim().length < 4}>

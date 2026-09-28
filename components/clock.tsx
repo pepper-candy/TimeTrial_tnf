@@ -13,7 +13,7 @@ export function RaceClock({
 }) {
   const ms = startedAt != null ? Math.max(0, now - startedAt) : 0;
   return (
-    <div className={`font-mono font-semibold tabular leading-none ${className}`}>
+    <div className={`clock font-mono font-black tabular leading-none tracking-tight ${className}`}>
       {startedAt != null ? formatClock(ms) : "0:00.0"}
     </div>
   );

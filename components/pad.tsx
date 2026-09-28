@@ -23,8 +23,8 @@ export function NumberPad({
         <button
           key={k}
           type="button"
-          className={`tap h-16 rounded-2xl text-2xl font-bold active:scale-[0.98] ${
-            k === "⏎" ? "bg-gold text-ink" : "bg-panel2 text-sand"
+          className={`tap h-16 rounded-2xl text-2xl font-black tabular ring-1 active:scale-[0.98] ${
+            k === "⏎" ? "bg-gold text-ink ring-gold" : "bg-panel2 text-sand ring-line"
           }`}
           onPointerDown={(e) => {
             e.preventDefault();

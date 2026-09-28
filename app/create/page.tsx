@@ -84,6 +84,7 @@ export default function CreatePage() {
         right={<HelpTip text="5000 m on a 400 m track starts at the 200 m mark. First finish-line crossing is the 200 m split, then 12 full laps. Helper PIN unlocks Timer, Marker, and Admin. Board is a public link." />}
       />
       <div className="flex flex-1 flex-col px-4 pb-8">
+        <div className="lane-stripe mb-5 rounded-full" />
         <div className="flex flex-wrap gap-2">
           {DISTANCE_PRESETS.map((p) => (
             <Chip
@@ -105,7 +106,7 @@ export default function CreatePage() {
           </Chip>
         </div>
 
-        <div className="mt-8 grid grid-cols-3 gap-3 rounded-2xl bg-panel p-4">
+        <div className="mt-8 grid grid-cols-3 gap-3 rounded-2xl bg-panel p-4 ring-1 ring-line">
           <Stat value={course.requiredCrossings} label="Crossings" />
           <Stat value={formatLaps(lapsCount(course))} label="Laps" />
           <Stat
@@ -119,12 +120,12 @@ export default function CreatePage() {
           onChange={setPin}
           placeholder="Helper PIN (4–8 digits)"
           inputMode="numeric"
-          className="mt-6"
+          className="mt-6 font-mono text-xl font-black tabular tracking-[0.2em]"
         />
 
         <button
           type="button"
-          className="tap mt-6 self-start rounded-full bg-panel2 px-4 py-2 text-sm font-semibold"
+          className="tap mt-6 self-start rounded-full bg-panel2 px-4 py-2 text-sm font-semibold ring-1 ring-line"
           onClick={() => setAdvanced((v) => !v)}
         >
           {advanced ? "Simple" : "Advanced"}

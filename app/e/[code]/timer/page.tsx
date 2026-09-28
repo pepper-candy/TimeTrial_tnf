@@ -146,32 +146,32 @@ function TimerInner({ code }: { code: string }) {
       <div className="flex items-center gap-2 px-3 py-2">
         <a
           href={`/e/${code}`}
-          className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-lg font-semibold"
+          className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-lg font-semibold ring-1 ring-line"
         >
           ←
         </a>
         <RaceClock
           startedAt={event?.startedAt ?? null}
           now={serverNow}
-          className="flex-1 text-center text-2xl"
+          className="flex-1 text-center text-3xl sm:text-4xl"
         />
         <button
           type="button"
-          className="tap h-11 rounded-xl bg-panel2 px-3 text-sm font-semibold"
+          className="tap h-11 rounded-xl bg-panel2 px-3 text-sm font-black ring-1 ring-line"
           onClick={undo}
         >
           Undo
         </button>
         <HelpTip text="Tap every torso at the line. Two runners 0.2s apart = two taps. Undo drops the last tap." />
       </div>
-      <div className="px-3 pb-1 text-center font-mono text-sm text-dim">
+      <div className="px-3 pb-1 text-center font-mono text-sm font-black tabular text-dim">
         {count}
         {queued ? ` · ${queued}` : ""}
       </div>
       {running ? (
         <button
           type="button"
-          className={`tap m-3 flex flex-1 items-center justify-center rounded-[2rem] text-6xl font-black tracking-tight ${
+          className={`tap m-3 flex flex-1 items-center justify-center rounded-[2rem] text-7xl font-black tracking-tight ${
             flash ? "bg-sand text-ink" : "bg-gold text-ink"
           }`}
           onPointerDown={tap}
@@ -181,7 +181,7 @@ function TimerInner({ code }: { code: string }) {
       ) : (
         <button
           type="button"
-          className="tap m-3 flex flex-1 items-center justify-center rounded-[2rem] bg-go text-4xl font-black text-ink"
+          className="tap m-3 flex flex-1 items-center justify-center rounded-[2rem] bg-go text-5xl font-black text-ink"
           onPointerDown={(e) => {
             e.preventDefault();
             void start();

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { HelpTip, Screen, TopBar } from "@/components/shell";
+import { EmptyState, LoadingState } from "@/components/states";
 import { useEvent } from "@/lib/client/hooks";
 
 const ROLES = [
@@ -18,10 +19,20 @@ export default function RolePage() {
 
   if (error === "missing") {
     return (
-      <Screen className="grid place-items-center">
-        <Link href="/" className="text-gold">
+      <Screen>
+        <EmptyState title="No event" hint="That join code is missing or expired." />
+        <Link href="/" className="mb-10 text-center text-gold font-bold">
           Home
         </Link>
+      </Screen>
+    );
+  }
+
+  if (!event) {
+    return (
+      <Screen>
+        <TopBar backHref="/" title={code} />
+        <LoadingState rows={4} />
       </Screen>
     );
   }
@@ -30,7 +41,7 @@ export default function RolePage() {
     <Screen>
       <TopBar
         backHref="/"
-        title={event?.code ?? code}
+        title={event.code}
         right={
           <HelpTip text="Board is a public read-only link — no PIN. Timer, Marker, and Admin unlock once per device with the helper PIN." />
         }
@@ -40,12 +51,12 @@ export default function RolePage() {
           <Link
             key={r.href}
             href={`/e/${code}/${r.href}`}
-            className="tap flex flex-col justify-between rounded-3xl bg-panel p-5 min-h-40"
+            className="tap flex flex-col justify-between rounded-3xl bg-panel p-5 min-h-40 ring-1 ring-line"
           >
-            <span className="text-xs font-semibold uppercase tracking-wider text-gold">
+            <span className="text-xs font-bold uppercase tracking-wider text-gold">
               {r.hint}
             </span>
-            <span className="text-3xl font-bold">{r.label}</span>
+            <span className="text-3xl font-black tracking-tight">{r.label}</span>
           </Link>
         ))}
       </div>

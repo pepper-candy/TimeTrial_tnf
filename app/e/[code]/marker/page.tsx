@@ -7,6 +7,7 @@ import { RaceClock } from "@/components/clock";
 import { NumberPad } from "@/components/pad";
 import { Chip, HelpTip, Screen } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
+import { LoadingState } from "@/components/states";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatClock, shortName } from "@/lib/format";
 import { tapElapsed, unmatchedTaps, zipPairs } from "@/lib/race";
@@ -74,7 +75,7 @@ function MarkerInner({ code }: { code: string }) {
   if (!event) {
     return (
       <Screen>
-        <div className="p-4 text-dim">…</div>
+        <LoadingState />
       </Screen>
     );
   }
@@ -84,11 +85,11 @@ function MarkerInner({ code }: { code: string }) {
       <div className="flex items-center gap-2 px-3 py-2">
         <a
           href={`/e/${code}`}
-          className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-lg font-semibold"
+          className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-lg font-semibold ring-1 ring-line"
         >
           ←
         </a>
-        <RaceClock startedAt={event.startedAt} now={serverNow} className="flex-1 text-center text-2xl" />
+        <RaceClock startedAt={event.startedAt} now={serverNow} className="flex-1 text-center text-3xl" />
         <Chip
           active={showPad && reassign == null && insertAt == null}
           onClick={() => setMode((m) => (m === "pad" ? "tiles" : "pad"))}
@@ -100,13 +101,13 @@ function MarkerInner({ code }: { code: string }) {
 
       <button
         type="button"
-        className="tap mx-3 flex items-center justify-between rounded-xl bg-panel px-3 py-2 text-sm"
+        className="tap mx-3 flex items-center justify-between rounded-xl bg-panel px-3 py-2 text-sm ring-1 ring-line"
         onClick={() => setFix((v) => !v)}
       >
         <span className="font-semibold">
           Taps {event.taps.length} · Marks {event.marks.length}
         </span>
-        <span className="font-mono text-gold">
+        <span className="font-mono font-black tabular text-gold">
           {pending.length ? pending.slice(0, 4).map((t) => formatClock(tapElapsed(event, t))).join("  ") : "OK"}
         </span>
       </button>
@@ -153,7 +154,7 @@ function MarkerInner({ code }: { code: string }) {
       <div className="flex flex-1 flex-col overflow-hidden p-3 pt-2">
         {showPad ? (
           <div className="flex flex-1 flex-col">
-            <div className="mb-2 flex h-16 items-center justify-center rounded-2xl bg-panel font-mono text-5xl font-bold">
+            <div className="mb-2 flex h-16 items-center justify-center rounded-2xl bg-panel font-mono text-5xl font-black tabular ring-1 ring-line">
               {reassign != null ? `→${bib || "_"}` : insertAt != null ? `+${bib || "_"}` : bib || " "}
             </div>
             <NumberPad value={bib} onChange={setBib} onEnter={() => void mark(bib)} enterLabel="Enter" />
@@ -220,12 +221,12 @@ function Tile({
         e.preventDefault();
         onPick();
       }}
-      className={`tap flex w-full flex-col items-center justify-center rounded-2xl bg-panel p-2 active:bg-gold active:text-ink ${
+      className={`tap flex w-full flex-col items-center justify-center rounded-2xl bg-panel p-2 ring-1 ring-line active:bg-gold active:text-ink ${
         large ? "min-h-40" : "min-h-28"
       } ${race.bell ? "ring-2 ring-bell" : ""}`}
     >
-      <Avatar runner={r} eventId={eventId} size={large ? 64 : 44} />
-      <div className="mt-1 font-mono text-3xl font-black leading-none">{r.bib}</div>
+      <Avatar runner={r} eventId={eventId} size={large ? 72 : 52} />
+      <div className="mt-1 font-mono text-3xl font-black leading-none tabular">{r.bib}</div>
       <div className="text-xs font-semibold text-dim">{shortName(r.name)}</div>
     </button>
   );
@@ -246,14 +247,14 @@ function FixList({
 }) {
   const pairs = useMemo(() => zipPairs(event.taps, event.marks).slice(-12).reverse(), [event]);
   return (
-    <div className="mx-3 mt-2 max-h-48 space-y-1 overflow-auto rounded-xl bg-panel p-2">
+    <div className="mx-3 mt-2 max-h-48 space-y-1 overflow-auto rounded-xl bg-panel p-2 ring-1 ring-line">
       {pairs.map((p) => (
         <div key={p.index} className="flex items-center gap-2 text-sm">
-          <span className="w-8 font-mono text-dim">{p.index + 1}</span>
-          <span className="w-16 font-mono">
+          <span className="w-8 font-mono tabular text-dim">{p.index + 1}</span>
+          <span className="w-16 font-mono font-black tabular">
             {p.tap ? formatClock(tapElapsed(event, p.tap)) : "—"}
           </span>
-          <span className="w-10 font-mono font-bold">{p.mark?.bib ?? "—"}</span>
+          <span className="w-10 font-mono font-black tabular">{p.mark?.bib ?? "—"}</span>
           <button type="button" className="tap rounded-lg bg-panel2 px-2 py-1" onClick={() => onReassign(p.index)}>
             Bib
           </button>

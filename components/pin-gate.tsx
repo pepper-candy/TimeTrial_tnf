@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { NumberPad } from "@/components/pad";
 import { Screen, TopBar } from "@/components/shell";
+import { LoadingState } from "@/components/states";
 import { getStoredPin, setStoredPin } from "@/lib/client/pin";
 
 export function PinGate({
@@ -66,7 +67,7 @@ export function PinGate({
     return (
       <Screen>
         <TopBar backHref={`/e/${code}`} title="PIN" />
-        <div className="p-4 text-dim">…</div>
+        <LoadingState rows={4} />
       </Screen>
     );
   }
@@ -75,13 +76,13 @@ export function PinGate({
     <Screen>
       <TopBar backHref={`/e/${code}`} title="Helper PIN" />
       <div className="flex flex-1 flex-col px-4 pb-8">
-        <p className="text-sm text-dim">
+        <p className="text-sm font-semibold text-dim">
           Timer, Marker, and Admin need the event PIN. Board is public — no PIN.
         </p>
-        <div className="mt-6 mb-4 flex h-16 items-center justify-center rounded-2xl bg-panel font-mono text-5xl font-bold tracking-[0.3em]">
+        <div className="mt-6 mb-4 flex h-16 items-center justify-center rounded-2xl bg-panel font-mono text-5xl font-black tabular tracking-[0.35em] ring-1 ring-line">
           {pin ? "•".repeat(pin.length) : " "}
         </div>
-        {err ? <p className="mb-3 text-center text-sm font-semibold text-stop">Wrong PIN</p> : null}
+        {err ? <p className="mb-3 text-center text-sm font-black text-stop">Wrong PIN</p> : null}
         <NumberPad value={pin} onChange={setPin} onEnter={() => void submit()} enterLabel="Unlock" />
       </div>
     </Screen>

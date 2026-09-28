@@ -31,14 +31,14 @@ export function TopBar({
       {backHref ? (
         <Link
           href={backHref}
-          className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-panel2 text-lg font-semibold"
+          className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-panel2 text-lg font-semibold ring-1 ring-line"
         >
           ←
         </Link>
       ) : (
         <div className="w-11" />
       )}
-      <h1 className="min-w-0 flex-1 truncate text-center text-sm font-semibold tracking-wide uppercase">
+      <h1 className="min-w-0 flex-1 truncate text-center text-sm font-black uppercase tracking-[0.18em]">
         {title}
       </h1>
       <div className="flex min-w-11 shrink-0 justify-end">{right}</div>
@@ -62,7 +62,7 @@ export function Chip({
       type="button"
       onClick={onClick}
       className={`tap rounded-full px-3.5 py-2 text-sm font-semibold ${
-        active ? "bg-gold text-ink" : "bg-panel2 text-sand"
+        active ? "bg-gold text-ink" : "bg-panel2 text-sand ring-1 ring-line"
       } ${className}`}
     >
       {children}
@@ -83,7 +83,7 @@ export function GoldBtn({
   disabled?: boolean;
   className?: string;
 }) {
-  const cls = `tap grid h-14 place-items-center rounded-2xl bg-gold text-ink text-lg font-bold disabled:opacity-40 ${className}`;
+  const cls = `tap grid h-16 place-items-center rounded-2xl bg-gold text-ink text-xl font-black shadow-[inset_0_-3px_0_rgba(0,0,0,0.28)] disabled:opacity-40 ${className}`;
   if (href) {
     return (
       <Link href={href} className={cls}>
@@ -125,7 +125,7 @@ export function Field({
       onKeyDown={(e) => {
         if (e.key === "Enter") onSubmit?.();
       }}
-      className={`h-12 w-full rounded-xl bg-panel2 px-3 text-sand placeholder:text-dim ${className}`}
+      className={`h-12 w-full rounded-xl bg-panel2 px-3 text-sand ring-1 ring-line placeholder:text-dim ${className}`}
     />
   );
 }
@@ -144,7 +144,7 @@ export function HelpTip({ text }: { text: string }) {
     <div ref={ref} className="relative">
       <button
         type="button"
-        className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-dim"
+        className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-dim ring-1 ring-line"
         onClick={() => setOpen((v) => !v)}
         aria-label="Help"
       >
@@ -171,7 +171,7 @@ export function Stat({
   return (
     <div className="min-w-0">
       <div
-        className={`font-mono text-2xl font-semibold tabular leading-none ${warn ? "text-bell" : "text-sand"}`}
+        className={`font-mono text-2xl font-black tabular leading-none ${warn ? "text-bell" : "text-sand"}`}
       >
         {value}
       </div>

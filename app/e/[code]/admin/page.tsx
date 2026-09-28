@@ -6,6 +6,7 @@ import { Avatar } from "@/components/avatar";
 import { PinGate } from "@/components/pin-gate";
 import { Qr } from "@/components/qr";
 import { Chip, Field, GoldBtn, HelpTip, Screen, TopBar } from "@/components/shell";
+import { LoadingState } from "@/components/states";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { compressImage } from "@/lib/client/photo";
 import { kmCrossings } from "@/lib/course";
@@ -77,6 +78,7 @@ function AdminInner({ code }: { code: string }) {
     return (
       <Screen>
         <TopBar backHref={`/e/${code}`} title="Admin" />
+        <LoadingState rows={5} />
       </Screen>
     );
   }
@@ -100,7 +102,7 @@ function AdminInner({ code }: { code: string }) {
       <div className="flex items-center justify-between px-4">
         <button
           type="button"
-          className="tap rounded-xl bg-panel2 px-3 py-2 font-mono text-2xl font-bold tracking-widest"
+          className="tap rounded-xl bg-panel2 px-3 py-2 font-mono text-2xl font-black tabular tracking-widest ring-1 ring-line"
           onClick={() => setShare((v) => (v === "off" ? "board" : "off"))}
         >
           {event.code}
@@ -222,15 +224,17 @@ function AdminInner({ code }: { code: string }) {
             }}
           />
         ))}
-        <div className="rounded-2xl bg-panel p-2">
+        <div className="rounded-2xl bg-panel p-2 ring-1 ring-line">
           <div className="flex items-center gap-2">
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-panel2 text-dim">+</div>
+            <div className="grid h-12 w-12 place-items-center rounded-xl bg-panel2 text-lg font-black text-dim ring-1 ring-line">
+              +
+            </div>
             <input
               value={draft.bib}
               onChange={(e) => setDraft((d) => ({ ...d, bib: e.target.value }))}
               placeholder="Bib"
               inputMode="numeric"
-              className="h-12 w-16 bg-transparent font-mono text-2xl font-bold"
+              className="h-12 w-16 bg-transparent font-mono text-2xl font-black tabular"
             />
             <input
               value={draft.name}
@@ -242,12 +246,12 @@ function AdminInner({ code }: { code: string }) {
               value={draft.studentId}
               onChange={(e) => setDraft((d) => ({ ...d, studentId: e.target.value }))}
               placeholder="SID"
-              className="h-12 w-24 bg-transparent font-mono text-sm"
+              className="h-12 w-24 bg-transparent font-mono text-sm font-bold tabular"
               onKeyDown={(e) => e.key === "Enter" && addDraft()}
             />
             <button
               type="button"
-              className="tap h-12 rounded-xl bg-gold px-3 font-bold text-ink"
+              className="tap h-12 rounded-xl bg-gold px-3 font-black text-ink"
               onClick={addDraft}
             >
               Add
@@ -276,7 +280,7 @@ function AdminInner({ code }: { code: string }) {
         {event.status === "running" ? (
           <button
             type="button"
-            className="tap h-12 w-full rounded-2xl bg-panel2 font-semibold"
+            className="tap h-12 w-full rounded-2xl bg-panel2 font-black ring-1 ring-line"
             onClick={() => void patch({ status: "finished" })}
           >
             End race
@@ -284,7 +288,9 @@ function AdminInner({ code }: { code: string }) {
         ) : null}
         <button
           type="button"
-          className={`tap h-12 w-full rounded-2xl font-semibold ${confirmDel ? "bg-stop text-sand" : "bg-panel2"}`}
+          className={`tap h-12 w-full rounded-2xl font-black ${
+            confirmDel ? "bg-stop text-sand" : "bg-panel2 ring-1 ring-line"
+          }`}
           onClick={async () => {
             if (!confirmDel) {
               setConfirmDel(true);
@@ -323,7 +329,7 @@ function RunnerRow({
   const [studentId, setStudentId] = useState(runner.studentId);
 
   return (
-    <div className="rounded-2xl bg-panel p-2">
+    <div className="rounded-2xl bg-panel p-2 ring-1 ring-line">
       <div className="flex items-center gap-2">
         <button type="button" className="tap" onClick={() => cam.current?.click()}>
           <Avatar runner={runner} eventId={eventId} size={48} />
@@ -332,7 +338,7 @@ function RunnerRow({
           value={bib}
           onChange={(e) => setBib(e.target.value)}
           onBlur={() => bib !== runner.bib && onChange({ bib })}
-          className="h-12 w-16 bg-transparent font-mono text-2xl font-bold"
+          className="h-12 w-16 bg-transparent font-mono text-2xl font-black tabular"
         />
         <input
           value={name}
@@ -346,7 +352,7 @@ function RunnerRow({
           onChange={(e) => setStudentId(e.target.value)}
           onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
           placeholder="SID"
-          className="h-12 w-24 bg-transparent font-mono text-sm"
+          className="h-12 w-24 bg-transparent font-mono text-sm font-bold tabular"
         />
         <button type="button" className="tap text-dim" onClick={() => file.current?.click()}>
           ↑

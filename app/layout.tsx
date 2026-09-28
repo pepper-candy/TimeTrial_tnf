@@ -16,11 +16,21 @@ export const metadata: Metadata = {
   title: "HKUST T&F Time Trial",
   description: "Distance time trials with two or three helpers",
   appleWebApp: { capable: true, title: "Time Trial", statusBarStyle: "black-translucent" },
-  icons: { icon: "/icon.svg" },
+  icons: { icon: "/icon.svg", apple: "/apple-icon" },
+  openGraph: {
+    title: "HKUST T&F Time Trial",
+    description: "Stadium timing for distance time trials — Timer, Marker, Board.",
+    siteName: "Time Trial",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HKUST T&F Time Trial",
+    description: "Stadium timing for distance time trials.",
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#07080c",
+  themeColor: "#05060a",
   colorScheme: "dark",
   width: "device-width",
   initialScale: 1,
