@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { newId } from "@/lib/ids";
 import { normalizeBib } from "@/lib/race";
-import { updateEvent } from "@/lib/store";
+import { deleteRunnerPhoto, updateEvent } from "@/lib/store";
 import type { Runner } from "@/lib/types";
 
-export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ code: string }> };
@@ -17,13 +16,21 @@ export async function POST(req: Request, ctx: Ctx) {
     runners?: Runner[];
     id?: string;
   };
+
+  if (body.action === "delete") {
+    const event = await updateEvent(code, async (e) => {
+      const id = body.id || body.runner?.id;
+      const gone = e.runners.find((r) => r.id === id);
+      if (gone) await deleteRunnerPhoto(e.id, gone.id);
+      return { ...e, runners: e.runners.filter((r) => r.id !== id) };
+    });
+    if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ event, rev: event.rev });
+  }
+
   const event = await updateEvent(code, (e) => {
     if (body.action === "replace" && Array.isArray(body.runners)) {
-      return { ...e, runners: body.runners };
-    }
-    if (body.action === "delete") {
-      const id = body.id || body.runner?.id;
-      return { ...e, runners: e.runners.filter((r) => r.id !== id) };
+      return { ...e, runners: body.runners.map(stripPhotoBytes) };
     }
     const incoming = body.runner;
     if (!incoming) return e;
@@ -38,8 +45,7 @@ export async function POST(req: Request, ctx: Ctx) {
                 bib: bib || r.bib,
                 name: incoming.name ?? r.name,
                 studentId: incoming.studentId ?? r.studentId,
-                photoUrl:
-                  incoming.photoUrl === undefined ? r.photoUrl : incoming.photoUrl,
+                photoVer: incoming.photoVer === undefined ? r.photoVer : incoming.photoVer,
               }
             : r,
         ),
@@ -51,17 +57,31 @@ export async function POST(req: Request, ctx: Ctx) {
       bib,
       name: incoming.name?.trim() || "",
       studentId: incoming.studentId?.trim() || "",
-      photoUrl: incoming.photoUrl ?? null,
+      photoVer: incoming.photoVer ?? null,
     };
     const exists = e.runners.find((r) => normalizeBib(r.bib) === bib);
     if (exists) {
       return {
         ...e,
-        runners: e.runners.map((r) => (r.id === exists.id ? { ...runner, id: exists.id, photoUrl: runner.photoUrl ?? exists.photoUrl } : r)),
+        runners: e.runners.map((r) =>
+          r.id === exists.id
+            ? { ...runner, id: exists.id, photoVer: runner.photoVer ?? exists.photoVer }
+            : r,
+        ),
       };
     }
     return { ...e, runners: [...e.runners, runner] };
   });
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ event });
+  return NextResponse.json({ event, rev: event.rev });
+}
+
+function stripPhotoBytes(r: Runner): Runner {
+  return {
+    id: r.id,
+    bib: r.bib,
+    name: r.name,
+    studentId: r.studentId,
+    photoVer: r.photoVer ?? null,
+  };
 }

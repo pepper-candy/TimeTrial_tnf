@@ -16,7 +16,7 @@ import {
 import type { EventState, Runner } from "./types";
 
 function runner(bib: string, name = `R${bib}`): Runner {
-  return { id: `id-${bib}`, bib, name, studentId: "20" + bib, photoUrl: null };
+  return { id: `id-${bib}`, bib, name, studentId: "20" + bib, photoVer: null };
 }
 
 function event(partial: Partial<EventState> = {}): EventState {
@@ -34,6 +34,7 @@ function event(partial: Partial<EventState> = {}): EventState {
     demo: false,
     demoAutoMark: false,
     demoPlan: null,
+    rev: 0,
     ...partial,
   };
 }

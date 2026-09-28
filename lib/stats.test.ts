@@ -15,13 +15,14 @@ function ev(partial: Partial<EventState> = {}): EventState {
     startedAt: 0,
     course: defaultFiveK(),
     runners: [
-      { id: "a", bib: "1", name: "Ada", studentId: "1", photoUrl: null } satisfies Runner,
+      { id: "a", bib: "1", name: "Ada", studentId: "1", photoVer: null } satisfies Runner,
     ],
     taps: [],
     marks: [],
     demo: false,
     demoAutoMark: false,
     demoPlan: null,
+    rev: 0,
     ...partial,
   };
 }

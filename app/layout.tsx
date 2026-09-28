@@ -12,8 +12,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const preferredRegion = "hkg1";
-
 export const metadata: Metadata = {
   title: "HKUST T&F Time Trial",
   description: "Distance time trials with two or three helpers",

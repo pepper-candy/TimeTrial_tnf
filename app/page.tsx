@@ -17,7 +17,7 @@ export default function HomePage() {
     if (c.length < 4) return;
     setBusy("join");
     try {
-      const res = await fetch(`/api/events/${c}`, { cache: "no-store" });
+      const res = await fetch(`/api/events/${c}?head=1`, { cache: "no-store" });
       if (!res.ok) {
         setBusy(null);
         return;

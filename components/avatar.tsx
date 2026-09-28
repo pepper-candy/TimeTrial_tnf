@@ -1,20 +1,25 @@
+import { photoPath } from "@/lib/photo";
 import { bibColor, initials } from "@/lib/format";
 import type { Runner } from "@/lib/types";
 
 export function Avatar({
   runner,
+  eventId,
   size = 48,
   className = "",
 }: {
-  runner: Pick<Runner, "name" | "bib" | "photoUrl">;
+  runner: Pick<Runner, "id" | "name" | "bib" | "photoVer">;
+  eventId?: string;
   size?: number;
   className?: string;
 }) {
-  if (runner.photoUrl) {
+  const src =
+    eventId && runner.photoVer ? photoPath(eventId, runner.id, runner.photoVer) : null;
+  if (src) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={runner.photoUrl}
+        src={src}
         alt=""
         width={size}
         height={size}

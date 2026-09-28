@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { Qr } from "@/components/qr";
@@ -11,9 +11,11 @@ import type { EventState, Runner } from "@/lib/types";
 
 export default function AdminPage() {
   const { code } = useParams<{ code: string }>();
+  const router = useRouter();
   const { event, setEvent, refresh } = useEvent(code, 2000);
   const [share, setShare] = useState(false);
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "" });
+  const [confirmDel, setConfirmDel] = useState(false);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function saveRunner(runner: Partial<Runner> & { bib?: string; id?: string }) {
@@ -38,13 +40,18 @@ export default function AdminPage() {
   }
 
   async function photo(runnerId: string, file: File) {
-    const blob = await compressImage(file);
-    const form = new FormData();
-    form.set("file", blob, "p.jpg");
-    form.set("runnerId", runnerId);
-    const res = await fetch(`/api/events/${code}/photo`, { method: "POST", body: form });
-    const data = (await res.json()) as { event: EventState };
-    setEvent(data.event);
+    try {
+      const { blob, mime } = await compressImage(file);
+      const form = new FormData();
+      form.set("file", new File([blob], mime === "image/webp" ? "p.webp" : "p.jpg", { type: mime }));
+      form.set("runnerId", runnerId);
+      const res = await fetch(`/api/events/${code}/photo`, { method: "POST", body: form });
+      if (!res.ok) return;
+      const data = (await res.json()) as { event: EventState };
+      setEvent(data.event);
+    } catch {
+      /* too large or canvas */
+    }
   }
 
   if (!event) {
@@ -106,6 +113,7 @@ export default function AdminPage() {
             runner={r}
             onChange={(next) => saveRunner({ id: r.id, ...next })}
             onPhoto={(f) => photo(r.id, f)}
+            eventId={event.id}
             onDelete={async () => {
               const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
                 method: "POST",
@@ -172,6 +180,20 @@ export default function AdminPage() {
             Finish
           </button>
         ) : null}
+        <button
+          type="button"
+          className={`tap h-12 w-full rounded-2xl font-semibold ${confirmDel ? "bg-stop text-sand" : "bg-panel2"}`}
+          onClick={async () => {
+            if (!confirmDel) {
+              setConfirmDel(true);
+              return;
+            }
+            await fetch(`/api/events/${code}`, { method: "DELETE" });
+            router.push("/");
+          }}
+        >
+          {confirmDel ? "Confirm delete" : "Delete"}
+        </button>
       </div>
     </Screen>
   );
@@ -179,11 +201,13 @@ export default function AdminPage() {
 
 function RunnerRow({
   runner,
+  eventId,
   onChange,
   onPhoto,
   onDelete,
 }: {
   runner: Runner;
+  eventId: string;
   onChange: (r: Partial<Runner>) => void;
   onPhoto: (file: File) => void;
   onDelete: () => void;
@@ -197,7 +221,7 @@ function RunnerRow({
   return (
     <div className="flex items-center gap-2 rounded-2xl bg-panel p-2">
       <button type="button" className="tap" onClick={() => cam.current?.click()}>
-        <Avatar runner={runner} size={48} />
+        <Avatar runner={runner} eventId={eventId} size={48} />
       </button>
       <input
         value={bib}

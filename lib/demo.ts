@@ -50,7 +50,7 @@ export function makeDemoEvent(now = Date.now(), elapsedMs = 18 * 60 * 1000): Eve
       bib: d.bib,
       name: d.name,
       studentId: d.studentId,
-      photoUrl: null,
+      photoVer: null,
     };
     runners.push(runner);
     const splitsMs = dists.map((dist, i) => {
@@ -75,6 +75,7 @@ export function makeDemoEvent(now = Date.now(), elapsedMs = 18 * 60 * 1000): Eve
     demo: true,
     demoAutoMark: true,
     demoPlan,
+    rev: 0,
   };
   return advanceDemo(event, now);
 }

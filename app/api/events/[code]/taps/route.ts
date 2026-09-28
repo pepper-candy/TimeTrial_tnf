@@ -3,7 +3,6 @@ import { appendTap, undoLastTap } from "@/lib/race";
 import { updateEvent } from "@/lib/store";
 import type { Tap } from "@/lib/types";
 
-export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ code: string }> };

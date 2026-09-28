@@ -3,7 +3,6 @@ import { buildRunnerRaces } from "@/lib/race";
 import { csvOfEvent } from "@/lib/stats";
 import { getEvent } from "@/lib/store";
 
-export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ code: string }> };

@@ -11,7 +11,8 @@ export type Runner = {
   bib: string;
   name: string;
   studentId: string;
-  photoUrl: string | null;
+  /** Short hash of the Redis photo object; never the bytes. */
+  photoVer: string | null;
 };
 
 export type Tap = {
@@ -46,6 +47,14 @@ export type EventState = {
   demo: boolean;
   demoAutoMark: boolean;
   demoPlan: DemoPlan[] | null;
+  /** Bumped on every persist. Polling compares this via a tiny Redis key. */
+  rev: number;
+};
+
+export type PhotoRecord = {
+  v: string;
+  mime: string;
+  data: string;
 };
 
 export type FlagKind = "too-fast" | "over-count" | "unknown-bib";

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { updateEvent } from "@/lib/store";
 
-export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ code: string }> };

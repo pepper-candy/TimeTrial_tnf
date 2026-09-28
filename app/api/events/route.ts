@@ -4,7 +4,6 @@ import { newId, newJoinCode } from "@/lib/ids";
 import { saveEvent } from "@/lib/store";
 import type { EventState } from "@/lib/types";
 
-export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -27,6 +26,7 @@ export async function POST(req: Request) {
     demo: false,
     demoAutoMark: false,
     demoPlan: null,
+    rev: 0,
   };
   await saveEvent(event);
   return NextResponse.json({ event });

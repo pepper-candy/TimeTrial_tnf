@@ -150,7 +150,7 @@ export default function MarkerPage() {
             <NumberPad value={bib} onChange={setBib} onEnter={() => void mark(bib)} enterLabel="Enter" />
           </div>
         ) : (
-          <TileGrid tiles={tiles} onPick={(r) => void mark(r.runner.bib)} />
+          <TileGrid tiles={tiles} eventId={event.id} onPick={(r) => void mark(r.runner.bib)} />
         )}
       </div>
     </Screen>
@@ -159,9 +159,11 @@ export default function MarkerPage() {
 
 function TileGrid({
   tiles,
+  eventId,
   onPick,
 }: {
   tiles: RunnerRace[];
+  eventId: string;
   onPick: (r: RunnerRace) => void;
 }) {
   const top = tiles.slice(0, 3);
@@ -171,15 +173,19 @@ function TileGrid({
       {top[0] ? (
         <div className="grid grid-cols-2 gap-2">
           <div className="col-span-2">
-            <Tile race={top[0]} large onPick={() => onPick(top[0])} />
+            <Tile race={top[0]} eventId={eventId} large onPick={() => onPick(top[0])} />
           </div>
-          {top[1] ? <Tile race={top[1]} onPick={() => onPick(top[1])} /> : null}
-          {top[2] ? <Tile race={top[2]} onPick={() => onPick(top[2])} /> : null}
+          {top[1] ? (
+            <Tile race={top[1]} eventId={eventId} onPick={() => onPick(top[1])} />
+          ) : null}
+          {top[2] ? (
+            <Tile race={top[2]} eventId={eventId} onPick={() => onPick(top[2])} />
+          ) : null}
         </div>
       ) : null}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
         {rest.map((r) => (
-          <Tile key={r.runner.id} race={r} onPick={() => onPick(r)} />
+          <Tile key={r.runner.id} race={r} eventId={eventId} onPick={() => onPick(r)} />
         ))}
       </div>
     </div>
@@ -188,10 +194,12 @@ function TileGrid({
 
 function Tile({
   race,
+  eventId,
   large,
   onPick,
 }: {
   race: RunnerRace;
+  eventId: string;
   large?: boolean;
   onPick: () => void;
 }) {
@@ -207,7 +215,7 @@ function Tile({
         large ? "min-h-40" : "min-h-28"
       } ${race.bell ? "ring-2 ring-bell" : ""}`}
     >
-      <Avatar runner={r} size={large ? 64 : 44} />
+      <Avatar runner={r} eventId={eventId} size={large ? 64 : 44} />
       <div className="mt-1 font-mono text-3xl font-black leading-none">{r.bib}</div>
       <div className="text-xs font-semibold text-dim">{shortName(r.name)}</div>
     </button>
