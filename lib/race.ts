@@ -308,6 +308,20 @@ function flagsForRunner(
   return flags;
 }
 
+export function tapElapsed(event: EventState, tap: Tap): number {
+  if (event.startedAt == null) return 0;
+  return Math.max(0, tap.t - event.startedAt);
+}
+
+/** Marker is expected to trail Timer by a couple of bodies. */
+export const MARKER_LAG_OK = 2;
+
+export function sequenceLag(event: EventState): { taps: number; marks: number; lag: number } {
+  const taps = liveTaps(event.taps).length;
+  const marks = liveMarks(event.marks).length;
+  return { taps, marks, lag: taps - marks };
+}
+
 export function collectFlags(event: EventState, races: RunnerRace[]): DataFlag[] {
   const flags: DataFlag[] = [];
   for (const r of races) flags.push(...r.flags);
@@ -324,10 +338,14 @@ export function collectFlags(event: EventState, races: RunnerRace[]): DataFlag[]
       });
     }
   }
+  const { taps, marks: markN, lag } = sequenceLag(event);
+  if (Math.abs(lag) > MARKER_LAG_OK) {
+    flags.push({
+      kind: "count-lag",
+      bib: "",
+      index: -1,
+      detail: `${taps} taps · ${markN} marks`,
+    });
+  }
   return flags;
-}
-
-export function tapElapsed(event: EventState, tap: Tap): number {
-  if (event.startedAt == null) return 0;
-  return Math.max(0, tap.t - event.startedAt);
 }

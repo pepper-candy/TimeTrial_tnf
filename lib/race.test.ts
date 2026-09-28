@@ -4,6 +4,7 @@ import {
   appendMark,
   appendTap,
   buildRunnerRaces,
+  collectFlags,
   compareRank,
   deleteMark,
   insertMark,
@@ -187,5 +188,32 @@ describe("flags", () => {
     const races = buildRunnerRaces(ev, 1_000_020_000);
     const r1 = races.find((r) => r.runner.bib === "1")!;
     expect(r1.flags.some((f) => f.kind === "too-fast")).toBe(true);
+  });
+
+  it("flags tap/mark count lag beyond the normal 2-body delay, not a healthy trail", () => {
+    const ok = event({
+      taps: [
+        { id: "a", t: 10 },
+        { id: "b", t: 20 },
+        { id: "c", t: 30 },
+      ],
+      marks: [{ id: "m1", bib: "1" }],
+    });
+    const racesOk = buildRunnerRaces(ok);
+    expect(collectFlags(ok, racesOk).some((f) => f.kind === "count-lag")).toBe(false);
+
+    const bad = event({
+      taps: [
+        { id: "a", t: 10 },
+        { id: "b", t: 20 },
+        { id: "c", t: 30 },
+        { id: "d", t: 40 },
+        { id: "e", t: 50 },
+      ],
+      marks: [{ id: "m1", bib: "1" }],
+    });
+    const racesBad = buildRunnerRaces(bad);
+    const lag = collectFlags(bad, racesBad).find((f) => f.kind === "count-lag");
+    expect(lag?.detail).toBe("5 taps · 1 marks");
   });
 });

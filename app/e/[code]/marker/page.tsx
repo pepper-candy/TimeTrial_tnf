@@ -3,16 +3,15 @@
 import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
-import { RaceClock } from "@/components/clock";
 import { NumberPad } from "@/components/pad";
 import { Chip, HelpTip, Screen } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
 import { LoadingState } from "@/components/states";
 import { UndoToast } from "@/components/undo-toast";
 import { json, useEvent } from "@/lib/client/hooks";
-import { formatClock, formatEst, shortName } from "@/lib/format";
-import { liveMarks, liveTaps, runnerByBib, tapElapsed, unmatchedTaps, zipPairs } from "@/lib/race";
-import type { EventState, Runner } from "@/lib/types";
+import { liveMarks, runnerByBib } from "@/lib/race";
+import { shortName } from "@/lib/format";
+import type { EventState, Mark, Runner } from "@/lib/types";
 import type { RunnerRace } from "@/lib/race";
 
 export default function MarkerPage() {
@@ -25,7 +24,7 @@ export default function MarkerPage() {
 }
 
 function MarkerInner({ code }: { code: string }) {
-  const { event, setEvent, serverNow, tiles } = useEvent(code, 800);
+  const { event, setEvent, tiles } = useEvent(code, 800);
   const [mode, setMode] = useState<"auto" | "pad" | "tiles">("auto");
   const [bib, setBib] = useState("");
   const [reassign, setReassign] = useState<number | null>(null);
@@ -33,7 +32,6 @@ function MarkerInner({ code }: { code: string }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [toast, setToast] = useState<{ id: string; label: string } | null>(null);
 
-  const pending = event ? unmatchedTaps(event.taps, event.marks) : [];
   const hasTiles = tiles.length > 0;
   const showPad = mode === "pad" || (mode === "auto" && !hasTiles);
 
@@ -75,7 +73,7 @@ function MarkerInner({ code }: { code: string }) {
   async function deleteMark(index: number) {
     const mark = event ? liveMarks(event.marks)[index] : undefined;
     await post({ action: "delete", index });
-    if (mark) setToast({ id: mark.id, label: "Mark deleted" });
+    if (mark) setToast({ id: mark.id, label: "Bib deleted" });
     setSelected(null);
   }
 
@@ -97,8 +95,9 @@ function MarkerInner({ code }: { code: string }) {
     );
   }
 
-  const pairs = zipPairs(event.taps, event.marks);
-  const recent = pairs.filter((p) => p.mark).slice(-8);
+  const seq = liveMarks(event.marks);
+  const start = Math.max(0, seq.length - 8);
+  const recent = seq.slice(start).map((m, i) => ({ mark: m, index: start + i }));
 
   return (
     <Screen className="max-w-none">
@@ -109,29 +108,20 @@ function MarkerInner({ code }: { code: string }) {
         >
           ←
         </a>
-        <RaceClock startedAt={event.startedAt} now={serverNow} className="flex-1 text-center text-3xl" />
+        <div className="flex-1 text-center font-mono text-3xl font-black tabular">{seq.length}</div>
         <Chip
           active={showPad && reassign == null && insertAt == null}
           onClick={() => setMode((m) => (m === "pad" ? "tiles" : "pad"))}
         >
           {showPad ? "Tiles" : "Pad"}
         </Chip>
-        <HelpTip text="Marks pair with taps in order. Tap a recent chip to change bib; drag to reorder; + / del with Undo. Extra taps belong on Timer." />
-      </div>
-
-      <div className="mx-3 flex items-center justify-between rounded-xl bg-panel px-3 py-2 text-sm ring-1 ring-line">
-        <span className="font-semibold">
-          Taps {liveTaps(event.taps).length} · Marks {liveMarks(event.marks).length}
-        </span>
-        <span className={`font-mono font-black tabular ${pending.length ? "text-stop" : "text-go"}`}>
-          {pending.length ? `${pending.length} extra` : "OK"}
-        </span>
+        <HelpTip text="Enter bibs in crossing order. Server pairs them with Timer taps. Tap a recent bib to change, insert, delete, or drag to reorder." />
       </div>
 
       {recent.length > 0 ? (
-        <RecentMarks
+        <RecentSequence
           event={event}
-          pairs={recent}
+          recent={recent}
           selected={selected}
           onSelect={(i) => {
             setSelected((cur) => (cur === i ? null : i));
@@ -188,7 +178,7 @@ function MarkerInner({ code }: { code: string }) {
       <div className="flex flex-1 flex-col overflow-hidden p-3 pt-2">
         {reassign != null || insertAt != null ? (
           <div className="mb-2 rounded-xl bg-gold/15 px-3 py-2 text-center text-sm font-black text-gold ring-1 ring-gold/40">
-            {reassign != null ? "Change bib" : "Insert mark"}
+            {reassign != null ? "Change bib" : "Insert bib"}
           </div>
         ) : null}
         {showPad ? (
@@ -214,15 +204,15 @@ function MarkerInner({ code }: { code: string }) {
   );
 }
 
-function RecentMarks({
+function RecentSequence({
   event,
-  pairs,
+  recent,
   selected,
   onSelect,
   onMove,
 }: {
   event: EventState;
-  pairs: { index: number; tap: EventState["taps"][number] | null; mark: EventState["marks"][number] | null }[];
+  recent: { mark: Mark; index: number }[];
   selected: number | null;
   onSelect: (index: number) => void;
   onMove: (from: number, to: number) => void;
@@ -230,9 +220,8 @@ function RecentMarks({
   const drag = useRef<{ from: number; x: number; dragging: boolean } | null>(null);
 
   return (
-    <div className="mx-3 mt-2 flex gap-2 overflow-x-auto pb-1">
-      {pairs.map((p) => {
-        if (!p.mark) return null;
+    <div className="mx-3 mt-1 flex gap-2 overflow-x-auto pb-1">
+      {recent.map((p) => {
         const runner: Runner | undefined = runnerByBib(event.runners, p.mark.bib);
         const active = selected === p.index;
         return (
@@ -256,8 +245,10 @@ function RecentMarks({
               drag.current = null;
               if (!d || d.from !== p.index) return;
               if (d.dragging) {
-                const delta = Math.round((e.clientX - d.x) / 88);
-                const to = Math.max(0, Math.min(pairs[pairs.length - 1].index, d.from + delta));
+                const delta = Math.round((e.clientX - d.x) / 72);
+                const lo = recent[0].index;
+                const hi = recent[recent.length - 1].index;
+                const to = Math.max(lo, Math.min(hi, d.from + delta));
                 onMove(d.from, to);
                 return;
               }
@@ -267,18 +258,9 @@ function RecentMarks({
             {runner ? (
               <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
             ) : (
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-panel2 font-black">
-                ?
-              </div>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-panel2 font-black">?</div>
             )}
-            <div className="text-left">
-              <div className="font-mono text-xl font-black leading-none tabular">{p.mark.bib}</div>
-              <div className={`font-mono text-[11px] font-black tabular ${active ? "text-ink/70" : "text-dim"}`}>
-                {p.tap
-                  ? formatEst(formatClock(tapElapsed(event, p.tap)), p.tap.estimated)
-                  : "—"}
-              </div>
-            </div>
+            <div className="font-mono text-2xl font-black leading-none tabular">{p.mark.bib}</div>
           </button>
         );
       })}

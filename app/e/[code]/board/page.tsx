@@ -19,7 +19,7 @@ import type { EventState } from "@/lib/types";
 
 export default function BoardPage() {
   const { code } = useParams<{ code: string }>();
-  const { event, serverNow, races, stats } = useEvent(code, 1000);
+  const { event, serverNow, races, stats, flags } = useEvent(code, 1000);
   const [open, setOpen] = useState<string | null>(null);
   const [times, setTimes] = useState<BoardTimesMode>("split");
   const [cat, setCat] = useState<string>("all");
@@ -81,6 +81,9 @@ export default function BoardPage() {
         <span className="inline-flex items-center gap-2 rounded-full bg-panel2 px-3.5 py-2 text-sm font-bold ring-1 ring-line">
           <span className="live-dot" />
           Live
+          {flags.length > 0 ? (
+            <span className="h-2 w-2 rounded-full bg-bell" aria-label="Timing check" />
+          ) : null}
         </span>
         <Link href={`/e/${code}/stats`} className="tap rounded-full bg-panel2 px-3.5 py-2 text-sm font-semibold ring-1 ring-line">
           Stats

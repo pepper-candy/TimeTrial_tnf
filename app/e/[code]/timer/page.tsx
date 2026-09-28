@@ -8,7 +8,7 @@ import { HelpTip, Screen } from "@/components/shell";
 import { UndoToast } from "@/components/undo-toast";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatClock, formatEst } from "@/lib/format";
-import { liveTaps, tapElapsed, unmatchedTaps } from "@/lib/race";
+import { liveTaps, tapElapsed } from "@/lib/race";
 import type { EventState, Tap } from "@/lib/types";
 
 const QUEUE_KEY = (code: string) => `tt:tapq:${code}`;
@@ -188,8 +188,6 @@ function TimerInner({ code }: { code: string }) {
   }
 
   const live = event ? liveTaps(event.taps) : [];
-  const extraIds = new Set(event ? unmatchedTaps(event.taps, event.marks).map((t) => t.id) : []);
-  const extra = extraIds.size;
   const recent = live.slice(-8);
   const running = event?.status === "running" && event.startedAt != null;
 
@@ -214,12 +212,11 @@ function TimerInner({ code }: { code: string }) {
         >
           Undo
         </button>
-        <HelpTip text="Tap every torso — extra is easy to delete, a miss loses the true time. Tap a recent time to drop it. +~ inserts a guessed tap (shown as ~, skipped for fastest lap)." />
+        <HelpTip text="Tap every torso at the line. Extra is easy to delete; a miss loses the true time. Tap a recent time to drop it. +~ inserts a guessed tap (shown as ~)." />
       </div>
       <div className="px-3 pb-1 text-center font-mono text-sm font-black tabular text-dim">
         {live.length}
         {queued ? ` · ${queued}` : ""}
-        {extra ? <span className="text-stop"> · {extra} extra</span> : null}
       </div>
       {running && event ? (
         <div className="mx-3 mb-1 flex items-stretch gap-2 overflow-x-auto pb-1">
@@ -230,26 +227,23 @@ function TimerInner({ code }: { code: string }) {
           >
             +~
           </button>
-          {recent.map((t) => {
-            const extraTap = extraIds.has(t.id);
-            return (
+          {recent.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => void deleteTap(t.id)}
                 className={`tap h-14 shrink-0 rounded-xl px-3 text-left ring-1 ${
-                  extraTap ? "bg-stop/20 ring-stop" : t.estimated ? "bg-panel ring-gold/60" : "bg-panel ring-line"
+                  t.estimated ? "bg-panel ring-gold/60" : "bg-panel ring-line"
                 }`}
               >
                 <div className="font-mono text-lg font-black tabular leading-none">
                   {formatEst(formatClock(tapElapsed(event, t)), t.estimated)}
                 </div>
-                <div className={`mt-1 text-[10px] font-black uppercase tracking-wide ${extraTap ? "text-stop" : "text-dim"}`}>
-                  {extraTap ? "Extra" : t.estimated ? "Est" : "Tap"}
+                <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-dim">
+                  {t.estimated ? "Est" : "Tap"}
                 </div>
               </button>
-            );
-          })}
+            ))}
         </div>
       ) : null}
       {running ? (

@@ -107,7 +107,7 @@ export type PhotoRecord = {
   data: string;
 };
 
-export type FlagKind = "too-fast" | "over-count" | "unknown-bib";
+export type FlagKind = "too-fast" | "over-count" | "unknown-bib" | "count-lag";
 
 export type DataFlag = {
   kind: FlagKind;

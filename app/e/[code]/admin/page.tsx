@@ -8,6 +8,7 @@ import { Qr } from "@/components/qr";
 import { Chip, Field, GoldBtn, HelpTip, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
+import { MismatchPanel } from "@/components/mismatch-panel";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { compressImage } from "@/lib/client/photo";
 import { kmCrossings } from "@/lib/course";
@@ -24,7 +25,7 @@ export default function AdminPage() {
 
 function AdminInner({ code }: { code: string }) {
   const router = useRouter();
-  const { event, setEvent, races } = useEvent(code, 2000);
+  const { event, setEvent, races, flags } = useEvent(code, 2000);
   const [share, setShare] = useState<"off" | "board" | "helper">("off");
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "Girls" });
   const [customCat, setCustomCat] = useState("");
@@ -98,7 +99,7 @@ function AdminInner({ code }: { code: string }) {
         backHref={`/e/${code}`}
         title={event.code}
         right={
-          <HelpTip text="Share the Board link publicly. Timer/Marker/Admin need the helper PIN. Fix on a runner to edit crossings — change bib, move, delete, or add an estimated ~ time. Deletes undo." />
+          <HelpTip text="Timer taps. Marker enters bibs in order. The server pairs them. This screen shows count lag, too-fast laps, and extra taps/bibs — Fix a runner to shift, delete, or add ~." />
         }
       />
       <div className="flex items-center justify-between px-4">
@@ -142,6 +143,15 @@ function AdminInner({ code }: { code: string }) {
           ) : null}
         </div>
       </div>
+      {event.status !== "setup" ? (
+        <MismatchPanel
+          code={code}
+          event={event}
+          flags={flags}
+          onEvent={setEvent}
+          onFixRunner={setFixId}
+        />
+      ) : null}
       {share !== "off" ? (
         <div className="mt-4 flex flex-col items-center gap-2">
           <div className="flex gap-2">
