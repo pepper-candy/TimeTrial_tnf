@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     runners: [],
     taps: [],
     marks: [],
+    edits: [],
     demo: false,
     demoAutoMark: false,
     demoPlan: null,

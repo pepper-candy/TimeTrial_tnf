@@ -14,29 +14,47 @@ import type {
 } from "./types";
 import { newId } from "./ids";
 
+export function isLive<T extends { deletedAt?: number | null }>(x: T): boolean {
+  return x.deletedAt == null;
+}
+
+export function liveTaps(taps: Tap[]): Tap[] {
+  return taps.filter(isLive).slice().sort((a, b) => a.t - b.t || a.id.localeCompare(b.id));
+}
+
+export function liveMarks(marks: Mark[]): Mark[] {
+  return marks.filter(isLive);
+}
+
 export function zipPairs(taps: Tap[], marks: Mark[]): Pair[] {
-  const n = Math.max(taps.length, marks.length);
+  const liveT = liveTaps(taps);
+  const liveM = liveMarks(marks);
+  const n = Math.max(liveT.length, liveM.length);
   const pairs: Pair[] = [];
   for (let i = 0; i < n; i++) {
     pairs.push({
       index: i,
-      tap: taps[i] ?? null,
-      mark: marks[i] ?? null,
+      tap: liveT[i] ?? null,
+      mark: liveM[i] ?? null,
     });
   }
   return pairs;
 }
 
 export function matchedCount(taps: Tap[], marks: Mark[]): number {
-  return Math.min(taps.length, marks.length);
+  return Math.min(liveTaps(taps).length, liveMarks(marks).length);
 }
 
 export function unmatchedTaps(taps: Tap[], marks: Mark[]): Tap[] {
-  return taps.slice(marks.length);
+  const liveT = liveTaps(taps);
+  const liveM = liveMarks(marks);
+  return liveT.slice(liveM.length);
 }
 
 export function unmatchedMarks(taps: Tap[], marks: Mark[]): Mark[] {
-  return marks.slice(taps.length);
+  const liveT = liveTaps(taps);
+  const liveM = liveMarks(marks);
+  return liveM.slice(liveT.length);
 }
 
 export function appendMark(marks: Mark[], bib: string): Mark[] {
@@ -99,6 +117,9 @@ export type Crossing = {
   t: number;
   elapsedMs: number;
   distanceM: number;
+  estimated: boolean;
+  tapId: string;
+  markId: string;
 };
 
 export type RunnerRace = {
@@ -125,11 +146,13 @@ export function crossingsOf(
   event: EventState,
 ): Crossing[] {
   const start = event.startedAt ?? 0;
-  const n = matchedCount(event.taps, event.marks);
+  const taps = liveTaps(event.taps);
+  const marks = liveMarks(event.marks);
+  const n = Math.min(taps.length, marks.length);
   const out: Crossing[] = [];
   for (let i = 0; i < n; i++) {
-    const tap = event.taps[i];
-    const mark = event.marks[i];
+    const tap = taps[i];
+    const mark = marks[i];
     const runner = runnerByBib(event.runners, mark.bib);
     const runnerCrossingsSoFar = out.filter((c) => c.bib === normalizeBib(mark.bib)).length;
     const distanceM = crossingDistance(event.course, runnerCrossingsSoFar + 1);
@@ -140,9 +163,19 @@ export function crossingsOf(
       t: tap.t,
       elapsedMs: event.startedAt != null ? tap.t - start : 0,
       distanceM,
+      estimated: Boolean(tap.estimated),
+      tapId: tap.id,
+      markId: mark.id,
     });
   }
   return out;
+}
+
+/** Split i is estimated if either bounding tap is estimated. */
+export function splitEstimated(crossings: Crossing[], i: number): boolean {
+  if (crossings[i]?.estimated) return true;
+  if (i > 0 && crossings[i - 1]?.estimated) return true;
+  return false;
 }
 
 export function buildRunnerRaces(event: EventState, now = 0): RunnerRace[] {
@@ -279,8 +312,9 @@ export function collectFlags(event: EventState, races: RunnerRace[]): DataFlag[]
   const flags: DataFlag[] = [];
   for (const r of races) flags.push(...r.flags);
   const n = matchedCount(event.taps, event.marks);
+  const marks = liveMarks(event.marks);
   for (let i = 0; i < n; i++) {
-    const bib = event.marks[i].bib;
+    const bib = marks[i].bib;
     if (!runnerByBib(event.runners, bib)) {
       flags.push({
         kind: "unknown-bib",

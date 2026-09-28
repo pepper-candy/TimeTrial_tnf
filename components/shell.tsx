@@ -125,6 +125,7 @@ export function Field({
       onKeyDown={(e) => {
         if (e.key === "Enter") onSubmit?.();
       }}
+      onBlur={() => onSubmit?.()}
       className={`h-12 w-full rounded-xl bg-panel2 px-3 text-sand ring-1 ring-line placeholder:text-dim ${className}`}
     />
   );

@@ -36,6 +36,7 @@ function event(partial: Partial<EventState> = {}): EventState {
     runners: [],
     taps: [],
     marks: [],
+    edits: [],
     demo: false,
     demoAutoMark: false,
     demoPlan: null,

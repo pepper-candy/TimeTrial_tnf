@@ -18,6 +18,7 @@ function base(partial: Partial<EventState> = {}): EventState {
     runners: [],
     taps: [],
     marks: [],
+    edits: [],
     demo: true,
     demoAutoMark: true,
     demoPlan: null,

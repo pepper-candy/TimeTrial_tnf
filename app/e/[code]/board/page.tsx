@@ -11,8 +11,8 @@ import { EmptyState, LoadingState } from "@/components/states";
 import { getBoardTimesMode, setBoardTimesMode, type BoardTimesMode } from "@/lib/client/pin";
 import { useFlip } from "@/lib/client/flip";
 import { useEvent } from "@/lib/client/hooks";
-import { formatClock, formatPace, formatSpeed } from "@/lib/format";
-import { compareRank, type RunnerRace } from "@/lib/race";
+import { formatClock, formatEst, formatPace, formatSpeed } from "@/lib/format";
+import { compareRank, splitEstimated, type RunnerRace } from "@/lib/race";
 import { categoryOrder } from "@/lib/results";
 import type { RunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
@@ -193,7 +193,7 @@ function Row({
           <div className="mt-0.5 flex items-center gap-2">
             {race.finished ? (
               <span className="font-mono text-xs font-black tabular text-go">
-                FIN {race.finishMs != null ? formatClock(race.finishMs, 2) : ""}
+                FIN {race.finishMs != null ? formatEst(formatClock(race.finishMs, 2), race.crossings.at(-1)?.estimated) : ""}
               </span>
             ) : race.lapDown > 0 ? (
               <span className="text-xs font-black text-stop">−{race.lapDown} lap</span>
@@ -221,9 +221,14 @@ function Row({
               i === race.splitMs.length - 1 ? "bg-gold text-ink" : "bg-black/40"
             }`}
           >
-            {formatClock(
-              times === "cumulative" ? (race.crossings[i]?.elapsedMs ?? ms) : ms,
-              1,
+            {formatEst(
+              formatClock(
+                times === "cumulative" ? (race.crossings[i]?.elapsedMs ?? ms) : ms,
+                1,
+              ),
+              times === "cumulative"
+                ? race.crossings[i]?.estimated
+                : splitEstimated(race.crossings, i),
             )}
           </span>
         ))}

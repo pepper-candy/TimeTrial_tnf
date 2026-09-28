@@ -1,6 +1,6 @@
 import { crossingDistance, splitDistance } from "./course";
 import type { EventState } from "./types";
-import type { RunnerRace } from "./race";
+import { splitEstimated, type RunnerRace } from "./race";
 
 export type RunnerStats = {
   avgPaceSecPerKm: number | null;
@@ -41,6 +41,7 @@ export function computeRunnerStats(
     i,
     ms: race.splitMs[i],
     d: splitDistance(event.course, i + 1),
+    estimated: splitEstimated(race.crossings, i),
   }));
 
   let fastestLapSec: number | null = null;
@@ -48,11 +49,15 @@ export function computeRunnerStats(
   let fastestLapPaceSecPerKm: number | null = null;
   let slowestLapPaceSecPerKm: number | null = null;
   if (full.length > 0) {
-    const fastest = full.reduce((a, b) => (a.ms < b.ms ? a : b));
+    const measurable = full.filter((x) => !x.estimated);
+    const fastest =
+      measurable.length > 0 ? measurable.reduce((a, b) => (a.ms < b.ms ? a : b)) : null;
     const slowest = full.reduce((a, b) => (a.ms > b.ms ? a : b));
-    fastestLapSec = fastest.ms / 1000;
+    if (fastest) {
+      fastestLapSec = fastest.ms / 1000;
+      fastestLapPaceSecPerKm = fastest.ms / 1000 / (fastest.d / 1000);
+    }
     slowestLapSec = slowest.ms / 1000;
-    fastestLapPaceSecPerKm = fastest.ms / 1000 / (fastest.d / 1000);
     slowestLapPaceSecPerKm = slowest.ms / 1000 / (slowest.d / 1000);
   }
 
@@ -63,9 +68,10 @@ export function computeRunnerStats(
       : null;
 
   let consistencyPct: number | null = null;
-  if (full.length >= 2) {
-    const mean = full.reduce((s, x) => s + x.ms, 0) / full.length;
-    const variance = full.reduce((s, x) => s + (x.ms - mean) ** 2, 0) / full.length;
+  const consist = full.filter((x) => !x.estimated);
+  if (consist.length >= 2) {
+    const mean = consist.reduce((s, x) => s + x.ms, 0) / consist.length;
+    const variance = consist.reduce((s, x) => s + (x.ms - mean) ** 2, 0) / consist.length;
     const sd = Math.sqrt(variance);
     consistencyPct = mean > 0 ? (sd / mean) * 100 : null;
   }
@@ -201,6 +207,7 @@ export type FullLap = {
   /** 1-based among full (lap-length) splits only; first 200 m is not a lap. */
   lap: number;
   ms: number;
+  estimated: boolean;
 };
 
 export function fullLapsFor(event: EventState, race: RunnerRace): FullLap[] {
@@ -210,7 +217,7 @@ export function fullLapsFor(event: EventState, race: RunnerRace): FullLap[] {
     const d = splitDistance(event.course, i + 1);
     if (Math.abs(d - event.course.lapLengthM) < 0.5) {
       n += 1;
-      out.push({ lap: n, ms: race.splitMs[i] });
+      out.push({ lap: n, ms: race.splitMs[i], estimated: splitEstimated(race.crossings, i) });
     }
   }
   return out;
@@ -244,8 +251,9 @@ export function fastestSlowestLap(laps: FullLap[]): {
   slow: FullLap;
 } | null {
   if (laps.length === 0) return null;
+  const real = laps.filter((l) => !l.estimated);
   return {
-    fast: laps.reduce((a, b) => (a.ms <= b.ms ? a : b)),
+    fast: (real.length ? real : laps).reduce((a, b) => (a.ms <= b.ms ? a : b)),
     slow: laps.reduce((a, b) => (a.ms > b.ms ? a : b)),
   };
 }

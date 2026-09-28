@@ -107,6 +107,16 @@ export function hydrateEvent(event: EventState): EventState {
       ...r,
       category: r.category?.trim() || categories[0] || "Boys",
     })),
+    taps: (event.taps ?? []).map((t) => ({
+      ...t,
+      estimated: Boolean(t.estimated),
+      deletedAt: t.deletedAt ?? null,
+    })),
+    marks: (event.marks ?? []).map((m) => ({
+      ...m,
+      deletedAt: m.deletedAt ?? null,
+    })),
+    edits: event.edits ?? [],
   };
 }
 

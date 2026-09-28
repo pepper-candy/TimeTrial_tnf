@@ -1,3 +1,8 @@
+export function formatEst(text: string, estimated?: boolean): string {
+  if (!estimated || text.startsWith("~")) return text;
+  return `~${text}`;
+}
+
 export function formatClock(ms: number, digits = 1): string {
   if (!Number.isFinite(ms) || ms < 0) ms = 0;
   const totalSec = Math.floor(ms / 1000);

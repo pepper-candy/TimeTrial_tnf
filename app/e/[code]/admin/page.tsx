@@ -7,6 +7,7 @@ import { PinGate } from "@/components/pin-gate";
 import { Qr } from "@/components/qr";
 import { Chip, Field, GoldBtn, HelpTip, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
+import { CrossingEditor } from "@/components/crossing-editor";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { compressImage } from "@/lib/client/photo";
 import { kmCrossings } from "@/lib/course";
@@ -23,11 +24,12 @@ export default function AdminPage() {
 
 function AdminInner({ code }: { code: string }) {
   const router = useRouter();
-  const { event, setEvent } = useEvent(code, 2000);
+  const { event, setEvent, races } = useEvent(code, 2000);
   const [share, setShare] = useState<"off" | "board" | "helper">("off");
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "Girls" });
   const [customCat, setCustomCat] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [fixId, setFixId] = useState<string | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   async function saveRunner(runner: Partial<Runner> & { bib?: string; id?: string }) {
@@ -96,7 +98,7 @@ function AdminInner({ code }: { code: string }) {
         backHref={`/e/${code}`}
         title={event.code}
         right={
-          <HelpTip text="Share the Board link publicly. Timer/Marker/Admin need the helper PIN. Add bib, name, SID, and category before start." />
+          <HelpTip text="Share the Board link publicly. Timer/Marker/Admin need the helper PIN. Fix on a runner to edit crossings — change bib, move, delete, or add an estimated ~ time. Deletes undo." />
         }
       />
       <div className="flex items-center justify-between px-4">
@@ -215,6 +217,7 @@ function AdminInner({ code }: { code: string }) {
             onChange={(next) => saveRunner({ id: r.id, ...next })}
             onPhoto={(f) => photo(r.id, f)}
             eventId={event.id}
+            onFix={() => setFixId(r.id)}
             onDelete={async () => {
               const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
                 method: "POST",
@@ -303,6 +306,26 @@ function AdminInner({ code }: { code: string }) {
           {confirmDel ? "Confirm delete" : "Delete"}
         </button>
       </div>
+      {fixId ? (
+        (() => {
+          const race = races.find((x) => x.runner.id === fixId);
+          if (!race) return null;
+          return (
+            <CrossingEditor
+              event={event}
+              race={race}
+              onClose={() => setFixId(null)}
+              onEdit={async (body) => {
+                const data = await json<{ event: EventState }>(`/api/events/${code}/crossings`, {
+                  method: "POST",
+                  body: JSON.stringify(body),
+                });
+                setEvent(data.event);
+              }}
+            />
+          );
+        })()
+      ) : null}
     </Screen>
   );
 }
@@ -314,6 +337,7 @@ function RunnerRow({
   onChange,
   onPhoto,
   onDelete,
+  onFix,
 }: {
   runner: Runner;
   eventId: string;
@@ -321,6 +345,7 @@ function RunnerRow({
   onChange: (r: Partial<Runner>) => void;
   onPhoto: (file: File) => void;
   onDelete: () => void;
+  onFix: () => void;
 }) {
   const cam = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -354,6 +379,9 @@ function RunnerRow({
           placeholder="SID"
           className="h-12 w-24 bg-transparent font-mono text-sm font-bold tabular"
         />
+        <button type="button" className="tap h-12 px-2 text-sm font-black text-gold" onClick={onFix}>
+          Fix
+        </button>
         <button type="button" className="tap text-dim" onClick={() => file.current?.click()}>
           ↑
         </button>

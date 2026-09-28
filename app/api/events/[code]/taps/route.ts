@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isDenied, requireHelper, toPublic } from "@/lib/auth";
-import { appendTap, undoLastTap } from "@/lib/race";
+import { applyEdit } from "@/lib/edits";
 import { updateEvent } from "@/lib/store";
 import type { Tap } from "@/lib/types";
 
@@ -17,19 +17,16 @@ export async function POST(req: Request, ctx: Ctx) {
     taps?: Tap[];
     undo?: boolean;
     id?: string;
+    tapId?: string;
+    action?: string;
+    actor?: string;
+    t?: number;
+    beforeId?: string;
+    bib?: string;
   };
-  const event = await updateEvent(code, (e) => {
-    if (body.undo) {
-      return { ...e, taps: undoLastTap(e.taps, body.id) };
-    }
-    const incoming = body.taps ?? (body.tap ? [body.tap] : []);
-    let taps = e.taps;
-    for (const tap of incoming) {
-      if (!tap?.id || typeof tap.t !== "number") continue;
-      taps = appendTap(taps, { id: String(tap.id), t: Math.round(tap.t) });
-    }
-    return { ...e, taps };
-  });
+  const event = await updateEvent(code, (e) =>
+    applyEdit(e, { ...body, actor: body.actor ?? "timer" }),
+  );
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ event: toPublic(event) });
 }

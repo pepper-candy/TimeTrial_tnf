@@ -19,6 +19,7 @@ function ev(partial: Partial<EventState> = {}): EventState {
     ],
     taps: [],
     marks: [],
+    edits: [],
     demo: false,
     demoAutoMark: false,
     demoPlan: null,

@@ -1,5 +1,5 @@
 import { kmCrossings } from "./course";
-import { formatClubMs, formatClubPace, formatEventDate, formatSplitDelta } from "./format";
+import { formatClubMs, formatClubPace, formatEst, formatEventDate, formatSplitDelta } from "./format";
 import { buildRunnerRaces, compareRank, type RunnerRace } from "./race";
 import {
   fastestSlowestLap,
@@ -100,14 +100,16 @@ function formatSummaryRunner(
   const elapsed = last && event.startedAt != null ? last.t - event.startedAt : 0;
   const distM = last?.distanceM ?? 0;
   const dnf = !race.finished;
-  const time = formatClubMs(elapsed);
+  const time = formatEst(formatClubMs(elapsed), last?.estimated);
   const lapsBit = dnf ? ` (${formatLapsShort(lapsCompleted(event, race))} laps)` : "";
 
   const parts: string[] = [];
   for (const km of kms) {
     const ms = kmSplitElapsed(event, race, km);
     if (ms == null) continue;
-    parts.push(`${km}K: ${formatClubMs(ms)}`);
+    const hit = kmCrossings(event.course).find((x) => x.km === km);
+    const crossing = hit ? race.crossings[hit.index - 1] : undefined;
+    parts.push(`${km}K: ${formatEst(formatClubMs(ms), crossing?.estimated)}`);
   }
   const splitsBit = parts.length ? ` (${parts.join("; ")})` : "";
   const avgSec = distM > 0 ? elapsed / 1000 / (distM / 1000) : 0;
@@ -125,7 +127,7 @@ function formatDetailedRunner(event: EventState, race: RunnerRace, place: number
   const elapsed = last && event.startedAt != null ? last.t - event.startedAt : 0;
   const distM = last?.distanceM ?? 0;
   const dnf = !race.finished;
-  const time = formatClubMs(elapsed);
+  const time = formatEst(formatClubMs(elapsed), last?.estimated);
   const lapsBit = dnf ? ` (${formatLapsShort(lapsCompleted(event, race))} laps)` : "";
   const avgSec = distM > 0 ? elapsed / 1000 / (distM / 1000) : 0;
 
@@ -146,8 +148,8 @@ function formatDetailedRunner(event: EventState, race: RunnerRace, place: number
   const bits: string[] = [];
   const pair = fastestSlowestLap(fullLapsFor(event, race));
   if (pair) {
-    bits.push(`Fast L${pair.fast.lap} ${formatClubMs(pair.fast.ms)}`);
-    bits.push(`Slow L${pair.slow.lap} ${formatClubMs(pair.slow.ms)}`);
+    if (!pair.fast.estimated) bits.push(`Fast L${pair.fast.lap} ${formatClubMs(pair.fast.ms)}`);
+    bits.push(`Slow L${pair.slow.lap} ${formatEst(formatClubMs(pair.slow.ms), pair.slow.estimated)}`);
   }
   const half = halfSplitFor(event, race);
   if (half) {

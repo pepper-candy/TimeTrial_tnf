@@ -5,7 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
 import { PinGate } from "@/components/pin-gate";
 import { HelpTip, Screen } from "@/components/shell";
+import { UndoToast } from "@/components/undo-toast";
 import { json, useEvent } from "@/lib/client/hooks";
+import { formatClock, formatEst } from "@/lib/format";
+import { liveTaps, tapElapsed, unmatchedTaps } from "@/lib/race";
 import type { EventState, Tap } from "@/lib/types";
 
 const QUEUE_KEY = (code: string) => `tt:tapq:${code}`;
@@ -25,11 +28,13 @@ function TimerInner({ code }: { code: string }) {
   const { event, setEvent, offset, serverNow } = useEvent(code, 1500);
   const [flash, setFlash] = useState(false);
   const [queued, setQueued] = useState(0);
+  const [toast, setToast] = useState<{ id: string; label: string } | null>(null);
   const pending = useRef<Queued[]>([]);
   const sending = useRef(false);
   const origin = useRef(0);
   const offsetRef = useRef(0);
   const lastId = useRef<string | null>(null);
+  const localGone = useRef<Queued | null>(null);
   const flushRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
@@ -67,7 +72,7 @@ function TimerInner({ code }: { code: string }) {
     try {
       const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
         method: "POST",
-        body: JSON.stringify({ taps: batch.map(({ id, t }) => ({ id, t })) }),
+        body: JSON.stringify({ taps: batch.map(({ id, t }) => ({ id, t })), actor: "timer" }),
       });
       const ok = new Set(batch.map((q) => q.id));
       pending.current = pending.current.map((q) => (ok.has(q.id) ? { ...q, sent: true } : q));
@@ -120,7 +125,7 @@ function TimerInner({ code }: { code: string }) {
     setEvent(data.event);
   }
 
-  async function undo() {
+  async function undoLast() {
     const localUnsent = [...pending.current].reverse().find((q) => !q.sent);
     if (localUnsent) {
       pending.current = pending.current.filter((q) => q.id !== localUnsent.id);
@@ -131,14 +136,61 @@ function TimerInner({ code }: { code: string }) {
     const id = last?.id ?? lastId.current ?? undefined;
     const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
       method: "POST",
-      body: JSON.stringify({ undo: true, id }),
+      body: JSON.stringify({ undo: true, id, actor: "timer" }),
     });
     if (id) pending.current = pending.current.filter((q) => q.id !== id);
     persist();
     setEvent(data.event);
   }
 
-  const count = event?.taps.length ?? 0;
+  async function deleteTap(id: string) {
+    const local = pending.current.find((q) => q.id === id && !q.sent);
+    if (local) {
+      localGone.current = local;
+      pending.current = pending.current.filter((q) => q.id !== id);
+      persist();
+      setToast({ id, label: "Tap deleted" });
+      return;
+    }
+    const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
+      method: "POST",
+      body: JSON.stringify({ action: "tap-delete", id, actor: "timer" }),
+    });
+    pending.current = pending.current.filter((q) => q.id !== id);
+    persist();
+    setEvent(data.event);
+    setToast({ id, label: "Tap deleted" });
+  }
+
+  async function restoreTap(id: string) {
+    if (localGone.current?.id === id) {
+      pending.current.push(localGone.current);
+      localGone.current = null;
+      persist();
+      setToast(null);
+      void flush();
+      return;
+    }
+    const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
+      method: "POST",
+      body: JSON.stringify({ action: "tap-restore", id, actor: "timer" }),
+    });
+    setEvent(data.event);
+    setToast(null);
+  }
+
+  async function insertEstimated(beforeId?: string) {
+    const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
+      method: "POST",
+      body: JSON.stringify({ action: "tap-insert-estimated", beforeId, actor: "timer" }),
+    });
+    setEvent(data.event);
+  }
+
+  const live = event ? liveTaps(event.taps) : [];
+  const extraIds = new Set(event ? unmatchedTaps(event.taps, event.marks).map((t) => t.id) : []);
+  const extra = extraIds.size;
+  const recent = live.slice(-8);
   const running = event?.status === "running" && event.startedAt != null;
 
   return (
@@ -158,16 +210,48 @@ function TimerInner({ code }: { code: string }) {
         <button
           type="button"
           className="tap h-11 rounded-xl bg-panel2 px-3 text-sm font-black ring-1 ring-line"
-          onClick={undo}
+          onClick={() => void undoLast()}
         >
           Undo
         </button>
-        <HelpTip text="Tap every torso at the line. Two runners 0.2s apart = two taps. Undo drops the last tap." />
+        <HelpTip text="Tap every torso — extra is easy to delete, a miss loses the true time. Tap a recent time to drop it. +~ inserts a guessed tap (shown as ~, skipped for fastest lap)." />
       </div>
       <div className="px-3 pb-1 text-center font-mono text-sm font-black tabular text-dim">
-        {count}
+        {live.length}
         {queued ? ` · ${queued}` : ""}
+        {extra ? <span className="text-stop"> · {extra} extra</span> : null}
       </div>
+      {running && event ? (
+        <div className="mx-3 mb-1 flex items-stretch gap-2 overflow-x-auto pb-1">
+          <button
+            type="button"
+            className="tap h-14 shrink-0 rounded-xl bg-panel2 px-3 text-sm font-black text-gold ring-1 ring-line"
+            onClick={() => void insertEstimated()}
+          >
+            +~
+          </button>
+          {recent.map((t) => {
+            const extraTap = extraIds.has(t.id);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => void deleteTap(t.id)}
+                className={`tap h-14 shrink-0 rounded-xl px-3 text-left ring-1 ${
+                  extraTap ? "bg-stop/20 ring-stop" : t.estimated ? "bg-panel ring-gold/60" : "bg-panel ring-line"
+                }`}
+              >
+                <div className="font-mono text-lg font-black tabular leading-none">
+                  {formatEst(formatClock(tapElapsed(event, t)), t.estimated)}
+                </div>
+                <div className={`mt-1 text-[10px] font-black uppercase tracking-wide ${extraTap ? "text-stop" : "text-dim"}`}>
+                  {extraTap ? "Extra" : t.estimated ? "Est" : "Tap"}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       {running ? (
         <button
           type="button"
@@ -190,6 +274,14 @@ function TimerInner({ code }: { code: string }) {
           START
         </button>
       )}
+      {toast ? (
+        <UndoToast
+          key={toast.id}
+          message={toast.label}
+          onUndo={() => void restoreTap(toast.id)}
+          onGone={() => setToast(null)}
+        />
+      ) : null}
     </Screen>
   );
 }

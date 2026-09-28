@@ -21,11 +21,44 @@ export type Runner = {
 export type Tap = {
   id: string;
   t: number;
+  /** Missed tap filled in later; shown as ~ and skipped for fastest lap. */
+  estimated?: boolean;
+  /** Soft-delete timestamp; omitted/null means live. */
+  deletedAt?: number | null;
 };
 
 export type Mark = {
   id: string;
   bib: string;
+  deletedAt?: number | null;
+};
+
+export type EditActor = "timer" | "marker" | "admin";
+
+export type EditKind =
+  | "tap-delete"
+  | "tap-restore"
+  | "tap-insert"
+  | "mark-delete"
+  | "mark-restore"
+  | "mark-insert"
+  | "mark-reassign"
+  | "mark-move"
+  | "pair-delete"
+  | "pair-insert";
+
+export type EditLogEntry = {
+  id: string;
+  at: number;
+  actor: EditActor;
+  kind: EditKind;
+  tapId?: string;
+  markId?: string;
+  bib?: string;
+  prevBib?: string;
+  t?: number;
+  fromIndex?: number;
+  toIndex?: number;
 };
 
 export type DemoPlan = {
@@ -49,6 +82,8 @@ export type EventState = {
   runners: Runner[];
   taps: Tap[];
   marks: Mark[];
+  /** Soft-edit history (who / when). Recoverable deletes live here. */
+  edits: EditLogEntry[];
   demo: boolean;
   demoAutoMark: boolean;
   demoPlan: DemoPlan[] | null;

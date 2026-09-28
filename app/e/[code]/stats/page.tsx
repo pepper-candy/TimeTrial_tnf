@@ -6,7 +6,7 @@ import { Chip, HelpTip, Screen, TopBar } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
 import { EmptyState, LoadingState } from "@/components/states";
 import { fetchWithPin, useEvent } from "@/lib/client/hooks";
-import { formatClock, formatPace } from "@/lib/format";
+import { formatClock, formatEst, formatPace } from "@/lib/format";
 import { formatResultsText, type ResultsStyle } from "@/lib/results";
 
 export default function StatsPage() {
@@ -128,7 +128,9 @@ function StatsInner({ code }: { code: string }) {
                     </td>
                     <td className="pr-2 font-mono text-xs tabular text-dim">{r.runner.studentId}</td>
                     <td className="pr-2 font-mono font-black tabular">
-                      {r.finishMs != null ? formatClock(r.finishMs, 2) : r.crossings.length}
+                      {r.finishMs != null
+                        ? formatEst(formatClock(r.finishMs, 2), r.crossings.at(-1)?.estimated)
+                        : r.crossings.length}
                     </td>
                     <td className="pr-2 font-mono font-black tabular">
                       {formatPace(s.avgPaceSecPerKm ?? 0)}
