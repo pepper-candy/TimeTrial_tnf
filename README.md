@@ -8,6 +8,7 @@ Mobile-first web app for distance time trials. Two or three helpers: **Timer** (
 - Upstash Redis for event state
 - Vercel Blob for runner photos
 - Live updates via 1s polling (reliable on Vercel serverless)
+- Serverless functions pinned to **Hong Kong (`hkg1`)**
 - Vitest for lap / pairing / ranking logic
 
 ## Local
@@ -22,10 +23,12 @@ Open [http://localhost:3000](http://localhost:3000). Tap **Demo race** to seed 1
 
 ## Vercel setup
 
+Functions are pinned to **Hong Kong (`hkg1`)** in `vercel.json` and via `preferredRegion` so Timer/Marker taps stay close to campus.
+
 1. Push this repo and import it in Vercel.
-2. **Storage → Create / Connect**
-   - **Upstash Redis** (Vercel Marketplace). This sets `KV_REST_API_URL` + `KV_REST_API_TOKEN` (and often `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`). The app accepts either pair.
-   - **Blob** store. This sets `BLOB_READ_WRITE_TOKEN` for bib photos.
+2. **Storage → Create / Connect** (Vercel Marketplace):
+   - **Upstash Redis** in an **Asia** region — **Singapore** or **Tokyo** (closest to HK; there is no Hong Kong Upstash region). Linking the store sets `KV_REST_API_URL` + `KV_REST_API_TOKEN` and often `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. The app accepts **either pair**.
+   - **Vercel Blob** store (for runner photos). This sets `BLOB_READ_WRITE_TOKEN`.
 3. Redeploy after the stores are linked.
 4. Without Redis, each serverless instance has its own memory — events will not sync. Redis is required in production.
 

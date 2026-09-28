@@ -4,6 +4,7 @@ import { newId, newJoinCode } from "@/lib/ids";
 import { saveEvent } from "@/lib/store";
 import type { EventState } from "@/lib/types";
 
+export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {

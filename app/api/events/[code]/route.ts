@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { deriveCourse, type CourseInput } from "@/lib/course";
 import { getEvent, updateEvent } from "@/lib/store";
 
+export { preferredRegion } from "@/lib/region";
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ code: string }> };
