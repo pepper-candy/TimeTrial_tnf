@@ -22,20 +22,24 @@ export function PaceChart({
   const min = Math.min(...paces);
   const max = Math.max(...paces);
   const span = Math.max(1, max - min);
+  const showPace = paces.length <= 8;
   return (
     <div className="flex h-28 items-end gap-1">
       {paces.map((p, i) => {
         const faster = (max - p) / span;
-        const h = 16 + faster * 88;
+        const h = 18 + faster * 72;
         const full = Math.abs(splitDistance(event.course, i + 1) - event.course.lapLengthM) < 0.5;
         return (
-          <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <div className="text-[10px] font-mono text-dim">{formatPace(p)}</div>
+          <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
             <div
               className={`w-full rounded-t-md ${full ? "bg-gold" : "bg-sky"}`}
               style={{ height: h }}
+              title={formatPace(p)}
             />
             <div className="text-[10px] text-dim">{i + 1}</div>
+            {showPace ? (
+              <div className="font-mono text-[9px] text-gold">{formatPace(p)}</div>
+            ) : null}
           </div>
         );
       })}

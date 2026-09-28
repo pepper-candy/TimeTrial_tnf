@@ -162,25 +162,27 @@ export function buildRunnerRaces(event: EventState, now = 0): RunnerRace[] {
       const prev = i === 0 ? (event.startedAt ?? xs[0].t) : xs[i - 1].t;
       splitMs.push(xs[i].t - prev);
     }
-    const last = xs[xs.length - 1];
     const finished = xs.length >= event.course.requiredCrossings;
-    const bell = !finished && xs.length === event.course.requiredCrossings - 1;
+    const counted = xs.slice(0, event.course.requiredCrossings);
+    const countedSplits = splitMs.slice(0, event.course.requiredCrossings);
+    const bell = !finished && counted.length === event.course.requiredCrossings - 1;
     const flags = flagsForRunner(event, runner, xs, splitMs);
-    const predictedNextMs = finished ? null : predictNextSplitMs(event, splitMs, xs.length);
+    const predictedNextMs = finished ? null : predictNextSplitMs(event, countedSplits, counted.length);
+    const last = counted[counted.length - 1];
     const lastEpoch = last?.t ?? null;
     const eta =
       lastEpoch != null && predictedNextMs != null ? lastEpoch + predictedNextMs : null;
 
     return {
       runner,
-      crossings: xs,
-      splitMs,
+      crossings: counted,
+      splitMs: countedSplits,
       lastEpoch,
       lastElapsed: last && event.startedAt != null ? last.t - event.startedAt : last ? 0 : null,
       finished,
       finishMs:
         finished && event.startedAt != null
-          ? xs[event.course.requiredCrossings - 1].t - event.startedAt
+          ? counted[event.course.requiredCrossings - 1].t - event.startedAt
           : null,
       lapDown: 0,
       bell,

@@ -145,6 +145,26 @@ describe("predicted next arrival", () => {
 });
 
 describe("flags", () => {
+  it("does not let extra crossings leapfrog a faster finisher", () => {
+    const ev = event({
+      taps: [
+        { id: "a", t: 1_000_800_000 },
+        { id: "b", t: 1_001_000_000 },
+        { id: "c", t: 1_001_010_000 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+        { id: "m3", bib: "2" },
+      ],
+      course: { ...defaultFiveK(), requiredCrossings: 1, totalDistanceM: 200, firstPartialM: 200 },
+    });
+    const races = buildRunnerRaces(ev, 1_002_000_000);
+    expect(races[0].runner.bib).toBe("1");
+    expect(races[0].finished).toBe(true);
+    expect(races[1].flags.some((f) => f.kind === "over-count")).toBe(true);
+  });
+
   it("flags a same-runner double within a physically impossible split", () => {
     const ev = event({
       taps: [
