@@ -6,10 +6,10 @@ import { HelpTip, Screen, TopBar } from "@/components/shell";
 import { useEvent } from "@/lib/client/hooks";
 
 const ROLES = [
-  { href: "timer", label: "Timer", hint: "Tap" },
-  { href: "marker", label: "Marker", hint: "Bibs" },
-  { href: "board", label: "Board", hint: "Live" },
-  { href: "admin", label: "Admin", hint: "Setup" },
+  { href: "timer", label: "Timer", hint: "PIN" },
+  { href: "marker", label: "Marker", hint: "PIN" },
+  { href: "board", label: "Board", hint: "Public" },
+  { href: "admin", label: "Admin", hint: "PIN" },
 ] as const;
 
 export default function RolePage() {
@@ -32,7 +32,7 @@ export default function RolePage() {
         backHref="/"
         title={event?.code ?? code}
         right={
-          <HelpTip text="Timer taps every finish-line crossing. Marker assigns bibs in that same order. Board is the live dashboard." />
+          <HelpTip text="Board is a public read-only link — no PIN. Timer, Marker, and Admin unlock once per device with the helper PIN." />
         }
       />
       <div className="grid flex-1 grid-cols-2 gap-3 p-4 pb-8">

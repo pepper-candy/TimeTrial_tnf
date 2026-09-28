@@ -8,7 +8,7 @@ Mobile-first web app for distance time trials. Two or three helpers: **Timer** (
 - **Upstash Redis only** for event state and runner photos (no Vercel Blob)
 - Live updates via ~1s polling: one cheap version-key read per tick; full state only when it changed
 - Serverless functions pinned to **Hong Kong (`hkg1`)**
-- Vitest for lap / pairing / ranking logic
+- Vitest for lap / pairing / ranking / results-text logic
 
 ## Local
 
@@ -18,7 +18,7 @@ npm test
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Tap **Demo race** to seed 18 runners on a live 5k (no Redis required locally; state is stored in `.data/`).
+Open [http://localhost:3000](http://localhost:3000). Tap **Demo race** to seed an 18-runner 5000 m (no Redis required locally; state is stored in `.data/`). The Board is public; Timer / Marker / Admin use helper PIN `1234` (remembered on that device). Play at **10x** (default) or **1x** from Admin.
 
 ## Vercel + Upstash setup
 
@@ -38,17 +38,22 @@ Copy `.env.example` for local overrides. Redis is required in production; withou
 
 ## How a race works
 
-1. **Admin** creates an event (default **5000 m / 400 m track** = 12.5 laps, start at the 200 m mark, **13 finish-line crossings**). Share the 5-character code or QR.
-2. Helpers join with the code and pick a role.
-3. Admin adds runners (bib, name, student ID, optional photo — camera or upload, cropped/resized on-device to ~320px WebP, ~20–40 KB).
-4. Admin or Timer hits **Start**. The race clock is a server timestamp; phones correct for clock offset.
-5. **Timer**: full-screen tap on every crossing. Rapid taps (0.2s) count separately. Queued offline, retried, idempotent IDs. Undo last.
-6. **Marker**: tap #n pairs with mark #n. First sightings use the on-screen pad (no native keyboard). After a runner has a crossing, tiles appear in **predicted next arrival** order (last time + recent lap). Finished bibs drop off. The strip at the top shows unmatched taps/marks; open it to delete, insert, swap, or reassign.
-7. **Board**: leaderboard (most crossings, then earliest last time). Lapped runners show `−N lap`. Bell lap is highlighted. Tap a row for pace chart and splits.
+1. **Admin** creates an event (default **5000 m / 400 m track** = 12.5 laps, start at the 200 m mark, **13 finish-line crossings**) and sets a **helper PIN**. Share:
+   - **Board** — public read-only `/e/{code}/board` (no PIN). Spectators can open this on any phone.
+   - **Helper code** — Timer, Marker, and Admin unlock once per device with the PIN.
+2. Admin adds runners (bib, name, student ID, **category** chips — Girls / Boys / custom e.g. Open — optional photo). Admin can hide student IDs on the public board.
+3. Admin or Timer hits **Start**. The race clock is a server timestamp; phones correct for clock offset.
+4. **Timer**: full-screen tap on every crossing. Rapid taps (0.2s) count separately. Queued offline, retried, idempotent IDs. Undo last.
+5. **Marker**: tap #n pairs with mark #n. First sightings use the on-screen pad (no native keyboard). After a runner has a crossing, tiles appear in **predicted next arrival** order. Finished bibs drop off.
+6. **Board**: leaderboard (most crossings, then earliest last time). Filter by category. Toggle **Split** (lap duration) vs **Cum** (race clock at each crossing) — remembered on the device. Lapped runners show `−N lap`. Bell lap is highlighted.
+7. **End race** (Admin) freezes the clock and keeps unfinished runners at their last crossing / partial laps (e.g. `11.5 laps`).
+8. **Stats** (PIN): **Copy results** pastes WhatsApp-ready text (per-category rank, `M'SS` times, 1K/3K splits, avg /K). CSV export is still there.
+
+On a default 5000 m / 200 m start, 1K is crossing #3 and 3K is crossing #8. Other distances include whichever whole-km marks land on a crossing; Admin can pick which km appear in the pasted results.
 
 ## Demo race
 
-**Demo race** on the home screen starts a simulated 5000 m with 18 club runners already several minutes in — finishers, bell lap, and lapped athletes — so Board and Marker can be tried without a track session.
+**Demo race** starts a simulated 5000 m from the gun, using realistic 28 Sep 2026 club times with **fake names and fake 8-digit student IDs**. Default playback is **10x**; switch to **1x** in Admin. Helper PIN is `1234`.
 
 ## Scripts
 

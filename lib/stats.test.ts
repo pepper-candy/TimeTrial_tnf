@@ -15,13 +15,19 @@ function ev(partial: Partial<EventState> = {}): EventState {
     startedAt: 0,
     course: defaultFiveK(),
     runners: [
-      { id: "a", bib: "1", name: "Ada", studentId: "1", photoVer: null } satisfies Runner,
+      { id: "a", bib: "1", name: "Ada", studentId: "1", category: "Girls", photoVer: null } satisfies Runner,
     ],
     taps: [],
     marks: [],
     demo: false,
     demoAutoMark: false,
     demoPlan: null,
+    demoSpeed: 1,
+    pinHash: null,
+    hideStudentIds: false,
+    categories: ["Girls", "Boys"],
+    resultKmSplits: [1, 3],
+    endedAt: null,
     rev: 0,
     ...partial,
   };
@@ -52,11 +58,12 @@ describe("runner stats", () => {
 describe("demo race", () => {
   it("seeds 18 runners with paired crossings after elapsed time", () => {
     const now = 1_700_000_000_000;
-    const demo = makeDemoEvent(now, 18 * 60 * 1000);
+    const demo = makeDemoEvent(now, 18 * 60 * 1000, 1);
     expect(demo.runners).toHaveLength(18);
     expect(demo.status).toBe("running");
     expect(demo.taps.length).toBeGreaterThan(30);
     expect(demo.marks.length).toBe(demo.taps.length);
+    expect(demo.runners.filter((r) => r.category === "Girls")).toHaveLength(2);
     const races = buildRunnerRaces(demo, now);
     expect(races.some((r) => r.finished || r.bell || r.lapDown > 0)).toBe(true);
     expect(races[0].crossings.length).toBeGreaterThan(races[races.length - 1].crossings.length);

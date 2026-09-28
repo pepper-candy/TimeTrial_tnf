@@ -1,13 +1,25 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { HelpTip, Screen, TopBar } from "@/components/shell";
-import { useEvent } from "@/lib/client/hooks";
+import { PinGate } from "@/components/pin-gate";
+import { fetchWithPin, useEvent } from "@/lib/client/hooks";
 import { formatClock, formatPace } from "@/lib/format";
+import { formatResultsText } from "@/lib/results";
 
 export default function StatsPage() {
   const { code } = useParams<{ code: string }>();
+  return (
+    <PinGate code={code}>
+      <StatsInner code={code} />
+    </PinGate>
+  );
+}
+
+function StatsInner({ code }: { code: string }) {
   const { event, races, stats } = useEvent(code, 2000);
+  const [copied, setCopied] = useState(false);
 
   if (!event) {
     return (
@@ -17,20 +29,53 @@ export default function StatsPage() {
     );
   }
 
+  const live = event;
+
+  async function copyResults() {
+    const text = formatResultsText(live, races);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function downloadCsv() {
+    const res = await fetchWithPin(`/api/events/${code}/export`);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${live.code}-results.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <Screen className="max-w-6xl">
       <TopBar
         backHref={`/e/${code}/board`}
         title="Stats"
-        right={<HelpTip text="Per-runner summary. CSV exports splits after the race." />}
+        right={<HelpTip text="Copy results is WhatsApp-ready, grouped by category. CSV keeps every split." />}
       />
-      <div className="px-3 pb-2">
-        <a
-          href={`/api/events/${code}/export`}
-          className="tap inline-block rounded-full bg-gold px-3.5 py-2 text-sm font-semibold text-ink"
+      <div className="flex flex-wrap gap-2 px-3 pb-2">
+        <button
+          type="button"
+          className="tap rounded-full bg-gold px-3.5 py-2 text-sm font-semibold text-ink"
+          onClick={() => void copyResults()}
+        >
+          {copied ? "Copied" : "Copy results"}
+        </button>
+        <button
+          type="button"
+          className="tap rounded-full bg-panel2 px-3.5 py-2 text-sm font-semibold"
+          onClick={() => void downloadCsv()}
         >
           Export CSV
-        </a>
+        </button>
       </div>
       <div className="flex-1 overflow-auto px-3 pb-8">
         <table className="w-full min-w-[720px] text-left text-sm">
@@ -39,6 +84,7 @@ export default function StatsPage() {
               <th className="py-2 pr-2">#</th>
               <th className="pr-2">Bib</th>
               <th className="pr-2">Name</th>
+              <th className="pr-2">Cat</th>
               <th className="pr-2">SID</th>
               <th className="pr-2">Fin</th>
               <th className="pr-2">Avg</th>
@@ -56,6 +102,7 @@ export default function StatsPage() {
                   <td className="py-2 pr-2 font-mono text-dim">{i + 1}</td>
                   <td className="pr-2 font-mono text-lg font-bold">{r.runner.bib}</td>
                   <td className="pr-2">{r.runner.name}</td>
+                  <td className="pr-2 text-xs text-gold">{r.runner.category}</td>
                   <td className="pr-2 font-mono text-xs text-dim">{r.runner.studentId}</td>
                   <td className="pr-2 font-mono">
                     {r.finishMs != null ? formatClock(r.finishMs, 2) : r.crossings.length}

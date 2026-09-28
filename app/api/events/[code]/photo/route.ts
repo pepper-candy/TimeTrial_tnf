@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDenied, requireHelper, toPublic } from "@/lib/auth";
 import { PHOTO_MAX_BYTES } from "@/lib/photo";
 import { getEvent, putPhoto } from "@/lib/store";
 
@@ -8,6 +9,8 @@ type Ctx = { params: Promise<{ code: string }> };
 
 export async function POST(req: Request, ctx: Ctx) {
   const { code } = await ctx.params;
+  const gate = await requireHelper(req, code);
+  if (isDenied(gate)) return gate;
   const event = await getEvent(code);
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
   const form = await req.formData();
@@ -25,5 +28,5 @@ export async function POST(req: Request, ctx: Ctx) {
   }
   const mime = file.type === "image/webp" ? "image/webp" : "image/jpeg";
   const next = await putPhoto(event, runnerId, buf, mime);
-  return NextResponse.json({ event: next, rev: next.rev });
+  return NextResponse.json({ event: toPublic(next), rev: next.rev });
 }

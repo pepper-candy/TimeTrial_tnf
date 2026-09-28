@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDenied, requireHelper, toPublic } from "@/lib/auth";
 import {
   appendMark,
   deleteMark,
@@ -15,6 +16,8 @@ type Ctx = { params: Promise<{ code: string }> };
 
 export async function POST(req: Request, ctx: Ctx) {
   const { code } = await ctx.params;
+  const gate = await requireHelper(req, code);
+  if (isDenied(gate)) return gate;
   const body = (await req.json()) as {
     action?: "append" | "delete" | "insert" | "swap" | "reassign" | "replace";
     bib?: string;
@@ -42,5 +45,5 @@ export async function POST(req: Request, ctx: Ctx) {
     return { ...e, marks };
   });
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ event });
+  return NextResponse.json({ event: toPublic(event) });
 }

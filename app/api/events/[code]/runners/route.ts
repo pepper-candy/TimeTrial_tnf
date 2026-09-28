@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDenied, requireHelper, toPublic } from "@/lib/auth";
 import { newId } from "@/lib/ids";
 import { normalizeBib } from "@/lib/race";
 import { deleteRunnerPhoto, updateEvent } from "@/lib/store";
@@ -10,6 +11,8 @@ type Ctx = { params: Promise<{ code: string }> };
 
 export async function POST(req: Request, ctx: Ctx) {
   const { code } = await ctx.params;
+  const gate = await requireHelper(req, code);
+  if (isDenied(gate)) return gate;
   const body = (await req.json()) as {
     action?: "upsert" | "delete" | "replace";
     runner?: Partial<Runner> & { bib?: string };
@@ -25,16 +28,17 @@ export async function POST(req: Request, ctx: Ctx) {
       return { ...e, runners: e.runners.filter((r) => r.id !== id) };
     });
     if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
-    return NextResponse.json({ event, rev: event.rev });
+    return NextResponse.json({ event: toPublic(event), rev: event.rev });
   }
 
   const event = await updateEvent(code, (e) => {
     if (body.action === "replace" && Array.isArray(body.runners)) {
-      return { ...e, runners: body.runners.map(stripPhotoBytes) };
+      return { ...e, runners: body.runners.map((r) => stripPhotoBytes(r, e.categories[0])) };
     }
     const incoming = body.runner;
     if (!incoming) return e;
     const bib = incoming.bib != null ? normalizeBib(incoming.bib) : "";
+    const fallbackCat = e.categories[0] || "Boys";
     if (incoming.id) {
       return {
         ...e,
@@ -45,6 +49,7 @@ export async function POST(req: Request, ctx: Ctx) {
                 bib: bib || r.bib,
                 name: incoming.name ?? r.name,
                 studentId: incoming.studentId ?? r.studentId,
+                category: incoming.category ?? r.category,
                 photoVer: incoming.photoVer === undefined ? r.photoVer : incoming.photoVer,
               }
             : r,
@@ -57,6 +62,7 @@ export async function POST(req: Request, ctx: Ctx) {
       bib,
       name: incoming.name?.trim() || "",
       studentId: incoming.studentId?.trim() || "",
+      category: incoming.category?.trim() || fallbackCat,
       photoVer: incoming.photoVer ?? null,
     };
     const exists = e.runners.find((r) => normalizeBib(r.bib) === bib);
@@ -73,15 +79,16 @@ export async function POST(req: Request, ctx: Ctx) {
     return { ...e, runners: [...e.runners, runner] };
   });
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ event, rev: event.rev });
+  return NextResponse.json({ event: toPublic(event), rev: event.rev });
 }
 
-function stripPhotoBytes(r: Runner): Runner {
+function stripPhotoBytes(r: Runner, fallbackCat: string): Runner {
   return {
     id: r.id,
     bib: r.bib,
     name: r.name,
     studentId: r.studentId,
+    category: r.category || fallbackCat,
     photoVer: r.photoVer ?? null,
   };
 }

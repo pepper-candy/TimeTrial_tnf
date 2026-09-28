@@ -6,6 +6,7 @@ import { Avatar } from "@/components/avatar";
 import { RaceClock } from "@/components/clock";
 import { NumberPad } from "@/components/pad";
 import { Chip, HelpTip, Screen } from "@/components/shell";
+import { PinGate } from "@/components/pin-gate";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatClock, shortName } from "@/lib/format";
 import { tapElapsed, unmatchedTaps, zipPairs } from "@/lib/race";
@@ -14,6 +15,14 @@ import type { RunnerRace } from "@/lib/race";
 
 export default function MarkerPage() {
   const { code } = useParams<{ code: string }>();
+  return (
+    <PinGate code={code}>
+      <MarkerInner code={code} />
+    </PinGate>
+  );
+}
+
+function MarkerInner({ code }: { code: string }) {
   const { event, setEvent, serverNow, tiles, flags } = useEvent(code, 800);
   const [mode, setMode] = useState<"auto" | "pad" | "tiles">("auto");
   const [bib, setBib] = useState("");

@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
+import { PinGate } from "@/components/pin-gate";
 import { HelpTip, Screen } from "@/components/shell";
 import { json, useEvent } from "@/lib/client/hooks";
 import type { EventState, Tap } from "@/lib/types";
@@ -13,6 +14,14 @@ type Queued = Tap & { sent?: boolean };
 
 export default function TimerPage() {
   const { code } = useParams<{ code: string }>();
+  return (
+    <PinGate code={code}>
+      <TimerInner code={code} />
+    </PinGate>
+  );
+}
+
+function TimerInner({ code }: { code: string }) {
   const { event, setEvent, offset, serverNow } = useEvent(code, 1500);
   const [flash, setFlash] = useState(false);
   const [queued, setQueued] = useState(0);

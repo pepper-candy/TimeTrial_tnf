@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Chip, GoldBtn, Screen } from "@/components/shell";
+import { setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
 import { normalizeCode } from "@/lib/ids";
 import type { EventState } from "@/lib/types";
@@ -31,8 +32,9 @@ export default function HomePage() {
   async function demo() {
     setBusy("demo");
     try {
-      const data = await json<{ event: EventState }>("/api/demo", { method: "POST" });
-      router.push(`/e/${data.event.code}`);
+      const data = await json<{ event: EventState; pin?: string }>("/api/demo", { method: "POST" });
+      setStoredPin(data.event.code, data.pin || "1234");
+      router.push(`/e/${data.event.code}/board`);
     } finally {
       setBusy(null);
     }

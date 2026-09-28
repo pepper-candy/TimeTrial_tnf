@@ -20,6 +20,53 @@ export function formatPace(secPerKm: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Club WhatsApp time: 28'15 */
+export function formatClubMs(ms: number): string {
+  return formatClubSec(Math.round(ms / 1000));
+}
+
+export function formatClubPace(secPerKm: number): string {
+  if (!Number.isFinite(secPerKm) || secPerKm <= 0) return "—";
+  return formatClubSec(Math.round(secPerKm));
+}
+
+export function formatClubSec(totalSec: number): string {
+  if (!Number.isFinite(totalSec) || totalSec < 0) totalSec = 0;
+  const s = Math.round(totalSec);
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}'${String(rem).padStart(2, "0")}`;
+}
+
+export function parseClubTime(text: string): number | null {
+  const t = text.trim();
+  const m = t.match(/^(\d+)'(\d{2})$/);
+  if (!m) return null;
+  const sec = Number(m[2]);
+  if (sec >= 60) return null;
+  return (Number(m[1]) * 60 + sec) * 1000;
+}
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+export function formatEventDate(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 export function parsePace(text: string): number | null {
   const t = text.trim();
   if (!t) return null;

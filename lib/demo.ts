@@ -1,73 +1,144 @@
 import { deriveCourse, splitDistances } from "./course";
+import { advanceDemo, raceNow } from "./demo-run";
+import { parseClubTime } from "./format";
 import { newId, newJoinCode } from "./ids";
-import { appendMark, appendTap } from "./race";
-import type { DemoPlan, EventState, Runner } from "./types";
+import { hashPin } from "./pin";
+import { defaultResultKmSplits } from "./results";
+import { DEFAULT_CATEGORIES, type DemoPlan, type EventState, type Runner } from "./types";
 
-const DEMO_RUNNERS: { bib: string; name: string; studentId: string; paceSecPerKm: number }[] = [
-  { bib: "1", name: "Alex Wong", studentId: "20451201", paceSecPerKm: 200 },
-  { bib: "3", name: "Maya Chen", studentId: "20451202", paceSecPerKm: 208 },
-  { bib: "5", name: "Jordan Lee", studentId: "20341108", paceSecPerKm: 215 },
-  { bib: "7", name: "Priya Shah", studentId: "20560011", paceSecPerKm: 222 },
-  { bib: "8", name: "Chris Ng", studentId: "20228841", paceSecPerKm: 228 },
-  { bib: "11", name: "Sam Yu", studentId: "20447721", paceSecPerKm: 235 },
-  { bib: "12", name: "Elena Park", studentId: "20190044", paceSecPerKm: 242 },
-  { bib: "14", name: "Ryan Ho", studentId: "20330019", paceSecPerKm: 248 },
-  { bib: "15", name: "Lina Kwok", studentId: "20412208", paceSecPerKm: 255 },
-  { bib: "18", name: "Tom Cheng", studentId: "20215590", paceSecPerKm: 262 },
-  { bib: "21", name: "Hana Kim", studentId: "20501123", paceSecPerKm: 270 },
-  { bib: "22", name: "Owen Tang", studentId: "20398802", paceSecPerKm: 278 },
-  { bib: "24", name: "Yui Sato", studentId: "20470031", paceSecPerKm: 286 },
-  { bib: "27", name: "Ben Liu", studentId: "20181245", paceSecPerKm: 294 },
-  { bib: "31", name: "Ava Lam", studentId: "20436612", paceSecPerKm: 302 },
-  { bib: "33", name: "Marcus Ip", studentId: "20204418", paceSecPerKm: 310 },
-  { bib: "36", name: "Zoe Fong", studentId: "20512290", paceSecPerKm: 318 },
-  { bib: "42", name: "Kai Tsang", studentId: "20305561", paceSecPerKm: 328 },
+/** Fake 8-digit SIDs and names — never real club student IDs. */
+export const DEMO_FIELD: {
+  bib: string;
+  name: string;
+  studentId: string;
+  category: string;
+  final: string;
+  k1: string;
+  k3: string;
+  stopLaps?: number;
+}[] = [
+  { bib: "15", name: "Lina Kwok", studentId: "20881015", category: "Girls", final: "28'15", k1: "4'40", k3: "16'20" },
+  { bib: "6", name: "Maya Chen", studentId: "20881006", category: "Girls", final: "28'50", k1: "5'23", k3: "16'18" },
+  { bib: "1", name: "Alex Wong", studentId: "20881001", category: "Boys", final: "17'43", k1: "3'03", k3: "11'25" },
+  { bib: "9", name: "Chris Ng", studentId: "20881009", category: "Boys", final: "19'03", k1: "3'34", k3: "11'11" },
+  { bib: "13", name: "Ryan Ho", studentId: "20881013", category: "Boys", final: "19'18", k1: "3'47", k3: "11'34" },
+  { bib: "2", name: "Jordan Lee", studentId: "20881002", category: "Boys", final: "19'18", k1: "3'39", k3: "11'28" },
+  { bib: "17", name: "Owen Tang", studentId: "20881017", category: "Boys", final: "19'22", k1: "3'49", k3: "11'35" },
+  { bib: "8", name: "Sam Yu", studentId: "20881008", category: "Boys", final: "19'33", k1: "3'41", k3: "11'37" },
+  { bib: "11", name: "Elena Park", studentId: "20881011", category: "Boys", final: "20'02", k1: "3'41", k3: "11'39" },
+  { bib: "3", name: "Priya Shah", studentId: "20881003", category: "Boys", final: "20'03", k1: "3'48", k3: "11'43" },
+  { bib: "5", name: "Tom Cheng", studentId: "20881005", category: "Boys", final: "20'18", k1: "3'34", k3: "11'38" },
+  { bib: "14", name: "Hana Kim", studentId: "20881014", category: "Boys", final: "20'30", k1: "3'47", k3: "11'48" },
+  { bib: "7", name: "Yui Sato", studentId: "20881007", category: "Boys", final: "21'30", k1: "3'48", k3: "12'10" },
+  { bib: "4", name: "Ben Liu", studentId: "20881004", category: "Boys", final: "21'32", k1: "4'04", k3: "12'39" },
+  { bib: "12", name: "Ava Lam", studentId: "20881012", category: "Boys", final: "21'50", k1: "3'47", k3: "12'31" },
+  { bib: "20", name: "Marcus Ip", studentId: "20881020", category: "Boys", final: "23'22", k1: "4'05", k3: "13'31" },
+  { bib: "10", name: "Zoe Fong", studentId: "20881010", category: "Boys", final: "30'53", k1: "4'12", k3: "16'09" },
+  {
+    bib: "16",
+    name: "Kai Tsang",
+    studentId: "20881016",
+    category: "Boys",
+    final: "32'14",
+    k1: "6'46",
+    k3: "21'08",
+    stopLaps: 11.5,
+  },
 ];
 
-function mulberry32(seed: number) {
-  return function rand() {
-    let t = (seed += 0x6d2b79f5);
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+export const DEMO_PIN = "1234";
+export const DEMO_SPEED_DEFAULT = 10;
+
+function ms(club: string): number {
+  const v = parseClubTime(club);
+  if (v == null) throw new Error(`bad club time ${club}`);
+  return v;
 }
 
-export function makeDemoEvent(now = Date.now(), elapsedMs = 18 * 60 * 1000): EventState {
+function interpolateElapsed(distanceM: number, anchors: { d: number; t: number }[]): number {
+  if (anchors.length === 0) return 0;
+  if (distanceM <= anchors[0].d) return anchors[0].t;
+  for (let i = 1; i < anchors.length; i++) {
+    const a = anchors[i - 1];
+    const b = anchors[i];
+    if (distanceM <= b.d || i === anchors.length - 1) {
+      if (b.d === a.d) return b.t;
+      const u = (distanceM - a.d) / (b.d - a.d);
+      return a.t + u * (b.t - a.t);
+    }
+  }
+  return anchors[anchors.length - 1].t;
+}
+
+function splitsFor(
+  dists: number[],
+  k1: number,
+  k3: number,
+  finalMs: number,
+  finalDist: number,
+): number[] {
+  const anchors = [
+    { d: 0, t: 0 },
+    { d: 1000, t: k1 },
+    { d: 3000, t: k3 },
+    { d: finalDist, t: finalMs },
+  ];
+  let acc = 0;
+  const elapsed = dists.map((d) => {
+    acc += d;
+    return Math.round(interpolateElapsed(acc, anchors));
+  });
+  return elapsed.map((t, i) => t - (i === 0 ? 0 : elapsed[i - 1]));
+}
+
+export function makeDemoEvent(
+  now = Date.now(),
+  raceElapsedMs = 0,
+  speed = DEMO_SPEED_DEFAULT,
+): EventState {
   const course = deriveCourse({
     totalDistanceM: 5000,
     lapLengthM: 400,
     targetPaceSecPerKm: 240,
   });
-  const dists = splitDistances(course);
-  const rng = mulberry32(20260928);
+  const allDists = splitDistances(course);
   const runners: Runner[] = [];
   const demoPlan: DemoPlan[] = [];
 
-  for (const d of DEMO_RUNNERS) {
+  for (const d of DEMO_FIELD) {
     const runner: Runner = {
       id: newId(),
       bib: d.bib,
       name: d.name,
       studentId: d.studentId,
+      category: d.category,
       photoVer: null,
     };
     runners.push(runner);
-    const splitsMs = dists.map((dist, i) => {
-      const fade = 1 + i * 0.006;
-      const jitter = 0.97 + rng() * 0.06;
-      return (d.paceSecPerKm * (dist / 1000) * fade * jitter) * 1000;
-    });
+    const finalDist =
+      d.stopLaps != null ? d.stopLaps * course.lapLengthM : course.totalDistanceM;
+    const n =
+      d.stopLaps != null
+        ? allDists.filter((_, i) => {
+            const cum = allDists.slice(0, i + 1).reduce((s, x) => s + x, 0);
+            return cum <= finalDist + 0.5;
+          }).length
+        : allDists.length;
+    const dists = allDists.slice(0, n);
+    const splitsMs = splitsFor(dists, ms(d.k1), ms(d.k3), ms(d.final), finalDist);
     demoPlan.push({ runnerId: runner.id, bib: d.bib, splitsMs });
   }
 
+  const wallElapsed = speed > 0 ? raceElapsedMs / speed : raceElapsedMs;
+  const startedAt = now - wallElapsed;
   const event: EventState = {
     id: newId(),
     code: newJoinCode(),
-    name: "Demo 5000",
-    createdAt: now - elapsedMs - 60_000,
+    name: "5000m TT",
+    createdAt: Date.UTC(2026, 8, 28, 2, 0, 0),
     status: "running",
-    startedAt: now - elapsedMs,
+    startedAt,
+    endedAt: null,
     course,
     runners,
     taps: [],
@@ -75,36 +146,14 @@ export function makeDemoEvent(now = Date.now(), elapsedMs = 18 * 60 * 1000): Eve
     demo: true,
     demoAutoMark: true,
     demoPlan,
+    demoSpeed: speed,
+    pinHash: hashPin(DEMO_PIN),
+    hideStudentIds: false,
+    categories: [...DEFAULT_CATEGORIES],
+    resultKmSplits: defaultResultKmSplits(course),
     rev: 0,
   };
-  return advanceDemo(event, now);
+  return advanceDemo(event, raceNow(event, now));
 }
 
-export function advanceDemo(event: EventState, now: number): EventState {
-  if (!event.demo || !event.demoPlan || event.startedAt == null) return event;
-  const due: { t: number; bib: string; key: string }[] = [];
-  for (const plan of event.demoPlan) {
-    let acc = 0;
-    for (let i = 0; i < plan.splitsMs.length; i++) {
-      acc += plan.splitsMs[i];
-      const t = event.startedAt + acc;
-      if (t <= now) {
-        due.push({ t, bib: plan.bib, key: `demo:${plan.runnerId}:${i}` });
-      }
-    }
-  }
-  due.sort((a, b) => a.t - b.t || a.bib.localeCompare(b.bib));
-
-  let taps = event.taps;
-  let marks = event.marks;
-  const tapIds = new Set(taps.map((x) => x.id));
-  for (const d of due) {
-    if (tapIds.has(d.key)) continue;
-    taps = appendTap(taps, { id: d.key, t: Math.round(d.t) });
-    tapIds.add(d.key);
-    if (event.demoAutoMark) {
-      marks = appendMark(marks, d.bib);
-    }
-  }
-  return { ...event, taps, marks };
-}
+export { advanceDemo, raceNow } from "./demo-run";

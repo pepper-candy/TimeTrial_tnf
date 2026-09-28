@@ -100,6 +100,19 @@ export function minPlausibleSplitMs(distanceM: number): number {
   return (distanceM / 1000) * secPerKm * 1000;
 }
 
+/** Whole-kilometre marks that land exactly on a finish-line crossing. */
+export function kmCrossings(course: CourseConfig): { km: number; index: number }[] {
+  const out: { km: number; index: number }[] = [];
+  for (let i = 1; i <= course.requiredCrossings; i++) {
+    const d = crossingDistance(course, i);
+    const km = d / 1000;
+    if (km >= 1 && Math.abs(km - Math.round(km)) < 0.0005) {
+      out.push({ km: Math.round(km), index: i });
+    }
+  }
+  return out;
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }

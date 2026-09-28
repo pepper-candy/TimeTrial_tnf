@@ -3,6 +3,7 @@ import {
   crossingDistance,
   defaultFiveK,
   deriveCourse,
+  kmCrossings,
   lapsCount,
   splitDistance,
 } from "./course";
@@ -21,6 +22,11 @@ describe("course geometry", () => {
     expect(splitDistance(c, 1)).toBe(200);
     expect(splitDistance(c, 2)).toBe(400);
     expect(splitDistance(c, 13)).toBe(400);
+    expect(kmCrossings(c)).toEqual([
+      { km: 1, index: 3 },
+      { km: 3, index: 8 },
+      { km: 5, index: 13 },
+    ]);
   });
 
   it("computes 1500 / 3000 / 10000 track presets", () => {

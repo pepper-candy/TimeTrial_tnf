@@ -14,7 +14,7 @@ export function NumberPad({
   function key(k: string) {
     if (k === "⌫") onChange(value.slice(0, -1));
     else if (k === "⏎") onEnter();
-    else if (value.length < 6) onChange(value + k);
+    else if (value.length < 8) onChange(value + k);
   }
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "⏎"];
   return (

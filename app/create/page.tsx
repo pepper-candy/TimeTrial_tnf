@@ -3,9 +3,11 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Chip, Field, GoldBtn, HelpTip, Screen, Stat, TopBar } from "@/components/shell";
+import { setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
-import { deriveCourse, DISTANCE_PRESETS, lapsCount } from "@/lib/course";
+import { deriveCourse, DISTANCE_PRESETS, kmCrossings, lapsCount } from "@/lib/course";
 import { parsePace } from "@/lib/format";
+import { defaultResultKmSplits } from "@/lib/results";
 import type { EventState } from "@/lib/types";
 
 export default function CreatePage() {
@@ -18,7 +20,9 @@ export default function CreatePage() {
   const [first, setFirst] = useState("");
   const [crossings, setCrossings] = useState("");
   const [pace, setPace] = useState("");
+  const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const [kmPick, setKmPick] = useState<number[] | null>(null);
 
   const course = useMemo(
     () =>
@@ -32,6 +36,9 @@ export default function CreatePage() {
     [distance, lap, first, crossings, pace],
   );
 
+  const kmOpts = kmCrossings(course).filter((x) => x.km * 1000 < course.totalDistanceM - 0.5);
+  const resultKm = kmPick ?? defaultResultKmSplits(course);
+
   function pickPreset(id: string, meters?: number) {
     setPreset(id);
     if (meters) {
@@ -39,16 +46,20 @@ export default function CreatePage() {
       setLap("400");
       setFirst("");
       setCrossings("");
+      setKmPick(null);
     }
   }
 
   async function create() {
+    if (pin.trim().length < 4) return;
     setBusy(true);
     try {
       const data = await json<{ event: EventState }>("/api/events", {
         method: "POST",
         body: JSON.stringify({
           name: name.trim() || undefined,
+          pin: pin.trim(),
+          resultKmSplits: resultKm,
           course: {
             totalDistanceM: course.totalDistanceM,
             lapLengthM: course.lapLengthM,
@@ -58,6 +69,7 @@ export default function CreatePage() {
           },
         }),
       });
+      setStoredPin(data.event.code, pin.trim());
       router.push(`/e/${data.event.code}/admin`);
     } finally {
       setBusy(false);
@@ -69,7 +81,7 @@ export default function CreatePage() {
       <TopBar
         backHref="/"
         title="New event"
-        right={<HelpTip text="5000 m on a 400 m track starts at the 200 m mark. First finish-line crossing is the 200 m split, then 12 full laps." />}
+        right={<HelpTip text="5000 m on a 400 m track starts at the 200 m mark. First finish-line crossing is the 200 m split, then 12 full laps. Helper PIN unlocks Timer, Marker, and Admin. Board is a public link." />}
       />
       <div className="flex flex-1 flex-col px-4 pb-8">
         <div className="flex flex-wrap gap-2">
@@ -101,6 +113,14 @@ export default function CreatePage() {
             label={course.firstPartialM ? "Start m" : "Finish start"}
           />
         </div>
+
+        <Field
+          value={pin}
+          onChange={setPin}
+          placeholder="Helper PIN (4–8 digits)"
+          inputMode="numeric"
+          className="mt-6"
+        />
 
         <button
           type="button"
@@ -154,11 +174,36 @@ export default function CreatePage() {
               placeholder="Target pace m:ss"
               className="col-span-2"
             />
+            {kmOpts.length > 0 ? (
+              <div className="col-span-2">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-dim">
+                  Result km splits
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {kmOpts.map((k) => (
+                    <Chip
+                      key={k.km}
+                      active={resultKm.includes(k.km)}
+                      onClick={() => {
+                        setKmPick((prev) => {
+                          const cur = prev ?? defaultResultKmSplits(course);
+                          return cur.includes(k.km)
+                            ? cur.filter((x) => x !== k.km)
+                            : [...cur, k.km].sort((a, b) => a - b);
+                        });
+                      }}
+                    >
+                      {k.km}K
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         <div className="flex-1" />
-        <GoldBtn className="mt-8" onClick={create} disabled={busy}>
+        <GoldBtn className="mt-8" onClick={create} disabled={busy || pin.trim().length < 4}>
           Create
         </GoldBtn>
       </div>

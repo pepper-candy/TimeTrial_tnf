@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { advanceDemo } from "@/lib/demo";
+import { getStoredPin } from "@/lib/client/pin";
+import { advanceDemo, raceNow } from "@/lib/demo-run";
+import { normalizeCode } from "@/lib/ids";
 import { buildRunnerRaces, collectFlags, predictedTileOrder } from "@/lib/race";
 import { computeRunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
@@ -64,14 +66,18 @@ export function useEvent(code: string, intervalMs = 1000) {
   }, []);
 
   const serverNow = now + offset;
+  const clockNow = useMemo(
+    () => (event ? raceNow(event, serverNow) : serverNow),
+    [event, serverNow],
+  );
   const live = useMemo(() => {
     if (!event) return null;
-    return event.demo ? advanceDemo(event, serverNow) : event;
-  }, [event, serverNow]);
+    return event.demo ? advanceDemo(event, clockNow) : event;
+  }, [event, clockNow]);
 
   const races = useMemo(
-    () => (live ? buildRunnerRaces(live, serverNow) : []),
-    [live, serverNow],
+    () => (live ? buildRunnerRaces(live, clockNow) : []),
+    [live, clockNow],
   );
   const tiles = useMemo(() => predictedTileOrder(races), [races]);
   const flags = useMemo(
@@ -95,7 +101,7 @@ export function useEvent(code: string, intervalMs = 1000) {
     refresh,
     setEvent: setEventAndRev,
     offset,
-    serverNow,
+    serverNow: clockNow,
     races,
     tiles,
     flags,
@@ -104,11 +110,33 @@ export function useEvent(code: string, intervalMs = 1000) {
   };
 }
 
+function pinHeaders(url: string): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const m = url.match(/\/api\/events\/([^/?]+)/);
+  if (!m) return {};
+  const pin = getStoredPin(normalizeCode(m[1]));
+  return pin ? { "X-TT-PIN": pin } : {};
+}
+
 export async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...pinHeaders(url),
+      ...(init?.headers || {}),
+    },
   });
   if (!res.ok) throw new Error(String(res.status));
   return res.json() as Promise<T>;
+}
+
+export async function fetchWithPin(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    headers: {
+      ...pinHeaders(url),
+      ...(init?.headers || {}),
+    },
+  });
 }

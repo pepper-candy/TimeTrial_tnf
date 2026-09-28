@@ -6,11 +6,14 @@ export type CourseConfig = {
   targetPaceSecPerKm: number | null;
 };
 
+export const DEFAULT_CATEGORIES = ["Girls", "Boys"] as const;
+
 export type Runner = {
   id: string;
   bib: string;
   name: string;
   studentId: string;
+  category: string;
   /** Short hash of the Redis photo object; never the bytes. */
   photoVer: string | null;
 };
@@ -40,6 +43,8 @@ export type EventState = {
   createdAt: number;
   status: EventStatus;
   startedAt: number | null;
+  /** Wall clock when admin ended the race; freezes demo + race clock. */
+  endedAt: number | null;
   course: CourseConfig;
   runners: Runner[];
   taps: Tap[];
@@ -47,6 +52,16 @@ export type EventState = {
   demo: boolean;
   demoAutoMark: boolean;
   demoPlan: DemoPlan[] | null;
+  /** Playback speed for demo races (1 = real time). */
+  demoSpeed: number;
+  /** sha256 hex; never returned to clients. */
+  pinHash: string | null;
+  /** Present on client payloads; true when a helper PIN is set. */
+  hasPin?: boolean;
+  hideStudentIds: boolean;
+  categories: string[];
+  /** Kilometre marks to print in results (must land on a crossing). */
+  resultKmSplits: number[];
   /** Bumped on every persist. Polling compares this via a tiny Redis key. */
   rev: number;
 };

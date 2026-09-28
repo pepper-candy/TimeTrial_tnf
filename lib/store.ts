@@ -2,9 +2,11 @@ import { createHash } from "crypto";
 import { Redis } from "@upstash/redis";
 import fs from "fs";
 import path from "path";
-import { advanceDemo } from "./demo";
+import { DEFAULT_CATEGORIES } from "./types";
+import { advanceDemo, raceNow } from "./demo-run";
 import { normalizeCode } from "./ids";
 import { photoKey } from "./photo";
+import { defaultResultKmSplits } from "./results";
 import type { EventState, PhotoRecord } from "./types";
 
 /** 21 days — one meet plus results review. Refreshed on every write. */
@@ -86,15 +88,42 @@ function persistLocal() {
   writeDisk(disk);
 }
 
+export function hydrateEvent(event: EventState): EventState {
+  const course = event.course;
+  const categories =
+    event.categories?.length > 0 ? event.categories : [...DEFAULT_CATEGORIES];
+  return {
+    ...event,
+    endedAt: event.endedAt ?? null,
+    demoSpeed: event.demoSpeed > 0 ? event.demoSpeed : 1,
+    pinHash: event.pinHash ?? null,
+    hideStudentIds: Boolean(event.hideStudentIds),
+    categories,
+    resultKmSplits:
+      event.resultKmSplits?.length > 0
+        ? event.resultKmSplits
+        : defaultResultKmSplits(course),
+    runners: event.runners.map((r) => ({
+      ...r,
+      category: r.category?.trim() || categories[0] || "Boys",
+    })),
+  };
+}
+
 async function loadRaw(code: string): Promise<EventState | null> {
   const c = normalizeCode(code);
   const r = redis();
   if (r) {
     const event = await r.get<EventState>(eventKey(c));
-    return event ?? null;
+    return event ? hydrateEvent(event) : null;
   }
   ensureLocal();
-  return memEvents.get(c) ?? null;
+  const event = memEvents.get(c);
+  return event ? hydrateEvent(event) : null;
+}
+
+export async function getStoredEvent(code: string): Promise<EventState | null> {
+  return loadRaw(code);
 }
 
 export async function getRev(code: string): Promise<number | null> {
@@ -153,7 +182,7 @@ export async function getEvent(code: string): Promise<EventState | null> {
   const event = await loadRaw(code);
   if (!event) return null;
   // Demo crossings are derived from demoPlan + now; do not persist on read.
-  return event.demo ? advanceDemo(event, Date.now()) : event;
+  return event.demo ? advanceDemo(event, raceNow(event, Date.now())) : event;
 }
 
 export async function saveEvent(event: EventState): Promise<EventState> {
@@ -191,7 +220,7 @@ export async function updateEvent(
   try {
     const event = await loadRaw(c);
     if (!event) return null;
-    const base = event.demo ? advanceDemo(event, Date.now()) : event;
+    const base = event.demo ? advanceDemo(event, raceNow(event, Date.now())) : event;
     const next = await fn(base);
     return await saveEvent(next);
   } finally {
