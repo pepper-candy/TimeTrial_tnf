@@ -54,8 +54,11 @@ export function formatResultsText(event: EventState, races?: RunnerRace[]): stri
     : defaultResultKmSplits(event.course)
   ).filter((km) => kmCrossings(event.course).some((x) => x.km === km));
 
+  const fallback = order[0] ?? "Boys";
   for (const cat of order) {
-    const group = all.filter((r) => (r.runner.category || cat) === cat).sort(compareRank);
+    const group = all
+      .filter((r) => runnerCategory(r.runner.category, fallback) === cat)
+      .sort(compareRank);
     if (group.length === 0) continue;
     lines.push(`*${cat}:*`);
     group.forEach((race, i) => {
@@ -96,6 +99,11 @@ function formatRunnerBlock(
     `Result: ${time}${lapsBit}${splitsBit}`,
     `Avg.: ${formatClubPace(avgSec)}/K`,
   ].join("\n");
+}
+
+export function runnerCategory(category: string | undefined, fallback: string): string {
+  const name = (category ?? "").trim();
+  return name || fallback;
 }
 
 export function categoryOrder(event: EventState): string[] {

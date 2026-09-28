@@ -4,6 +4,7 @@ import { makeDemoEvent } from "./demo";
 import { formatClubMs, formatClubPace } from "./format";
 import { buildRunnerRaces } from "./race";
 import {
+  defaultResultKmSplits,
   formatResultsText,
   kmSplitElapsed,
   lapsCompleted,
@@ -183,6 +184,43 @@ describe("5k crossing km marks", () => {
       { km: 3, index: 8 },
       { km: 5, index: 13 },
     ]);
+    expect(defaultResultKmSplits(defaultFiveK())).toEqual([1, 3]);
+  });
+});
+
+describe("category grouping", () => {
+  it("ranks within each category and does not duplicate a blank category", () => {
+    const start = Date.UTC(2026, 8, 28, 2, 0, 0);
+    const g = crossings(start, "15", [280_000]);
+    const boy = crossings(start, "1", [183_000]);
+    const open = crossings(start, "99", [200_000]);
+    const blank = crossings(start, "7", [250_000]);
+    const taps = [...g.taps, ...boy.taps, ...open.taps, ...blank.taps].sort((a, c) => a.t - c.t);
+    const ev = event({
+      categories: ["Girls", "Boys", "Open"],
+      runners: [
+        runner({ bib: "15", studentId: "20881015", category: "Girls" }),
+        runner({ bib: "1", studentId: "20881001", category: "Boys" }),
+        runner({ bib: "99", studentId: "20881099", category: "Open" }),
+        runner({ bib: "7", studentId: "20881007", category: "" }),
+      ],
+      taps,
+      marks: taps.map((t) => ({
+        id: t.id.replace("-t", "-m"),
+        bib: t.id.split("-")[0],
+      })),
+    });
+    const text = formatResultsText(ev);
+    expect(text).toContain("*Girls:*");
+    expect(text).toContain("*Boys:*");
+    expect(text).toContain("*Open:*");
+    expect(text.match(/Bib No\.7/g)?.length).toBe(1);
+    expect(text).toContain("Bib No.99 (20881099)");
+    expect(text.indexOf("*Girls:*")).toBeLessThan(text.indexOf("*Boys:*"));
+    expect(text.indexOf("*Boys:*")).toBeLessThan(text.indexOf("*Open:*"));
+    const girls = text.slice(text.indexOf("*Girls:*"), text.indexOf("*Boys:*"));
+    expect(girls).toContain("Bib No.7");
+    expect(girls).toContain("Bib No.15");
   });
 });
 
