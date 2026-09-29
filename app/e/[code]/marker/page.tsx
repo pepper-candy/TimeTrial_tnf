@@ -266,8 +266,8 @@ function MarkerInner({ code }: { code: string }) {
               key={key.id}
               type="button"
               className={`tap h-16 rounded-2xl bg-panel2 font-black tabular text-sand ring-1 ring-line active:bg-sand active:text-ink ${
-                key.id === "clear" ? "text-lg" : "text-2xl"
-              }`}
+                key.id === "0" ? "col-span-2" : ""
+              } ${key.id === "clear" ? "text-lg" : "text-2xl"}`}
               aria-label={key.label}
               onPointerDown={(e) => {
                 e.preventDefault();
@@ -293,7 +293,6 @@ const PAD_KEYS: { id: string; face: string; label: string }[] = [
   { id: "7", face: "7", label: "7" },
   { id: "8", face: "8", label: "8" },
   { id: "9", face: "9", label: "9" },
-  { id: "back", face: "⌫", label: "Backspace" },
   { id: "0", face: "0", label: "0" },
   { id: "clear", face: "Clear", label: "Clear" },
 ];
