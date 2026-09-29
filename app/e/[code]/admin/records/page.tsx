@@ -4,17 +4,26 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { PinGate } from "@/components/pin-gate";
-import { Screen, TopBar } from "@/components/shell";
+import { Chip, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { runnerByBib } from "@/lib/race";
-import { applyTimeKey, recordCounts, recordRows, timePrompt, type RecordRow } from "@/lib/records";
+import {
+  RECORD_TAG_LABEL,
+  applyTimeKey,
+  recordCounts,
+  recordRowTags,
+  recordRows,
+  timePrompt,
+  type RecordRow,
+  type RecordTag,
+} from "@/lib/records";
 import { formatStopwatch } from "@/lib/tap-list";
 import type { EventState } from "@/lib/types";
 
-const ROW_H = 118;
+const ROW_H = 140;
 
 type Editor =
   | { mode: "time"; index: number; tapId: string }
@@ -40,6 +49,7 @@ export default function RecordsPage() {
 function RecordsInner({ code }: { code: string }) {
   const { event, setEvent } = useEvent(code, 1500);
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [filter, setFilter] = useState<"all" | "flagged">("all");
   const [typed, setTyped] = useState("");
   const [hist, setHist] = useState<Hist[]>([]);
   const latest = useRef<EventState | null>(null);
@@ -219,6 +229,8 @@ function RecordsInner({ code }: { code: string }) {
   }
 
   const rows = recordRows(event);
+  const tagLists = recordRowTags(event, rows);
+  const visible = filter === "all" ? rows : rows.filter((_, i) => tagLists[i].length > 0);
   const counts = recordCounts(event.taps, event.marks);
   const width = bibDigitWidth(event.runners.map((r) => r.bib));
   const prompt = editor?.mode === "time" ? timePrompt(typed) : bibPrompt(typed, width);
@@ -228,7 +240,7 @@ function RecordsInner({ code }: { code: string }) {
       <TopBar
         backHref={`/e/${code}/admin`}
         title="Records"
-        info="Row n is timer tap n beside marker bib n. Delete, edit, or insert either side. Insert shifts every later pair. Undo puts back the last change from this phone."
+        info="Row n is timer tap n beside marker bib n. A short tag marks a suspicious row. All / Flagged filters the list. Delete, edit, or insert either side. Undo puts back the last change from this phone."
       />
       <p
         className={`h-5 shrink-0 text-center text-[11px] font-bold uppercase tracking-[0.16em] ${
@@ -237,30 +249,47 @@ function RecordsInner({ code }: { code: string }) {
       >
         {counts.taps} taps · {counts.bibs} bibs
       </p>
-      <Windowed count={rows.length}>
-        {(index) => (
-          <RecordLine
-            row={rows[index]}
-            eventId={event.id}
-            runners={event.runners}
-            width={width}
-            editing={editor?.index === index ? editor.mode : null}
-            onDeleteTap={() => deleteTap(rows[index])}
-            onDeleteBib={() => deleteBib(rows[index])}
-            onEditTime={() => {
-              const tap = rows[index]?.tap;
-              if (!tap) return;
-              openEditor({ mode: "time", index, tapId: tap.id });
-            }}
-            onEditBib={() => {
-              const mark = rows[index]?.mark;
-              if (!mark) return;
-              openEditor({ mode: "bib-edit", index, markId: mark.id });
-            }}
-            onInsertTap={() => insertTap(index)}
-            onInsertBib={() => openEditor({ mode: "bib-insert", index })}
-          />
-        )}
+      <div className="flex shrink-0 gap-2 px-3 pb-2">
+        <Chip size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
+          All
+        </Chip>
+        <Chip size="sm" active={filter === "flagged"} onClick={() => setFilter("flagged")}>
+          Flagged
+        </Chip>
+      </div>
+      <Windowed
+        key={filter}
+        count={visible.length}
+        empty={filter === "flagged" ? "No flagged rows." : "No taps or bibs yet."}
+      >
+        {(index) => {
+          const row = visible[index];
+          if (!row) return null;
+          return (
+            <RecordLine
+              row={row}
+              tags={tagLists[row.index] ?? []}
+              eventId={event.id}
+              runners={event.runners}
+              width={width}
+              editing={editor?.index === row.index ? editor.mode : null}
+              onDeleteTap={() => deleteTap(row)}
+              onDeleteBib={() => deleteBib(row)}
+              onEditTime={() => {
+                const tap = row.tap;
+                if (!tap) return;
+                openEditor({ mode: "time", index: row.index, tapId: tap.id });
+              }}
+              onEditBib={() => {
+                const mark = row.mark;
+                if (!mark) return;
+                openEditor({ mode: "bib-edit", index: row.index, markId: mark.id });
+              }}
+              onInsertTap={() => insertTap(row.index)}
+              onInsertBib={() => openEditor({ mode: "bib-insert", index: row.index })}
+            />
+          );
+        }}
       </Windowed>
       <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
         {editor ? (
@@ -321,9 +350,11 @@ function RecordsInner({ code }: { code: string }) {
 
 function Windowed({
   count,
+  empty,
   children,
 }: {
   count: number;
+  empty: string;
   children: (index: number) => React.ReactNode;
 }) {
   const [range, setRange] = useState({ start: 0, end: 30 });
@@ -342,7 +373,7 @@ function Windowed({
       onScroll={(e) => measure(e.currentTarget)}
     >
       {count === 0 ? (
-        <p className="px-6 py-16 text-center text-sm text-dim">No taps or bibs yet.</p>
+        <p className="px-6 py-16 text-center text-sm text-dim">{empty}</p>
       ) : (
         <div className="relative" style={{ height: count * ROW_H }}>
           {Array.from({ length: Math.max(0, end - start) }, (_, k) => {
@@ -368,6 +399,7 @@ function RecordLine({
   eventId,
   runners,
   width,
+  tags,
   editing,
   onDeleteTap,
   onDeleteBib,
@@ -380,6 +412,7 @@ function RecordLine({
   eventId: string;
   runners: EventState["runners"];
   width: number;
+  tags: RecordTag[];
   editing: Editor["mode"] | null;
   onDeleteTap: () => void;
   onDeleteBib: () => void;
@@ -392,7 +425,7 @@ function RecordLine({
   const runner = row.mark ? runnerByBib(runners, row.mark.bib) : undefined;
   const bib = row.mark ? padBib(row.mark.bib, width) : "";
   return (
-    <div className="flex h-[112px] flex-col gap-1">
+    <div className="flex h-[134px] flex-col gap-1">
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
         <div
           className={`flex min-w-0 items-center gap-1.5 rounded-xl px-2 ${
@@ -409,9 +442,7 @@ function RecordLine({
                 {formatStopwatch(row.splitMs, true)}
               </span>
             </span>
-          ) : (
-            <span className="text-xs font-black uppercase tracking-wide text-bell">No tap</span>
-          )}
+          ) : null}
         </div>
         <div
           className={`flex min-w-0 items-center gap-1.5 rounded-xl px-2 ${
@@ -434,10 +465,18 @@ function RecordLine({
                 </span>
               </span>
             </>
-          ) : (
-            <span className="text-xs font-black uppercase tracking-wide text-bell">No bib</span>
-          )}
+          ) : null}
         </div>
+      </div>
+      <div className="flex h-5 shrink-0 items-center gap-1 overflow-hidden">
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap ${TAG_CLASS[tag]}`}
+          >
+            {RECORD_TAG_LABEL[tag]}
+          </span>
+        ))}
       </div>
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <div className="grid grid-cols-3 gap-1">
@@ -494,6 +533,16 @@ function RowBtn({
     </button>
   );
 }
+
+const TAG_CLASS: Record<RecordTag, string> = {
+  "too-fast": "bg-stop/15 text-stop",
+  duplicate: "bg-accent/15 text-accent",
+  "too-slow": "bg-bell/15 text-bell",
+  "unknown-bib": "bg-bell/15 text-bell",
+  "no-tap": "bg-stop/15 text-stop",
+  "no-bib": "bg-stop/15 text-stop",
+  edited: "bg-sky/15 text-sky",
+};
 
 const PAD_KEYS: { id: string; face: string; label: string }[] = [
   { id: "1", face: "1", label: "1" },

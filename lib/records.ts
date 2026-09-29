@@ -1,5 +1,23 @@
-import { zipPairs } from "./race";
-import type { EventState, Mark, Pair, Tap } from "./types";
+import { minPlausibleSplitMs, splitDistance } from "./course";
+import { normalizeBib, runnerByBib, zipPairs } from "./race";
+import type { EditLogEntry, EventState, Mark, Pair, Tap } from "./types";
+
+/** Quicker than this fraction of the runner's recent pace. */
+export const TOO_FAST_PACE = 0.65;
+/** Slower than this multiple of the runner's recent pace. */
+export const TOO_SLOW_PACE = 1.75;
+
+export const RECORD_TAG_LABEL = {
+  "no-tap": "No tap",
+  "no-bib": "No bib",
+  duplicate: "Duplicate",
+  "too-fast": "Too fast",
+  "too-slow": "Too slow",
+  "unknown-bib": "Unknown bib",
+  edited: "Edited",
+} as const;
+
+export type RecordTag = keyof typeof RECORD_TAG_LABEL;
 
 export type RecordRow = Pair & {
   elapsedMs: number | null;
@@ -44,6 +62,70 @@ export function recordCounts(taps: Tap[], marks: Mark[]): {
   let bibN = 0;
   for (const mark of marks) if (mark.deletedAt == null) bibN++;
   return { taps: tapN, bibs: bibN, differ: tapN !== bibN };
+}
+
+/**
+ * Short tags for one records row. Pace tags compare a lap with that bib's
+ * recent laps. Duplicate is a repeat of the same bib inside a physically
+ * impossible gap. Marker appends are not "Edited"; corrections are.
+ */
+export function recordRowTags(
+  event: Pick<EventState, "runners" | "course" | "edits">,
+  rows: RecordRow[],
+): RecordTag[][] {
+  const corrected = correctedIds(event.edits);
+  const prev = new Map<string, { t: number; crossing: number }>();
+  const recent = new Map<string, number[]>();
+  return rows.map((row) => {
+    const tags: RecordTag[] = [];
+    if (!row.tap) tags.push("no-tap");
+    if (!row.mark) tags.push("no-bib");
+    else if (!runnerByBib(event.runners, row.mark.bib)) tags.push("unknown-bib");
+
+    if (row.tap && row.mark) {
+      const bib = normalizeBib(row.mark.bib);
+      const before = prev.get(bib);
+      const crossing = (before?.crossing ?? 0) + 1;
+      if (before) {
+        const gap = row.tap.t - before.t;
+        const dist = splitDistance(event.course, crossing);
+        const minMs = minPlausibleSplitMs(dist);
+        if (gap < minMs) {
+          tags.push("duplicate");
+        } else if (dist > 0) {
+          const pace = gap / dist;
+          const sample = recent.get(bib) ?? [];
+          if (sample.length > 0) {
+            const avg = sample.reduce((sum, n) => sum + n, 0) / sample.length;
+            if (pace < avg * TOO_FAST_PACE) tags.push("too-fast");
+            else if (pace > avg * TOO_SLOW_PACE) tags.push("too-slow");
+          }
+          recent.set(bib, [...sample, pace].slice(-2));
+        }
+      }
+      prev.set(bib, { t: row.tap.t, crossing });
+    }
+
+    const edited =
+      Boolean(row.tap?.estimated) ||
+      (row.tap != null && corrected.has(row.tap.id)) ||
+      (row.mark != null && corrected.has(row.mark.id));
+    if (edited) tags.push("edited");
+    return tags;
+  });
+}
+
+function correctedIds(edits: EditLogEntry[] | undefined): Set<string> {
+  const ids = new Set<string>();
+  for (const edit of edits ?? []) {
+    if (edit.kind === "tap-delete" || edit.kind === "mark-delete" || edit.kind === "pair-delete") {
+      continue;
+    }
+    if (edit.kind === "mark-insert" && edit.actor !== "admin") continue;
+    if (edit.tapId) ids.add(edit.tapId);
+    if (edit.markId) ids.add(edit.markId);
+  }
+  return ids;
 }
 
 /** Six digits MMSSCC → milliseconds. Seconds above 59 are rejected. */
