@@ -102,7 +102,7 @@ export function MismatchPanel({
             ))}
             <button
               type="button"
-              className="tap h-12 shrink-0 rounded-xl bg-panel2 px-3 text-sm font-black text-gold ring-1 ring-line"
+              className="tap h-12 shrink-0 rounded-xl bg-panel2 px-3 text-sm font-black text-accent ring-1 ring-line"
               onClick={() => void edit("taps", { action: "tap-insert-estimated" })}
             >
               +~
@@ -113,7 +113,7 @@ export function MismatchPanel({
         <div className="mt-3">
           <button
             type="button"
-            className="tap h-11 rounded-xl bg-panel2 px-3 text-sm font-black text-gold ring-1 ring-line"
+            className="tap h-11 rounded-xl bg-panel2 px-3 text-sm font-black text-accent ring-1 ring-line"
             onClick={() => void edit("taps", { action: "tap-insert-estimated" })}
           >
             +~ tap

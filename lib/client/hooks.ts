@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getStoredPin } from "@/lib/client/pin";
+import { getMasterKey, getStoredPin } from "@/lib/client/pin";
 import { advanceDemo, raceNow } from "@/lib/demo-run";
 import { normalizeCode } from "@/lib/ids";
 import { buildRunnerRaces, collectFlags, predictedTileOrder } from "@/lib/race";
@@ -114,8 +114,18 @@ function pinHeaders(url: string): Record<string, string> {
   if (typeof window === "undefined") return {};
   const m = url.match(/\/api\/events\/([^/?]+)/);
   if (!m) return {};
+  const headers: Record<string, string> = {};
   const pin = getStoredPin(normalizeCode(m[1]));
-  return pin ? { "X-TT-PIN": pin } : {};
+  if (pin) headers["X-TT-PIN"] = pin;
+  const key = getMasterKey();
+  if (key) headers["X-TT-KEY"] = key;
+  return headers;
+}
+
+/** True when this device holds a PIN or master key for the event (helper tools visible). */
+export function hasHelperCreds(code: string): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(getStoredPin(code) || getMasterKey());
 }
 
 export async function json<T>(url: string, init?: RequestInit): Promise<T> {

@@ -18,7 +18,7 @@ npm test
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Tap **Demo race** to seed an 18-runner 5000 m (no Redis required locally; state is stored in `.data/`). The Board is public; Timer / Marker / Admin use helper PIN `1234` (remembered on that device). Play at **10x** (default) or **1x** from Admin.
+Open [http://localhost:3000](http://localhost:3000). Tap **Demo** to seed an 18-runner 5000 m (no Redis required locally; state is stored in `.data/`). The Board is public; Timer / Marker / Admin use helper PIN `1234` (remembered on that device). Play at **10x** (default) or **1x** from Admin.
 
 ## Vercel + Upstash setup
 
@@ -36,18 +36,28 @@ The Redis database is created in the **Upstash console** (society account), not 
 
 Copy `.env.example` for local overrides. Redis is required in production; without it, each serverless instance has its own memory.
 
+### Optional: owner master key (`ADMIN_MASTER_KEY`)
+
+For when an organiser forgets the helper PIN and the creating phone is gone.
+
+1. Vercel → Settings → Environment Variables → add **`ADMIN_MASTER_KEY`** with a long random value (**at least 12 characters**; shorter values are ignored). Redeploy.
+2. On any PIN screen (Timer, Marker, Admin), tap **Key**, enter the master key, **Unlock**. That device remembers the key.
+3. In **Admin**, tap the PIN tile to reveal it, or **Reset PIN** to set a new one.
+
+The key is only read from the environment. It is never stored in the repo or sent to other clients. Leave it unset to disable master unlock.
+
 ## How a race works
 
 1. **Admin** creates an event (default **5000 m / 400 m track** = 12.5 laps, start at the 200 m mark, **13 finish-line crossings**) and sets a **helper PIN**. Share:
    - **Board** — public read-only `/e/{code}/board` (no PIN). Spectators can open this on any phone.
-   - **Helper code** — Timer, Marker, and Admin unlock once per device with the PIN.
-2. Admin adds runners (bib, name, student ID, **category** chips — Girls / Boys / custom e.g. Open — optional photo). Admin can hide student IDs on the public board.
+   - **Helper code** — Timer, Marker, and Admin unlock once per device with the PIN. Admin shows the code and PIN (tap to reveal, copy) and **Share helper** copies a WhatsApp message with the Timer and Marker links plus the PIN. The phone that created an event remembers it under **My events** on Home.
+2. Admin adds runners (bib, name, student ID, optional **Boys** / **Girls** chip — tap again to clear — optional photo). Older events with custom categories load with no category. Admin can hide student IDs on the public board.
 3. Admin or Timer hits **Start**. The race clock is a server timestamp; phones correct for clock offset.
 4. **Timer**: full-screen tap on every crossing. Rapid taps (0.2s) count separately. Queued offline, retried, idempotent IDs. Undo last.
 5. **Marker**: tap #n pairs with mark #n. First sightings use the on-screen pad (no native keyboard). After a runner has a crossing, tiles appear in **predicted next arrival** order. Finished bibs drop off.
-6. **Board**: leaderboard (most crossings, then earliest last time). Filter by category. Toggle **Split** (lap duration) vs **Cum** (race clock at each crossing) — remembered on the device. Lapped runners show `−N lap`. Bell lap is highlighted.
+6. **Board**: bowling-scoreboard grid, one row per runner (rank, photo, bib, name), one column per crossing, big **Total** at the right. Each cell shows the lap split small on top and the running time big below; the menu (⋯) swaps which is big (remembered on the device). The race's fastest lap has a filled orange ring, each runner's own best lap has a blue ring, and edited or estimated (~) crossings have a yellow corner flag. Rows re-rank with an animated swap. Filter **All / Boys / Girls**. Lapped runners show `−N laps`. Bell lap is highlighted. On phones the grid scrolls sideways with name and Total pinned; on a laptop or TV it fills the screen.
 7. **End race** (Admin) freezes the clock and keeps unfinished runners at their last crossing / partial laps (e.g. `11.5 laps`).
-8. **Stats** (PIN): **Copy results** pastes WhatsApp-ready text (per-category rank, `M'SS` times, 1K/3K splits, avg /K). CSV export is still there.
+8. **Stats** (PIN): **Copy results** pastes WhatsApp-ready text (per-category rank for Girls / Boys, `M'SS` times, 1K/3K splits, avg /K). CSV export is still there.
 
 On a default 5000 m / 200 m start, 1K is crossing #3 and 3K is crossing #8. Other distances include whichever whole-km marks land on a crossing; Admin can pick which km appear in the **Summary** paste. **Copy results** has Summary (coach format) and Detailed (every km, ~ if estimated, fast/slow lap, half-split, consistency).
 

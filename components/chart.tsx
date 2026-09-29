@@ -33,14 +33,14 @@ export function PaceChart({
           <div key={i} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
             <div
               className={`w-full rounded-t-md ${
-                i === paces.length - 1 ? "bg-bell" : full ? "bg-gold" : "bg-sky"
+                i === paces.length - 1 ? "bg-bell" : full ? "bg-accent" : "bg-sky"
               }`}
               style={{ height: h }}
               title={formatPace(p)}
             />
             <div className="font-mono text-[10px] font-bold tabular text-dim">{i + 1}</div>
             {showPace ? (
-              <div className="font-mono text-[9px] font-black tabular text-gold">{formatPace(p)}</div>
+              <div className="font-mono text-[9px] font-black tabular text-accent">{formatPace(p)}</div>
             ) : null}
           </div>
         );

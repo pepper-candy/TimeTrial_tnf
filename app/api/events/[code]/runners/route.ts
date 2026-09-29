@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isDenied, requireHelper, toPublic } from "@/lib/auth";
+import { normalizeCategory } from "@/lib/category";
 import { newId } from "@/lib/ids";
 import { normalizeBib } from "@/lib/race";
 import { deleteRunnerPhoto, updateEvent } from "@/lib/store";
@@ -33,12 +34,11 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const event = await updateEvent(code, (e) => {
     if (body.action === "replace" && Array.isArray(body.runners)) {
-      return { ...e, runners: body.runners.map((r) => stripPhotoBytes(r, e.categories[0])) };
+      return { ...e, runners: body.runners.map(stripPhotoBytes) };
     }
     const incoming = body.runner;
     if (!incoming) return e;
     const bib = incoming.bib != null ? normalizeBib(incoming.bib) : "";
-    const fallbackCat = e.categories[0] || "Boys";
     if (incoming.id) {
       return {
         ...e,
@@ -49,7 +49,10 @@ export async function POST(req: Request, ctx: Ctx) {
                 bib: bib || r.bib,
                 name: incoming.name ?? r.name,
                 studentId: incoming.studentId ?? r.studentId,
-                category: incoming.category ?? r.category,
+                category:
+                  incoming.category === undefined
+                    ? r.category
+                    : normalizeCategory(incoming.category),
                 photoVer: incoming.photoVer === undefined ? r.photoVer : incoming.photoVer,
               }
             : r,
@@ -62,7 +65,7 @@ export async function POST(req: Request, ctx: Ctx) {
       bib,
       name: incoming.name?.trim() || "",
       studentId: incoming.studentId?.trim() || "",
-      category: incoming.category?.trim() || fallbackCat,
+      category: normalizeCategory(incoming.category),
       photoVer: incoming.photoVer ?? null,
     };
     const exists = e.runners.find((r) => normalizeBib(r.bib) === bib);
@@ -82,13 +85,13 @@ export async function POST(req: Request, ctx: Ctx) {
   return NextResponse.json({ event: toPublic(event), rev: event.rev });
 }
 
-function stripPhotoBytes(r: Runner, fallbackCat: string): Runner {
+function stripPhotoBytes(r: Runner): Runner {
   return {
     id: r.id,
     bib: r.bib,
     name: r.name,
     studentId: r.studentId,
-    category: r.category || fallbackCat,
+    category: normalizeCategory(r.category),
     photoVer: r.photoVer ?? null,
   };
 }

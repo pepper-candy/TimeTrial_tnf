@@ -32,7 +32,7 @@ export function UndoToast({
         <span className="text-sm font-semibold">{message}</span>
         <button
           type="button"
-          className="tap h-11 rounded-xl bg-gold px-4 text-sm font-black text-ink"
+          className="tap h-11 rounded-xl bg-accent px-4 text-sm font-black text-ink"
           onClick={() => {
             setLeft(false);
             onUndo();

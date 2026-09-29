@@ -2,7 +2,7 @@ import { createHash } from "crypto";
 import { Redis } from "@upstash/redis";
 import fs from "fs";
 import path from "path";
-import { DEFAULT_CATEGORIES } from "./types";
+import { normalizeCategory } from "./category";
 import { advanceDemo, raceNow } from "./demo-run";
 import { normalizeCode } from "./ids";
 import { allPhotoKeys, photoKey, photoKeyLegacy, type PhotoKind } from "./photo";
@@ -94,22 +94,22 @@ function persistLocal() {
 
 export function hydrateEvent(event: EventState): EventState {
   const course = event.course;
-  const categories =
-    event.categories?.length > 0 ? event.categories : [...DEFAULT_CATEGORIES];
+  const rest = { ...event } as EventState & { categories?: unknown };
+  delete rest.categories;
   return {
-    ...event,
+    ...rest,
     endedAt: event.endedAt ?? null,
     demoSpeed: event.demoSpeed > 0 ? event.demoSpeed : 1,
     pinHash: event.pinHash ?? null,
+    helperPin: event.helperPin ?? null,
     hideStudentIds: Boolean(event.hideStudentIds),
-    categories,
     resultKmSplits:
       event.resultKmSplits?.length > 0
         ? event.resultKmSplits
         : defaultResultKmSplits(course),
     runners: event.runners.map((r) => ({
       ...r,
-      category: r.category?.trim() || categories[0] || "Boys",
+      category: normalizeCategory(r.category),
     })),
     taps: (event.taps ?? []).map((t) => ({
       ...t,

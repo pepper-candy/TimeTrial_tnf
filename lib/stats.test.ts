@@ -26,7 +26,7 @@ function ev(partial: Partial<EventState> = {}): EventState {
     demoSpeed: 1,
     pinHash: null,
     hideStudentIds: false,
-    categories: ["Girls", "Boys"],
+    helperPin: null,
     resultKmSplits: [1, 3],
     endedAt: null,
     rev: 0,

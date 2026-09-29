@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Chip, Field, GoldBtn, HelpTip, Screen, Stat, TopBar } from "@/components/shell";
-import { setStoredPin } from "@/lib/client/pin";
+import { BigBtn, Chip, Field, Screen, Stat, TopBar } from "@/components/shell";
+import { rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
 import { deriveCourse, DISTANCE_PRESETS, kmCrossings, lapsCount } from "@/lib/course";
 import { parsePace } from "@/lib/format";
@@ -38,6 +38,7 @@ export default function CreatePage() {
 
   const kmOpts = kmCrossings(course).filter((x) => x.km * 1000 < course.totalDistanceM - 0.5);
   const resultKm = kmPick ?? defaultResultKmSplits(course);
+  const pinOk = /^\d{4,8}$/.test(pin.trim());
 
   function pickPreset(id: string, meters?: number) {
     setPreset(id);
@@ -51,7 +52,7 @@ export default function CreatePage() {
   }
 
   async function create() {
-    if (pin.trim().length < 4) return;
+    if (!pinOk) return;
     setBusy(true);
     try {
       const data = await json<{ event: EventState }>("/api/events", {
@@ -70,6 +71,7 @@ export default function CreatePage() {
         }),
       });
       setStoredPin(data.event.code, pin.trim());
+      rememberAdmin(data.event.code, data.event.name);
       router.push(`/e/${data.event.code}/admin`);
     } finally {
       setBusy(false);
@@ -81,16 +83,18 @@ export default function CreatePage() {
       <TopBar
         backHref="/"
         title="New event"
-        right={<HelpTip text="5000 m on a 400 m track starts at the 200 m mark. First finish-line crossing is the 200 m split, then 12 full laps. Helper PIN unlocks Timer, Marker, and Admin. Board is a public link." />}
+        info="5000 m on a 400 m track starts at the 200 m mark: the first finish-line crossing is the 200 m split, then 12 full laps. The helper PIN unlocks Timer, Marker and Admin; Admin can show it again later. Board is a public link."
       />
-      <div className="flex flex-1 flex-col px-4 pb-8">
-        <div className="lane-stripe mb-5 rounded-full" />
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-1 flex-col gap-4 px-4 pb-28">
+        <Field value={name} onChange={setName} placeholder="Event name" />
+
+        <div className="grid grid-cols-4 gap-2">
           {DISTANCE_PRESETS.map((p) => (
             <Chip
               key={p.id}
               active={preset === p.id}
               onClick={() => pickPreset(p.id, p.meters)}
+              size="lg"
             >
               {p.id}
             </Chip>
@@ -101,44 +105,33 @@ export default function CreatePage() {
               setPreset("custom");
               setAdvanced(true);
             }}
+            size="lg"
           >
             Custom
           </Chip>
         </div>
 
-        <div className="mt-8 grid grid-cols-3 gap-3 rounded-2xl bg-panel p-4 ring-1 ring-line">
+        <div className="grid grid-cols-3 gap-3 rounded-2xl bg-panel p-4 ring-1 ring-line">
           <Stat value={course.requiredCrossings} label="Crossings" />
           <Stat value={formatLaps(lapsCount(course))} label="Laps" />
-          <Stat
-            value={course.firstPartialM || "0"}
-            label={course.firstPartialM ? "Start m" : "Finish start"}
-          />
+          <Stat value={course.firstPartialM || "0"} label="Start m" />
         </div>
 
         <Field
           value={pin}
-          onChange={setPin}
+          onChange={(v) => setPin(v.replace(/\D/g, "").slice(0, 8))}
           placeholder="Helper PIN (4–8 digits)"
           inputMode="numeric"
-          className="mt-6 font-mono text-xl font-black tabular tracking-[0.2em]"
+          size="lg"
+          className="text-center font-mono font-black tabular tracking-[0.3em] placeholder:font-sans placeholder:text-base placeholder:font-semibold placeholder:tracking-normal"
         />
 
-        <button
-          type="button"
-          className="tap mt-6 self-start rounded-full bg-panel2 px-4 py-2 text-sm font-semibold ring-1 ring-line"
-          onClick={() => setAdvanced((v) => !v)}
-        >
-          {advanced ? "Simple" : "Advanced"}
-        </button>
+        <Chip active={advanced} onClick={() => setAdvanced((v) => !v)} className="self-start">
+          More
+        </Chip>
 
         {advanced ? (
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <Field
-              value={name}
-              onChange={setName}
-              placeholder="Event name"
-              className="col-span-2"
-            />
+          <div className="grid grid-cols-2 gap-2">
             <Field
               value={distance}
               onChange={(v) => {
@@ -157,16 +150,11 @@ export default function CreatePage() {
               placeholder="Lap m"
               inputMode="decimal"
             />
-            <Field
-              value={first}
-              onChange={setFirst}
-              placeholder="First partial m"
-              inputMode="decimal"
-            />
+            <Field value={first} onChange={setFirst} placeholder="First part m" inputMode="decimal" />
             <Field
               value={crossings}
               onChange={setCrossings}
-              placeholder="Fixed crossings"
+              placeholder="Crossings"
               inputMode="numeric"
             />
             <Field
@@ -177,8 +165,8 @@ export default function CreatePage() {
             />
             {kmOpts.length > 0 ? (
               <div className="col-span-2">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-dim">
-                  Result km splits
+                <div className="mb-2 text-[11px] font-black uppercase tracking-wider text-dim">
+                  Result km
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {kmOpts.map((k) => (
@@ -202,11 +190,14 @@ export default function CreatePage() {
             ) : null}
           </div>
         ) : null}
+      </div>
 
-        <div className="flex-1" />
-        <GoldBtn className="mt-8" onClick={create} disabled={busy || pin.trim().length < 4}>
-          Create
-        </GoldBtn>
+      <div className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-void via-void/95 to-transparent pt-6">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+          <BigBtn className="w-full" onClick={create} disabled={busy || !pinOk}>
+            {busy ? "…" : "Create"}
+          </BigBtn>
+        </div>
       </div>
     </Screen>
   );

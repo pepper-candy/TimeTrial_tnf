@@ -43,7 +43,7 @@ function event(partial: Partial<EventState> = {}): EventState {
     demoSpeed: 1,
     pinHash: null,
     hideStudentIds: false,
-    categories: ["Girls", "Boys"],
+    helperPin: null,
     resultKmSplits: [1, 3],
     rev: 0,
     ...partial,
@@ -190,19 +190,16 @@ describe("5k crossing km marks", () => {
 });
 
 describe("category grouping", () => {
-  it("ranks within each category and does not duplicate a blank category", () => {
+  it("groups Girls then Boys, and puts runners with no category under Other once", () => {
     const start = Date.UTC(2026, 8, 28, 2, 0, 0);
     const g = crossings(start, "15", [280_000]);
     const boy = crossings(start, "1", [183_000]);
-    const open = crossings(start, "99", [200_000]);
     const blank = crossings(start, "7", [250_000]);
-    const taps = [...g.taps, ...boy.taps, ...open.taps, ...blank.taps].sort((a, c) => a.t - c.t);
+    const taps = [...g.taps, ...boy.taps, ...blank.taps].sort((a, c) => a.t - c.t);
     const ev = event({
-      categories: ["Girls", "Boys", "Open"],
       runners: [
         runner({ bib: "15", studentId: "20881015", category: "Girls" }),
         runner({ bib: "1", studentId: "20881001", category: "Boys" }),
-        runner({ bib: "99", studentId: "20881099", category: "Open" }),
         runner({ bib: "7", studentId: "20881007", category: "" }),
       ],
       taps,
@@ -212,16 +209,29 @@ describe("category grouping", () => {
       })),
     });
     const text = formatResultsText(ev);
-    expect(text).toContain("*Girls:*");
-    expect(text).toContain("*Boys:*");
-    expect(text).toContain("*Open:*");
-    expect(text.match(/Bib No\.7/g)?.length).toBe(1);
-    expect(text).toContain("Bib No.99 (20881099)");
     expect(text.indexOf("*Girls:*")).toBeLessThan(text.indexOf("*Boys:*"));
-    expect(text.indexOf("*Boys:*")).toBeLessThan(text.indexOf("*Open:*"));
-    const girls = text.slice(text.indexOf("*Girls:*"), text.indexOf("*Boys:*"));
-    expect(girls).toContain("Bib No.7");
-    expect(girls).toContain("Bib No.15");
+    expect(text.indexOf("*Boys:*")).toBeLessThan(text.indexOf("*Other:*"));
+    expect(text.match(/Bib No\.7/g)?.length).toBe(1);
+    expect(text.slice(text.indexOf("*Other:*"))).toContain("Bib No.7");
+  });
+
+  it("prints one ranked list without headings when nobody has a category", () => {
+    const start = Date.UTC(2026, 8, 28, 2, 0, 0);
+    const a = crossings(start, "1", [183_000]);
+    const b = crossings(start, "2", [190_000]);
+    const taps = [...a.taps, ...b.taps].sort((x, y) => x.t - y.t);
+    const ev = event({
+      runners: [
+        runner({ bib: "1", category: "" }),
+        runner({ bib: "2", category: "" }),
+      ],
+      taps,
+      marks: taps.map((t) => ({ id: t.id.replace("-t", "-m"), bib: t.id.split("-")[0] })),
+    });
+    const text = formatResultsText(ev);
+    expect(text).not.toMatch(/\*(Girls|Boys|Other):\*/);
+    expect(text).toContain("1️⃣Bib No.1");
+    expect(text).toContain("2️⃣Bib No.2");
   });
 });
 

@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { toPublic } from "@/lib/auth";
 import { deriveCourse, type CourseInput } from "@/lib/course";
 import { newId, newJoinCode } from "@/lib/ids";
-import { hashPin } from "@/lib/pin";
+import { isValidPin, withHelperPin } from "@/lib/pin";
 import { defaultResultKmSplits } from "@/lib/results";
 import { saveEvent } from "@/lib/store";
-import { DEFAULT_CATEGORIES, type EventState } from "@/lib/types";
+import type { EventState } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -15,17 +15,14 @@ export async function POST(req: Request) {
     course?: CourseInput;
     pin?: string;
     resultKmSplits?: number[];
-    categories?: string[];
     hideStudentIds?: boolean;
   };
   const pin = (body.pin ?? "").trim();
-  if (pin.length < 4 || pin.length > 8) {
+  if (!isValidPin(pin)) {
     return NextResponse.json({ error: "pin" }, { status: 400 });
   }
   const course = deriveCourse(body.course ?? {});
-  const categories =
-    body.categories?.map((c) => c.trim()).filter(Boolean) ?? [...DEFAULT_CATEGORIES];
-  const event: EventState = {
+  const base: EventState = {
     id: newId(),
     code: newJoinCode(),
     name: body.name?.trim() || defaultName(course.totalDistanceM),
@@ -42,13 +39,14 @@ export async function POST(req: Request) {
     demoAutoMark: false,
     demoPlan: null,
     demoSpeed: 1,
-    pinHash: hashPin(pin),
+    pinHash: null,
+    helperPin: null,
     hideStudentIds: Boolean(body.hideStudentIds),
-    categories: categories.length ? categories : [...DEFAULT_CATEGORIES],
     resultKmSplits:
       body.resultKmSplits?.length ? body.resultKmSplits : defaultResultKmSplits(course),
     rev: 0,
   };
+  const event = withHelperPin(base, pin);
   await saveEvent(event);
   return NextResponse.json({ event: toPublic(event) });
 }
