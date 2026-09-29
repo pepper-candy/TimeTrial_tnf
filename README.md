@@ -50,7 +50,7 @@ The key is only read from the environment. It is never stored in the repo or sen
 
 1. **Admin** creates an event (default **5000 m / 400 m track** = 12.5 laps, start at the 200 m mark, **13 finish-line crossings**) and sets a **helper PIN**. Share:
    - **Board** — public read-only `/e/{code}/board` (no PIN). Spectators can open this on any phone.
-   - **Helper code** — Timer, Marker, and Admin unlock once per device with the PIN. Admin shows the code and PIN (tap to reveal, copy) and **Share helper** copies a WhatsApp message with the Timer and Marker links plus the PIN. The phone that created an event remembers it under **My events** on Home.
+   - **Helper code** — Timer, Marker, and Admin unlock once per device with the PIN. Admin shows the code and PIN (tap to reveal, copy) and **Share helper** copies a WhatsApp message with the Timer and Marker links plus the PIN. The phone that created an event remembers it quietly, so Admin opens there without retyping the PIN. Home does not list past codes.
 2. Admin adds runners (bib, name, student ID, optional **Boys** / **Girls** chip — tap again to clear — optional photo). Older events with custom categories load with no category. Admin can hide student IDs on the public board.
 3. Admin or Timer hits **Start**. The race clock is a server timestamp; phones correct for clock offset.
 4. **Timer**: full-screen tap on every crossing. Rapid taps (0.2s) count separately. Queued offline, retried, idempotent IDs. Undo last.
