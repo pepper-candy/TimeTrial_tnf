@@ -237,6 +237,7 @@ body {
   width: var(--cell-w);
   border-left: 1px solid #243768;
   border-bottom: 1px solid #243768;
+  overflow: hidden;
 }
 
 .sb-head .sb-cell {
@@ -330,35 +331,23 @@ body {
   color: #140500;
 }
 
-/* Bowling "red circle": fastest lap of the race */
-.sb-ring-best {
-  border-radius: 999px;
+/* Fastest lap of the race: the same cell rectangle, filled. No extra box. */
+.sb-cell.sb-best {
   background: #ff4d2e;
-  color: #140500 !important;
-  box-shadow: 0 0 0 2px #ff4d2e, 0 0 12px rgba(255, 77, 46, 0.7);
 }
 
-/* Personal best lap */
-.sb-ring-pb {
-  border-radius: 999px;
+.sb-cell.sb-best .sb-mini,
+.sb-cell.sb-best .sb-big {
+  color: #140500;
+}
+
+.sb-cell.sb-best .sb-mini {
+  border-color: rgba(20, 5, 0, 0.35);
+}
+
+/* Personal best: blue border only, inset so the cell does not grow. */
+.sb-cell.sb-pb {
   box-shadow: inset 0 0 0 2px #4ecbff;
-  color: #dff5ff !important;
-}
-
-.sb-big .sb-ring-best,
-.sb-big .sb-ring-pb {
-  padding: 0.12em 0.35em;
-}
-
-/* Edited or estimated (~) crossing */
-.sb-flag {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  border-top: 12px solid #ffc21a;
-  border-right: 12px solid transparent;
 }
 
 .sb-empty {

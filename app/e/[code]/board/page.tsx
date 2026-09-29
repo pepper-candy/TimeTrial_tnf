@@ -10,7 +10,6 @@ import { EmptyState, LoadingState } from "@/components/states";
 import {
   boardHighlights,
   boardRows,
-  cellKey,
   formatCum,
   formatLapSplit,
   lapColumns,
@@ -32,7 +31,7 @@ import type { RunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
 
 const INFO =
-  "Live board — no PIN. Each box: small = lap split, big = running time. Orange circle = fastest lap of the race. Blue ring = runner's best lap. Yellow corner = edited or estimated (~). Yellow box = bell lap. Tap a runner for details.";
+  "Live board — no PIN. Each box: small = lap split, big = running time. Orange cell = fastest lap of the race. Blue border = runner's best lap. ~ = estimated time. Yellow box = bell lap. Tap a runner for details.";
 
 export default function BoardPage() {
   const { code } = useParams<{ code: string }>();
@@ -345,19 +344,17 @@ function LapCell({
   const splitEst = splitEstimated(race.crossings, index);
   const best = highlights.raceBest?.runnerId === id && highlights.raceBest.index === index;
   const pb = !best && highlights.personalBest.get(id) === index;
-  const flagged = c.estimated || splitEst || highlights.edited.has(cellKey(id, index));
-  const ring = best ? "sb-ring-best" : pb ? "sb-ring-pb" : "";
   const splitText = formatEst(formatLapSplit(split), splitEst);
   const cumText = formatEst(formatCum(c.elapsedMs), c.estimated);
   const splitBig = big === "split";
+  const mark = best ? "sb-best" : pb ? "sb-pb" : "";
   return (
-    <div className={`sb-cell font-mono tabular ${fresh ? "sb-fresh" : ""}`}>
-      {flagged ? <span className="sb-flag" aria-label="Edited" /> : null}
+    <div className={`sb-cell font-mono tabular ${fresh ? "sb-fresh" : ""} ${mark}`}>
       <div className="sb-top">
-        <span className={`sb-mini ${splitBig ? "" : ring}`}>{splitBig ? cumText : splitText}</span>
+        <span className="sb-mini">{splitBig ? cumText : splitText}</span>
       </div>
       <div className="sb-big">
-        <span className={splitBig ? ring : ""}>{splitBig ? splitText : cumText}</span>
+        <span>{splitBig ? splitText : cumText}</span>
       </div>
     </div>
   );

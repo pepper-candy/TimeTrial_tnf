@@ -115,7 +115,8 @@ export function recordRowTags(
   });
 }
 
-function correctedIds(edits: EditLogEntry[] | undefined): Set<string> {
+/** Tap and bib ids that were actually corrected. A marker's normal bib append is not one of these. */
+export function correctedIds(edits: EditLogEntry[] | undefined): Set<string> {
   const ids = new Set<string>();
   for (const edit of edits ?? []) {
     if (edit.kind === "tap-delete" || edit.kind === "mark-delete" || edit.kind === "pair-delete") {
