@@ -225,13 +225,24 @@ export function buildRunnerRaces(event: EventState, now = 0): RunnerRace[] {
     };
   });
 
-  const leaderOpen = races.reduce((max, r) => Math.max(max, r.crossings.length), 0);
-  for (const r of races) {
-    r.lapDown = r.finished ? 0 : Math.max(0, leaderOpen - r.crossings.length);
-  }
-
   races.sort(compareRank);
+  const leader = races[0];
+  for (const r of races) {
+    r.lapDown = r.finished || !leader ? 0 : lapsBehind(leader, r);
+  }
   return races;
+}
+
+/**
+ * Truly lapped: the leader had already crossed more times when this runner last crossed.
+ * Merely trailing mid-lap (leader crossed, runner about to) is not lapped.
+ */
+export function lapsBehind(leader: RunnerRace, r: RunnerRace): number {
+  const c = r.crossings.length;
+  if (c === 0) return Math.max(0, leader.crossings.length - 1);
+  const t = r.crossings[c - 1].t;
+  const leaderThen = leader.crossings.filter((x) => x.t <= t).length;
+  return Math.max(0, leaderThen - c);
 }
 
 export function compareRank(a: RunnerRace, b: RunnerRace): number {

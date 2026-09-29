@@ -110,7 +110,27 @@ describe("ranking and lapped runners", () => {
     expect(races[1].crossings).toHaveLength(2);
     expect(races[1].lapDown).toBe(1);
     expect(races[2].runner.bib).toBe("7");
-    expect(races[2].lapDown).toBe(3);
+    expect(races[2].lapDown).toBe(2);
+  });
+
+  it("does not call a runner lapped who is just behind the leader mid-lap", () => {
+    const ev = event({
+      taps: [
+        { id: "a", t: 1_000_080_000 },
+        { id: "b", t: 1_000_085_000 },
+        { id: "c", t: 1_000_160_000 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+        { id: "m3", bib: "1" },
+      ],
+    });
+    const races = buildRunnerRaces(ev, 1_000_162_000);
+    expect(races[0].runner.bib).toBe("1");
+    expect(races[1].runner.bib).toBe("2");
+    expect(races[1].crossings).toHaveLength(1);
+    expect(races[1].lapDown).toBe(0);
   });
 
   it("keeps equal-crossing order by earlier last time", () => {
