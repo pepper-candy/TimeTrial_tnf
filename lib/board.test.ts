@@ -81,6 +81,14 @@ describe("board highlights", () => {
     expect(h.personalBest.get("id-2")).toBe(3);
   });
 
+  it("does not ring a lap under 20s per 400m", () => {
+    const { taps, marks } = race({ "1": [30_000, 35_000, 105_000] });
+    const ev = event({ runners: [runner("1")], taps, marks });
+    const h = boardHighlights(ev, buildRunnerRaces(ev));
+    expect(h.raceBest).toEqual({ runnerId: "id-1", index: 2, ms: 70_000 });
+    expect(h.personalBest.get("id-1")).toBe(2);
+  });
+
   it("never picks an estimated split as a best lap", () => {
     const { taps, marks } = race({ "1": [30_000, 90_000, 170_000] }, ["1-1"]);
     const ev = event({ runners: [runner("1")], taps, marks });

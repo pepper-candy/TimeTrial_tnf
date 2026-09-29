@@ -1,6 +1,7 @@
 import { inCategory, type Category } from "./category";
 import { crossingDistance, splitDistance } from "./course";
 import { compareRank, splitEstimated, type RunnerRace } from "./race";
+import { isImpossibleSplit } from "./stats";
 import type { CourseConfig, EventState } from "./types";
 
 export type BoardFilter = "all" | Category;
@@ -57,7 +58,15 @@ export function boardHighlights(event: EventState, races: RunnerRace[]): BoardHi
     race.crossings.forEach((c, i) => {
       if (editedTaps.has(c.tapId) || editedMarks.has(c.markId)) edited.add(cellKey(id, i));
       const ms = race.splitMs[i];
-      if (ms == null || !isFullLap(event.course, i) || splitEstimated(race.crossings, i)) return;
+      const dist = splitDistance(event.course, i + 1);
+      if (
+        ms == null ||
+        !isFullLap(event.course, i) ||
+        splitEstimated(race.crossings, i) ||
+        isImpossibleSplit(ms, dist)
+      ) {
+        return;
+      }
       if (!pb || ms < pb.ms) pb = { index: i, ms };
     });
     if (pb) {
