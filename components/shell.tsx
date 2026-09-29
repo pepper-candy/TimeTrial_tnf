@@ -23,8 +23,8 @@ const ICON_BTN =
   "tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-xl font-black ring-1 ring-line active:bg-sand active:text-ink";
 
 /**
- * Same geometry on every page: Back far left; menu and (i) far right.
- * Empty slots keep their space so buttons never move between pages.
+ * Fixed 3-slot header. Left and right are both 48px, so the title is centred
+ * on the screen. A second right-hand control hangs left from that slot.
  */
 export function TopBar({
   backHref,
@@ -39,29 +39,33 @@ export function TopBar({
   info?: string;
   className?: string;
 }) {
+  const titleNode =
+    typeof title === "string" ? (
+      <h1 className="truncate text-center text-base font-black uppercase tracking-[0.16em]">
+        {title}
+      </h1>
+    ) : (
+      title
+    );
   return (
     <header
-      className={`sticky top-0 z-30 grid h-16 shrink-0 grid-cols-[3rem_minmax(0,1fr)_6.5rem] items-center gap-2 bg-void/90 px-3 backdrop-blur ${className}`}
+      className={`sticky top-0 z-30 grid h-16 shrink-0 grid-cols-[48px_minmax(0,1fr)_48px] items-center bg-void/90 px-3 backdrop-blur ${className}`}
     >
-      {backHref ? (
-        <Link href={backHref} className={ICON_BTN} aria-label="Back">
-          ←
-        </Link>
-      ) : (
-        <span className="h-12 w-12" />
-      )}
-      <div className="flex min-w-0 items-center justify-center">
-        {typeof title === "string" ? (
-          <h1 className="truncate text-center text-base font-black uppercase tracking-[0.16em]">
-            {title}
-          </h1>
+      <div className="justify-self-start">
+        {backHref ? (
+          <Link href={backHref} className={ICON_BTN} aria-label="Back">
+            ←
+          </Link>
         ) : (
-          title
+          <span className="h-12 w-12" />
         )}
       </div>
-      <div className="flex justify-end gap-2">
-        {menu ?? <span className="h-12 w-12" />}
-        {info ? <InfoTip text={info} /> : <span className="h-12 w-12" />}
+      <div className="flex min-w-0 items-center justify-center px-1">{titleNode}</div>
+      <div className="relative h-12 w-12 justify-self-end">
+        <div className="absolute right-0 top-0 z-10 flex items-center gap-2">
+          {menu}
+          {info ? <InfoTip text={info} /> : null}
+        </div>
       </div>
     </header>
   );
