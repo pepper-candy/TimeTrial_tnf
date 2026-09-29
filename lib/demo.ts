@@ -4,7 +4,7 @@ import { parseClubTime } from "./format";
 import { newId, newJoinCode } from "./ids";
 import { hashPin } from "./pin";
 import { defaultResultKmSplits } from "./results";
-import { DEFAULT_CATEGORIES, type DemoPlan, type EventState, type Runner } from "./types";
+import type { DemoPlan, EventState, Runner } from "./types";
 
 /** Fake 8-digit SIDs and names — never real club student IDs. */
 export const DEMO_FIELD: {
@@ -149,8 +149,8 @@ export function makeDemoEvent(
     demoPlan,
     demoSpeed: speed,
     pinHash: hashPin(DEMO_PIN),
+    helperPin: DEMO_PIN,
     hideStudentIds: false,
-    categories: [...DEFAULT_CATEGORIES],
     resultKmSplits: defaultResultKmSplits(course),
     rev: 0,
   };

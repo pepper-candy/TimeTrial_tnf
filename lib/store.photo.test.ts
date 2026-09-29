@@ -31,7 +31,7 @@ function event(id: string, code: string): EventState {
     demoSpeed: 1,
     pinHash: null,
     hideStudentIds: false,
-    categories: ["Girls", "Boys"],
+    helperPin: null,
     resultKmSplits: [1, 3],
     rev: 0,
   };

@@ -6,13 +6,12 @@ export type CourseConfig = {
   targetPaceSecPerKm: number | null;
 };
 
-export const DEFAULT_CATEGORIES = ["Girls", "Boys"] as const;
-
 export type Runner = {
   id: string;
   bib: string;
   name: string;
   studentId: string;
+  /** "Boys", "Girls", or "" (none). */
   category: string;
   /** Short hash of the Redis photo object; never the bytes. */
   photoVer: string | null;
@@ -91,10 +90,11 @@ export type EventState = {
   demoSpeed: number;
   /** sha256 hex; never returned to clients. */
   pinHash: string | null;
+  /** Plain helper PIN so Admin can show it again; null for events created before it was kept. */
+  helperPin: string | null;
   /** Present on client payloads; true when a helper PIN is set. */
   hasPin?: boolean;
   hideStudentIds: boolean;
-  categories: string[];
   /** Kilometre marks to print in results (must land on a crossing). */
   resultKmSplits: number[];
   /** Bumped on every persist. Polling compares this via a tiny Redis key. */

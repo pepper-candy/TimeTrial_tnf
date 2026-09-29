@@ -1,3 +1,4 @@
+import { normalizeCategory, RESULTS_ORDER } from "./category";
 import { kmCrossings } from "./course";
 import { formatClubMs, formatClubPace, formatEst, formatEventDate, formatSplitDelta } from "./format";
 import { buildRunnerRaces, compareRank, type RunnerRace } from "./race";
@@ -62,19 +63,13 @@ export function formatResultsText(
   if (style === "detailed") lines.push("_Detailed_");
   lines.push("");
 
-  const order = categoryOrder(event);
   const kms = (event.resultKmSplits?.length
     ? event.resultKmSplits
     : defaultResultKmSplits(event.course)
   ).filter((km) => kmCrossings(event.course).some((x) => x.km === km));
 
-  const fallback = order[0] ?? "Boys";
-  for (const cat of order) {
-    const group = all
-      .filter((r) => runnerCategory(r.runner.category, fallback) === cat)
-      .sort(compareRank);
-    if (group.length === 0) continue;
-    lines.push(`*${cat}:*`);
+  for (const { label, races: group } of resultGroups(all)) {
+    if (label) lines.push(`*${label}:*`);
     group.forEach((race, i) => {
       const block =
         style === "detailed"
@@ -169,25 +164,13 @@ function formatDetailedRunner(event: EventState, race: RunnerRace, place: number
   return lines.join("\n");
 }
 
-export function runnerCategory(category: string | undefined, fallback: string): string {
-  const name = (category ?? "").trim();
-  return name || fallback;
-}
-
-export function categoryOrder(event: EventState): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const c of event.categories ?? []) {
-    const name = c.trim();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    out.push(name);
-  }
-  for (const r of event.runners) {
-    const name = (r.category || "").trim();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    out.push(name);
-  }
-  return out;
+/** Girls, Boys, then runners with no category ("Other"; no heading if nobody has one). */
+export function resultGroups(races: RunnerRace[]): { label: string | null; races: RunnerRace[] }[] {
+  const groups: { label: string | null; races: RunnerRace[] }[] = RESULTS_ORDER.map((cat) => ({
+    label: cat,
+    races: races.filter((r) => normalizeCategory(r.runner.category) === cat).sort(compareRank),
+  })).filter((g) => g.races.length > 0);
+  const none = races.filter((r) => !normalizeCategory(r.runner.category)).sort(compareRank);
+  if (none.length > 0) groups.push({ label: groups.length ? "Other" : null, races: none });
+  return groups;
 }

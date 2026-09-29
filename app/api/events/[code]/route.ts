@@ -43,7 +43,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
     demoAutoMark?: boolean;
     demoSpeed?: number;
     hideStudentIds?: boolean;
-    categories?: string[];
     resultKmSplits?: number[];
   };
   const event = await updateEvent(code, (e) => {
@@ -57,9 +56,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (body.demoAutoMark != null) next.demoAutoMark = body.demoAutoMark;
     if (body.demoSpeed != null && body.demoSpeed > 0) next.demoSpeed = body.demoSpeed;
     if (body.hideStudentIds != null) next.hideStudentIds = body.hideStudentIds;
-    if (body.categories) {
-      next.categories = body.categories.map((c) => c.trim()).filter(Boolean);
-    }
     if (body.resultKmSplits) {
       next.resultKmSplits = body.resultKmSplits.filter((n) => n > 0);
     }
