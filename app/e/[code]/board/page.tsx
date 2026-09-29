@@ -1,342 +1,625 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { PaceChart } from "@/components/chart";
 import { RaceClock } from "@/components/clock";
-import { Chip, HelpTip, Screen, Stat } from "@/components/shell";
+import { BigBtn, Chip, MenuButton, Sheet, Stat, TopBar, useCopied } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
-import { getBoardTimesMode, setBoardTimesMode, type BoardTimesMode } from "@/lib/client/pin";
+import {
+  boardHighlights,
+  boardRows,
+  cellKey,
+  formatCum,
+  formatLapSplit,
+  lapColumns,
+  lapDownLabel,
+  type BoardFilter,
+  type BoardHighlights,
+  type LapColumn,
+} from "@/lib/board";
+import { CATEGORIES, normalizeCategory } from "@/lib/category";
 import { useFlip } from "@/lib/client/flip";
-import { useEvent } from "@/lib/client/hooks";
-import { formatClock, formatEst, formatPace, formatSpeed } from "@/lib/format";
-import { compareRank, splitEstimated, type RunnerRace } from "@/lib/race";
-import { categoryOrder } from "@/lib/results";
+import { fetchWithPin, hasHelperCreds, json, useEvent } from "@/lib/client/hooks";
+import { getBoardTimesMode, setBoardTimesMode, type BoardTimesMode } from "@/lib/client/pin";
+import { formatClock, formatEst, formatPace, formatSpeed, bibColor, initials } from "@/lib/format";
+import { photoPath } from "@/lib/photo";
+import { splitEstimated, type RunnerRace } from "@/lib/race";
+import { formatResultsText } from "@/lib/results";
 import type { RunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
 
+const INFO =
+  "Live board — no PIN. Each box: small = lap split, big = running time. Orange circle = fastest lap of the race. Blue ring = runner's best lap. Yellow corner = edited or estimated (~). Yellow box = bell lap. Tap a runner for details.";
+
 export default function BoardPage() {
   const { code } = useParams<{ code: string }>();
-  const { event, serverNow, races, stats, flags } = useEvent(code, 1000);
+  const { event, setEvent, serverNow, races, stats } = useEvent(code, 1000);
+  const [filter, setFilter] = useState<BoardFilter>("all");
   const [open, setOpen] = useState<string | null>(null);
-  const [times, setTimes] = useState<BoardTimesMode>("split");
-  const [cat, setCat] = useState<string>("all");
+  const [big, setBig] = useState<BoardTimesMode>("cumulative");
+  const [helper, setHelper] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const touched = useRef(0);
 
   useEffect(() => {
-    const id = window.setTimeout(() => setTimes(getBoardTimesMode(code)), 0);
+    const id = window.setTimeout(() => {
+      setBig(getBoardTimesMode(code));
+      setHelper(hasHelperCreds(code));
+    }, 0);
     return () => window.clearTimeout(id);
   }, [code]);
 
-  const shown = useMemo(() => {
-    if (cat === "all") return races;
-    return races.filter((r) => r.runner.category === cat).slice().sort(compareRank);
-  }, [races, cat]);
+  const rows = useMemo(() => boardRows(races, filter), [races, filter]);
+  const ids = useMemo(() => rows.map((r) => r.runner.id), [rows]);
+  const bind = useFlip(ids, 420);
+  const highlights = useMemo(() => (event ? boardHighlights(event, races) : null), [event, races]);
+  const cols = useMemo(() => (event ? lapColumns(event.course) : []), [event]);
+  const statsById = useMemo(() => {
+    const m = new Map<string, RunnerStats>();
+    races.forEach((r, i) => m.set(r.runner.id, stats[i]));
+    return m;
+  }, [races, stats]);
 
-  const ids = useMemo(() => shown.map((r) => r.runner.id), [shown]);
-  const bind = useFlip(ids);
+  const leaderN = rows[0]?.crossings.length ?? 0;
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el || cols.length === 0) return;
+    if (Date.now() - touched.current < 8000) return;
+    const col = el.querySelector<HTMLElement>(`[data-col="${Math.min(leaderN, cols.length - 1)}"]`);
+    const name = el.querySelector<HTMLElement>("[data-name-head]");
+    const tot = el.querySelector<HTMLElement>("[data-tot-head]");
+    if (!col || !name || !tot) return;
+    const left = col.offsetLeft;
+    const right = left + col.offsetWidth;
+    const viewL = el.scrollLeft + name.offsetWidth;
+    const viewR = el.scrollLeft + el.clientWidth - tot.offsetWidth;
+    if (right > viewR) {
+      el.scrollTo({ left: right - (el.clientWidth - tot.offsetWidth) + 8, behavior: "smooth" });
+    } else if (left < viewL) {
+      el.scrollTo({ left: Math.max(0, left - name.offsetWidth - 8), behavior: "smooth" });
+    }
+  }, [leaderN, cols.length]);
 
-  if (!event) {
+  if (!event || !highlights) {
     return (
-      <Screen className="max-w-5xl">
+      <Screen>
         <LoadingState />
       </Screen>
     );
   }
 
-  const cats = categoryOrder(event);
+  const hasCats = event.runners.some((r) => normalizeCategory(r.category));
+  const running = event.status === "running" && event.startedAt != null;
   const selected = races.find((r) => r.runner.id === open) ?? null;
-  const selectedStats = selected ? stats[races.indexOf(selected)] : null;
   const showId = !event.hideStudentIds;
-  const idle = event.status === "setup" || shown.every((r) => r.crossings.length === 0);
 
-  function toggleTimes(mode: BoardTimesMode) {
-    setTimes(mode);
+  function pickBig(mode: BoardTimesMode) {
+    setBig(mode);
     setBoardTimesMode(code, mode);
   }
 
   return (
-    <Screen className="max-w-5xl">
-      <div className="flex items-start gap-2 px-3 py-2">
-        <a
-          href={`/e/${code}`}
-          className="tap grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-panel2 text-lg font-semibold ring-1 ring-line"
-        >
-          ←
-        </a>
-        <RaceClock
-          startedAt={event.startedAt}
-          now={serverNow}
-          className="flex-1 pt-1 text-4xl sm:text-6xl"
-        />
-        <div className="max-w-[40%] pt-2 text-right">
-          <div className="truncate text-sm font-bold">{event.name}</div>
-          <div className="font-mono text-xs tabular text-dim">{event.code}</div>
-        </div>
-        <HelpTip text="Public board — no PIN. Sorted by crossings, then time. Gold = leader. Orange = bell. Green = finished. Split = lap duration; Cum = race clock." />
-      </div>
-      <div className="lane-stripe mx-3 mb-3 rounded-full" />
-      <div className="flex flex-wrap items-center gap-2 px-3 pb-2">
-        <span className="inline-flex items-center gap-2 rounded-full bg-panel2 px-3.5 py-2 text-sm font-bold ring-1 ring-line">
-          <span className="live-dot" />
-          Live
-          {flags.length > 0 ? (
-            <span className="h-2 w-2 rounded-full bg-bell" aria-label="Timing check" />
-          ) : null}
-        </span>
-        <Link href={`/e/${code}/stats`} className="tap rounded-full bg-panel2 px-3.5 py-2 text-sm font-semibold ring-1 ring-line">
-          Stats
-        </Link>
-        <Chip active={times === "split"} onClick={() => toggleTimes("split")}>
-          Split
-        </Chip>
-        <Chip active={times === "cumulative"} onClick={() => toggleTimes("cumulative")}>
-          Cum
-        </Chip>
-      </div>
-      <div className="flex flex-wrap gap-2 px-3 pb-3">
-        <Chip active={cat === "all"} onClick={() => setCat("all")}>
-          All
-        </Chip>
-        {cats.map((c) => (
-          <Chip key={c} active={cat === c} onClick={() => setCat(c)}>
-            {c}
-          </Chip>
-        ))}
-      </div>
-      {idle ? (
-        <EmptyState
-          title={event.status === "setup" ? "Waiting for start" : "No crossings yet"}
-          hint="Leaderboard fills as athletes hit the line."
-        />
-      ) : (
-        <div className="flex-1 space-y-2 overflow-auto px-3 pb-6">
-          {shown.map((r, i) => (
-            <div key={r.runner.id} ref={bind(r.runner.id)}>
-              <Row
-                place={i + 1}
-                race={r}
-                stats={stats[races.findIndex((x) => x.runner.id === r.runner.id)]}
+    <div className="flex h-dvh flex-col bg-sbdeep">
+      <TopBar
+        backHref={`/e/${code}`}
+        className="bg-sbdeep/95"
+        title={
+          hasCats ? (
+            <div className="flex gap-1.5">
+              <Chip size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
+                All
+              </Chip>
+              {CATEGORIES.map((c) => (
+                <Chip key={c} size="sm" active={filter === c} onClick={() => setFilter(c)}>
+                  {c}
+                </Chip>
+              ))}
+            </div>
+          ) : (
+            <h1 className="truncate text-base font-black uppercase tracking-[0.16em]">{event.name}</h1>
+          )
+        }
+        menu={
+          <MenuButton title="Board">
+            {(close) => (
+              <BoardMenu
+                code={code}
                 event={event}
-                times={times}
+                races={races}
+                big={big}
+                helper={helper}
+                onBig={pickBig}
+                onEvent={setEvent}
+                onClose={close}
+              />
+            )}
+          </MenuButton>
+        }
+        info={INFO}
+      />
+
+      {event.runners.length === 0 ? (
+        <EmptyState title="No runners yet" hint="Add runners in Admin." />
+      ) : (
+        <div
+          ref={scroller}
+          className="sb min-h-0 flex-1 overflow-auto overscroll-contain"
+          style={{ "--rows": Math.max(1, rows.length) } as React.CSSProperties}
+          onPointerDown={() => {
+            touched.current = Date.now();
+          }}
+          onWheel={() => {
+            touched.current = Date.now();
+          }}
+        >
+          <HeaderRow cols={cols} nowCol={running ? leaderN : -1} />
+          {rows.map((r, i) => (
+            <div key={r.runner.id} ref={bind(r.runner.id)} className="relative">
+              <BoardRow
+                race={r}
+                rank={i + 1}
+                odd={i % 2 === 1}
+                cols={cols}
+                event={event}
+                highlights={highlights}
+                big={big}
+                now={serverNow}
+                running={running}
                 showId={showId}
-                leader={i === 0}
+                stats={statsById.get(r.runner.id)}
                 onOpen={() => setOpen(r.runner.id)}
               />
             </div>
           ))}
         </div>
       )}
-      {selected && selectedStats ? (
+
+      <Footer event={event} leader={rows[0] ?? null} now={serverNow} />
+
+      {selected ? (
         <Detail
           event={event}
           race={selected}
-          stats={selectedStats}
+          stats={statsById.get(selected.runner.id)}
+          rank={rows.findIndex((r) => r.runner.id === selected.runner.id) + 1}
           showId={showId}
           onClose={() => setOpen(null)}
         />
       ) : null}
-    </Screen>
+    </div>
   );
 }
 
-function Row({
-  place,
+function Screen({ children }: { children: React.ReactNode }) {
+  return <div className="flex min-h-dvh flex-col bg-sbdeep">{children}</div>;
+}
+
+function HeaderRow({ cols, nowCol }: { cols: LapColumn[]; nowCol: number }) {
+  return (
+    <div className="sb-head font-mono font-black tabular text-white">
+      <div data-name-head className="sb-name flex items-center px-3 text-xs uppercase tracking-[0.2em] text-white/80">
+        Runner
+      </div>
+      {cols.map((c, i) => (
+        <div
+          key={c.n}
+          data-col={i}
+          className={`sb-cell flex flex-col items-center justify-center leading-none ${i === nowCol ? "sb-now" : ""}`}
+        >
+          <span className="text-lg sm:text-xl lg:text-2xl">{c.n}</span>
+          {c.km ? <span className="mt-0.5 text-[10px] tracking-wider text-white/75">{c.km}K</span> : null}
+        </div>
+      ))}
+      <div data-tot-head className="sb-tot flex items-center justify-end px-3 text-lg sm:text-xl lg:text-2xl">
+        Total
+      </div>
+    </div>
+  );
+}
+
+function BoardRow({
   race,
-  stats,
+  rank,
+  odd,
+  cols,
   event,
-  times,
+  highlights,
+  big,
+  now,
+  running,
   showId,
-  leader,
+  stats,
   onOpen,
 }: {
-  place: number;
   race: RunnerRace;
-  stats: RunnerStats;
+  rank: number;
+  odd: boolean;
+  cols: LapColumn[];
   event: EventState;
-  times: BoardTimesMode;
+  highlights: BoardHighlights;
+  big: BoardTimesMode;
+  now: number;
+  running: boolean;
   showId: boolean;
-  leader: boolean;
+  stats?: RunnerStats;
   onOpen: () => void;
 }) {
   const r = race.runner;
-  const pulse = useCrossingPulse(race.crossings.length);
+  const fresh = useFresh(race.crossings.length);
+  const tone = [
+    odd ? "sb-odd" : "",
+    rank === 1 && race.crossings.length > 0 ? "sb-leader" : "",
+    race.finished ? "sb-fin" : "",
+    race.bell ? "sb-belling" : "",
+  ].join(" ");
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
-      className={`tap w-full rounded-2xl px-2 py-2 text-left ring-1 ${
-        race.finished
-          ? "bg-go/15 ring-go/50"
-          : race.bell
-            ? "bg-bell/20 ring-bell"
-            : leader
-              ? "p1-row ring-gold/40"
-              : "bg-panel ring-line"
-      } ${pulse ? "pulse-cross" : ""}`}
+      onKeyDown={(e) => e.key === "Enter" && onOpen()}
+      className={`sb-row tap ${tone}`}
     >
-      <div className="flex items-center gap-2">
-        <span
-          className={`w-6 text-center font-mono text-xs font-black tabular ${
-            leader ? "text-gold" : "text-dim"
-          }`}
-        >
-          {place}
+      <div className="sb-name flex items-center gap-2 px-2">
+        <span className={`sb-rank font-mono tabular ${rank === 1 && race.crossings.length > 0 ? "sb-lead" : ""}`}>
+          {rank}
         </span>
-        <Avatar runner={r} eventId={event.id} size={52} lightbox />
+        <Thumb race={race} eventId={event.id} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="truncate font-bold">{r.name || "—"}</span>
-            {showId ? <span className="font-mono text-xs tabular text-dim">{r.studentId}</span> : null}
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gold">
-              {r.category}
-            </span>
-          </div>
-          <div className="mt-0.5 flex items-center gap-2">
-            {race.finished ? (
-              <span className="font-mono text-xs font-black tabular text-go">
-                FIN {race.finishMs != null ? formatEst(formatClock(race.finishMs, 2), race.crossings.at(-1)?.estimated) : ""}
-              </span>
-            ) : race.lapDown > 0 ? (
-              <span className="text-xs font-black text-stop">−{race.lapDown} lap</span>
-            ) : race.bell ? (
-              <span className="text-xs font-black tracking-wide text-bell">BELL</span>
-            ) : (
-              <span className="font-mono text-xs tabular text-dim">
-                {race.crossings.length}/{event.course.requiredCrossings}
-              </span>
-            )}
-            <span className="font-mono text-xs font-bold tabular text-gold">
-              {formatPace(stats.lastLapPaceSecPerKm ?? stats.avgPaceSecPerKm ?? 0)}
-            </span>
-          </div>
-        </div>
-        <div className={`font-mono text-3xl font-black leading-none tabular ${leader ? "text-gold" : ""}`}>
-          {r.bib}
+          <div className="sb-bib font-mono font-black leading-none tabular">{r.bib}</div>
+          <div className="mt-0.5 truncate text-xs font-bold text-dim sm:text-sm">{r.name || "—"}</div>
+          {showId && r.studentId ? (
+            <div className="hidden truncate font-mono text-xs tabular text-dim/80 lg:block">{r.studentId}</div>
+          ) : null}
         </div>
       </div>
-      <div className="mt-1 flex gap-1 overflow-x-auto pb-0.5 pl-8">
-        {race.splitMs.map((ms, i) => (
-          <span
-            key={i}
-            className={`shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] font-black tabular ${
-              i === race.splitMs.length - 1 ? "bg-gold text-ink" : "bg-black/40"
-            }`}
-          >
-            {formatEst(
-              formatClock(
-                times === "cumulative" ? (race.crossings[i]?.elapsedMs ?? ms) : ms,
-                1,
-              ),
-              times === "cumulative"
-                ? race.crossings[i]?.estimated
-                : splitEstimated(race.crossings, i),
-            )}
-          </span>
-        ))}
+      {cols.map((c, i) => (
+        <LapCell
+          key={c.n}
+          index={i}
+          race={race}
+          event={event}
+          highlights={highlights}
+          big={big}
+          fresh={fresh === i}
+          now={now}
+          running={running}
+        />
+      ))}
+      <div className="sb-tot flex flex-col items-end justify-center gap-1 px-3">
+        <TotalCell race={race} event={event} stats={stats} />
       </div>
-    </button>
+    </div>
   );
 }
 
-function useCrossingPulse(count: number) {
+function LapCell({
+  index,
+  race,
+  event,
+  highlights,
+  big,
+  fresh,
+  now,
+  running,
+}: {
+  index: number;
+  race: RunnerRace;
+  event: EventState;
+  highlights: BoardHighlights;
+  big: BoardTimesMode;
+  fresh: boolean;
+  now: number;
+  running: boolean;
+}) {
+  const c = race.crossings[index];
+  if (!c) {
+    const next = running && !race.finished && index === race.crossings.length;
+    const bell = next && race.bell;
+    const since = race.lastEpoch ?? event.startedAt ?? now;
+    return (
+      <div className={`sb-cell ${next ? "sb-next" : "sb-empty"} ${bell ? "sb-bell" : ""}`}>
+        {bell ? <span className="sb-tag">BELL</span> : null}
+        {next ? <span className="sb-live font-mono tabular">{formatLapSplit(Math.max(0, now - since))}</span> : null}
+      </div>
+    );
+  }
+  const id = race.runner.id;
+  const split = race.splitMs[index] ?? 0;
+  const splitEst = splitEstimated(race.crossings, index);
+  const best = highlights.raceBest?.runnerId === id && highlights.raceBest.index === index;
+  const pb = !best && highlights.personalBest.get(id) === index;
+  const flagged = c.estimated || splitEst || highlights.edited.has(cellKey(id, index));
+  const ring = best ? "sb-ring-best" : pb ? "sb-ring-pb" : "";
+  const splitText = formatEst(formatLapSplit(split), splitEst);
+  const cumText = formatEst(formatCum(c.elapsedMs), c.estimated);
+  const splitBig = big === "split";
+  return (
+    <div className={`sb-cell font-mono tabular ${fresh ? "sb-fresh" : ""}`}>
+      {flagged ? <span className="sb-flag" aria-label="Edited" /> : null}
+      <div className="sb-top">
+        <span className={`sb-mini ${splitBig ? "" : ring}`}>{splitBig ? cumText : splitText}</span>
+      </div>
+      <div className="sb-big">
+        <span className={splitBig ? ring : ""}>{splitBig ? splitText : cumText}</span>
+      </div>
+    </div>
+  );
+}
+
+function TotalCell({ race, event, stats }: { race: RunnerRace; event: EventState; stats?: RunnerStats }) {
+  const last = race.crossings.at(-1);
+  const ms = race.finished ? race.finishMs : race.lastElapsed;
+  const value = ms != null && last ? formatEst(formatClock(ms, 1), last.estimated) : "—";
+  let status: React.ReactNode;
+  if (race.finished) status = <span className="text-go">FIN</span>;
+  else if (race.bell) status = <span className="text-bell">BELL</span>;
+  else if (race.lapDown > 0) status = <span className="text-stop">{lapDownLabel(race.lapDown)}</span>;
+  else status = <span className="text-dim">{race.crossings.length}/{event.course.requiredCrossings}</span>;
+  return (
+    <>
+      <div className="sb-total font-mono font-black tabular text-white">{value}</div>
+      <div className="sb-status flex items-baseline gap-2 font-mono font-black tabular">
+        {stats?.avgPaceSecPerKm ? (
+          <span className="hidden text-dim sm:inline">{formatPace(stats.avgPaceSecPerKm)}/k</span>
+        ) : null}
+        {status}
+      </div>
+    </>
+  );
+}
+
+function Thumb({ race, eventId }: { race: RunnerRace; eventId: string }) {
+  const r = race.runner;
+  const src = r.photoVer ? photoPath(eventId, r.id, r.photoVer, "thumb") : null;
+  return (
+    <div className="sb-photo shrink-0 overflow-hidden rounded-lg ring-1 ring-black/60">
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <div
+          className="grid h-full w-full place-items-center text-sm font-black text-white"
+          style={{ background: bibColor(r.bib || r.name || "?") }}
+        >
+          {initials(r.name) || r.bib.slice(0, 2)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Footer({ event, leader, now }: { event: EventState; leader: RunnerRace | null; now: number }) {
+  const laps = event.course.totalDistanceM / event.course.lapLengthM;
+  const lapsText = Number.isInteger(laps) ? String(laps) : laps.toFixed(1);
+  const lead = leader && leader.crossings.length > 0 ? leader : null;
+  return (
+    <footer className="sb-foot grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 sm:px-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] md:py-3">
+      <div className="min-w-0">
+        <div className="truncate text-lg font-black leading-tight sm:text-2xl lg:text-3xl">{event.name}</div>
+        <div className="mt-0.5 flex items-center gap-3 font-mono text-sm font-black tabular text-dim sm:text-base lg:text-xl">
+          <span>{event.course.totalDistanceM} m</span>
+          <span>{lapsText} laps</span>
+          {lead ? (
+            <span className="flex min-w-0 items-center gap-1.5 md:hidden">
+              <span className="rounded-md bg-accent px-1.5 text-ink">1</span>
+              <span className="text-sand">#{lead.runner.bib}</span>
+            </span>
+          ) : null}
+          {event.status === "running" ? <span className="live-dot" aria-label="Live" /> : null}
+        </div>
+      </div>
+      <div className="hidden min-w-0 items-center gap-3 md:flex">
+        {lead ? (
+          <>
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-accent font-mono text-2xl font-black text-ink lg:h-14 lg:w-14 lg:text-3xl">
+              1
+            </span>
+            <div className="min-w-0">
+              <div className="font-mono text-3xl font-black leading-none tabular lg:text-4xl">#{lead.runner.bib}</div>
+              <div className="truncate text-sm font-bold text-dim lg:text-base">{lead.runner.name}</div>
+            </div>
+          </>
+        ) : (
+          <span className="text-sm font-bold uppercase tracking-[0.2em] text-dim">
+            {event.status === "setup" ? "Waiting" : "Leader"}
+          </span>
+        )}
+      </div>
+      <RaceClock
+        startedAt={event.startedAt}
+        now={now}
+        className="text-right text-4xl sm:text-5xl lg:text-7xl"
+      />
+    </footer>
+  );
+}
+
+function BoardMenu({
+  code,
+  event,
+  races,
+  big,
+  helper,
+  onBig,
+  onEvent,
+  onClose,
+}: {
+  code: string;
+  event: EventState;
+  races: RunnerRace[];
+  big: BoardTimesMode;
+  helper: boolean;
+  onBig: (m: BoardTimesMode) => void;
+  onEvent: (e: EventState) => void;
+  onClose: () => void;
+}) {
+  const { copied, copy } = useCopied();
+
+  async function csv() {
+    const res = await fetchWithPin(`/api/events/${code}/export`);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${event.code}-results.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function toggleIds() {
+    const data = await json<{ event: EventState }>(`/api/events/${code}`, {
+      method: "PATCH",
+      body: JSON.stringify({ hideStudentIds: !event.hideStudentIds }),
+    });
+    onEvent(data.event);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-dim">Big number</div>
+        <div className="flex gap-2">
+          <Chip active={big === "cumulative"} onClick={() => onBig("cumulative")}>
+            Run time
+          </Chip>
+          <Chip active={big === "split"} onClick={() => onBig("split")}>
+            Lap split
+          </Chip>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <BigBtn
+          tone="plain"
+          size="md"
+          onClick={() => {
+            void document.documentElement.requestFullscreen?.().catch(() => {});
+            onClose();
+          }}
+        >
+          Full screen
+        </BigBtn>
+        <BigBtn tone="plain" size="md" href={`/e/${code}/stats`}>
+          Results
+        </BigBtn>
+        {helper ? (
+          <>
+            <BigBtn
+              size="md"
+              onClick={() => void copy("results", formatResultsText(event, races, "summary"))}
+            >
+              {copied === "results" ? "Copied" : "Copy results"}
+            </BigBtn>
+            <BigBtn tone="plain" size="md" onClick={() => void csv()}>
+              CSV
+            </BigBtn>
+          </>
+        ) : null}
+      </div>
+      {helper ? (
+        <div className="flex gap-2">
+          <Chip active={event.hideStudentIds} onClick={() => void toggleIds()}>
+            Hide IDs
+          </Chip>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function useFresh(count: number) {
   const prev = useRef(count);
-  const [on, setOn] = useState(false);
+  const [fresh, setFresh] = useState(-1);
   useEffect(() => {
-    if (count > prev.current) {
-      setOn(true);
-      const t = window.setTimeout(() => setOn(false), 650);
+    if (count <= prev.current) {
       prev.current = count;
-      return () => window.clearTimeout(t);
+      return;
     }
     prev.current = count;
+    const on = window.setTimeout(() => setFresh(count - 1), 0);
+    const off = window.setTimeout(() => setFresh(-1), 900);
+    return () => {
+      window.clearTimeout(on);
+      window.clearTimeout(off);
+    };
   }, [count]);
-  return on;
+  return fresh;
 }
 
 function Detail({
   event,
   race,
   stats,
+  rank,
   showId,
   onClose,
 }: {
   event: EventState;
   race: RunnerRace;
-  stats: RunnerStats;
+  stats?: RunnerStats;
+  rank: number;
   showId: boolean;
   onClose: () => void;
 }) {
   const r = race.runner;
   const vs =
-    stats.vsTargetSecPerKm == null
+    stats?.vsTargetSecPerKm == null
       ? null
       : stats.vsTargetSecPerKm >= 0
         ? `+${formatPace(stats.vsTargetSecPerKm)}`
         : `−${formatPace(Math.abs(stats.vsTargetSecPerKm))}`;
   return (
-    <div className="fixed inset-0 z-40 flex items-end bg-black/70" onClick={onClose}>
-      <div
-        className="max-h-[88dvh] w-full overflow-auto rounded-t-3xl bg-panel p-4 ring-1 ring-line"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-3">
-          <Avatar runner={r} eventId={event.id} size={72} lightbox />
-          <div className="min-w-0 flex-1">
-            <div className="text-xl font-black">{r.name}</div>
-            <div className="font-mono text-sm tabular text-dim">
-              {showId ? r.studentId : r.category}
-            </div>
+    <Sheet title={rank > 0 ? `Rank ${rank}` : "Runner"} onClose={onClose}>
+      <div className="flex items-center gap-3">
+        <Avatar runner={r} eventId={event.id} size={72} lightbox />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xl font-black">{r.name || "—"}</div>
+          <div className="font-mono text-sm tabular text-dim">
+            {[showId ? r.studentId : "", normalizeCategory(r.category)].filter(Boolean).join(" · ")}
           </div>
-          <div className="font-mono text-5xl font-black tabular">{r.bib}</div>
         </div>
-        <div className="mt-4">
-          <PaceChart event={event} race={race} />
-        </div>
+        <div className="font-mono text-5xl font-black tabular">{r.bib}</div>
+      </div>
+      <div className="mt-4">
+        <PaceChart event={event} race={race} />
+      </div>
+      {stats ? (
         <div className="mt-5 grid grid-cols-3 gap-4">
-          <Stat value={formatPace(stats.avgPaceSecPerKm ?? 0)} label="Avg pace" />
+          <Stat value={formatPace(stats.avgPaceSecPerKm ?? 0)} label="Avg /km" />
           <Stat value={formatPace(stats.lastLapPaceSecPerKm ?? 0)} label="Last lap" />
           <Stat value={formatPace(stats.fastestLapPaceSecPerKm ?? 0)} label="Best lap" />
-          <Stat value={formatPace(stats.slowestLapPaceSecPerKm ?? 0)} label="Slow lap" />
           <Stat
-            value={stats.consistencyPct == null ? "—" : `${stats.consistencyPct.toFixed(0)}%`}
-            label="Consistency"
-          />
-          <Stat value={formatSpeed(stats.speedKmh ?? 0)} label="km/h" />
-          <Stat
-            value={stats.projectedFinishMs == null ? "—" : formatClock(stats.projectedFinishMs, 1)}
-            label="Project"
+            value={stats.projectedFinishMs == null ? "—" : formatClock(stats.projectedFinishMs, 0).replace(/\.\d$/, "")}
+            label="Projected"
           />
           <Stat
             value={
               stats.gapToLeaderMs == null
                 ? "—"
-                : (stats.gapToLeaderMs >= 0 ? "+" : "") + formatClock(Math.abs(stats.gapToLeaderMs), 1)
+                : (stats.gapToLeaderMs > 0 ? "+" : "") + formatLapSplit(Math.abs(stats.gapToLeaderMs))
             }
             label="Gap"
           />
-          <Stat value={vs ?? "—"} label="vs target" warn={!!stats.vsTargetSecPerKm && stats.vsTargetSecPerKm > 0} />
+          <Stat value={formatSpeed(stats.speedKmh ?? 0)} label="km/h" />
+          {vs ? (
+            <Stat value={vs} label="vs target" warn={!!stats.vsTargetSecPerKm && stats.vsTargetSecPerKm > 0} />
+          ) : null}
         </div>
-        {stats.kmSplits.length > 0 ? (
-          <div className="mt-5 flex gap-2 overflow-x-auto">
-            {stats.kmSplits.map((k) => (
-              <div key={k.km} className="shrink-0 rounded-xl bg-panel2 px-3 py-2 ring-1 ring-line">
-                <div className="text-[11px] font-bold text-dim">{k.km}k</div>
-                <div className="font-mono text-sm font-black tabular">{formatClock(k.elapsedMs, 1)}</div>
-                <div className="font-mono text-xs font-bold tabular text-gold">{formatPace(k.paceSecPerKm)}</div>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        <button
-          type="button"
-          className="tap mt-5 h-14 w-full rounded-2xl bg-panel2 font-bold ring-1 ring-line"
-          onClick={onClose}
-        >
-          Close
-        </button>
-      </div>
-    </div>
+      ) : null}
+      {stats && stats.kmSplits.length > 0 ? (
+        <div className="mt-5 flex gap-2 overflow-x-auto">
+          {stats.kmSplits.map((k) => (
+            <div key={k.km} className="shrink-0 rounded-xl bg-panel2 px-3 py-2 ring-1 ring-line">
+              <div className="text-[11px] font-bold text-dim">{k.km}K</div>
+              <div className="font-mono text-lg font-black tabular">{formatCum(k.elapsedMs)}</div>
+              <div className="font-mono text-xs font-bold tabular text-accent">{formatPace(k.paceSecPerKm)}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Sheet>
   );
 }

@@ -77,7 +77,7 @@ export function Avatar({
         )}
         {overlay && bib ? (
           <span
-            className="absolute inset-x-0 bottom-0 bg-black/75 text-center font-mono font-black leading-none tabular text-gold"
+            className="absolute inset-x-0 bottom-0 bg-black/75 text-center font-mono font-black leading-none tabular text-accent"
             style={{ fontSize: Math.max(9, size * 0.22), padding: size > 56 ? "3px 0 4px" : "2px 0 3px" }}
           >
             {bib}

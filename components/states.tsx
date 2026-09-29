@@ -18,7 +18,7 @@ export function EmptyState({
   return (
     <div className="grid flex-1 place-items-center px-8 py-16 text-center">
       <div>
-        <div className="font-mono text-4xl font-black tabular tracking-tight text-gold">0:00.0</div>
+        <div className="font-mono text-4xl font-black tabular tracking-tight text-accent">0:00.0</div>
         <p className="mt-4 text-lg font-semibold">{title}</p>
         {hint ? <p className="mt-2 text-sm text-dim">{hint}</p> : null}
       </div>
