@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideSwipe, horizontalIntent } from "./swipe";
+import { decideSwipe, horizontalIntent, revealProgress } from "./swipe";
 
 describe("decideSwipe", () => {
   it("commits once the drag passes 40% of the row", () => {
@@ -24,6 +24,19 @@ describe("decideSwipe", () => {
   it("ignores a rightward drag and a zero-width row", () => {
     expect(decideSwipe({ dx: 160, width: 300, velocity: 1 })).toBe("cancel");
     expect(decideSwipe({ dx: -40, width: 0, velocity: -2 })).toBe("cancel");
+  });
+});
+
+describe("revealProgress", () => {
+  it("hides the reveal bin at rest and after a rightward nudge", () => {
+    expect(revealProgress(0)).toBe(0);
+    expect(revealProgress(12)).toBe(0);
+  });
+
+  it("fades the reveal bin in as the delete strip slides clear", () => {
+    expect(revealProgress(-28)).toBeCloseTo(0.5);
+    expect(revealProgress(-56)).toBe(1);
+    expect(revealProgress(-140)).toBe(1);
   });
 });
 

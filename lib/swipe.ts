@@ -29,3 +29,16 @@ export function decideSwipe(input: {
 export function horizontalIntent(dx: number, dy: number): boolean {
   return dx < -10 && Math.abs(dx) > Math.abs(dy) * 1.2;
 }
+
+/**
+ * How visible the bin in the red reveal should be.
+ * `offsetPx` is the row travel (negative is left). Fully in once the delete
+ * strip has slid clear, and fully hidden at rest so it never doubles the strip.
+ */
+export function revealProgress(offsetPx: number, zonePx = 56): number {
+  if (!(zonePx > 0)) return 0;
+  const shown = -offsetPx / zonePx;
+  if (shown <= 0) return 0;
+  if (shown >= 1) return 1;
+  return shown;
+}

@@ -12,7 +12,7 @@ import { BigBtn, Chip, Field, MenuButton, Screen, TopBar, useCopied } from "@/co
 import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
-import { forgetAdmin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
+import { forgetAdmin, getMasterKey, getStoredPin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
 import { CATEGORIES } from "@/lib/category";
 import { kmCrossings } from "@/lib/course";
@@ -20,6 +20,19 @@ import { recordCounts } from "@/lib/records";
 import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
+
+function runnerSlots(
+  runners: Runner[],
+  gone: { runner: Runner; index: number } | null,
+): Array<{ kind: "runner"; runner: Runner } | { kind: "gone" }> {
+  const kept = runners.filter((r) => r.id !== gone?.runner.id);
+  const slots: Array<{ kind: "runner"; runner: Runner } | { kind: "gone" }> = kept.map((runner) => ({
+    kind: "runner",
+    runner,
+  }));
+  if (gone) slots.splice(Math.min(gone.index, slots.length), 0, { kind: "gone" });
+  return slots;
+}
 
 export default function AdminPage() {
   const { code } = useParams<{ code: string }>();
@@ -35,6 +48,9 @@ function AdminInner({ code }: { code: string }) {
   const { event, setEvent, races } = useEvent(code, 2000);
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "" });
   const [fixId, setFixId] = useState<string | null>(null);
+  const [gone, setGone] = useState<{ runner: Runner; index: number } | null>(null);
+  const goneRef = useRef<{ runner: Runner; index: number } | null>(null);
+  const runnerChain = useRef(Promise.resolve());
   const [storage, setStorage] = useState<{ used: number; cap: number } | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -54,6 +70,66 @@ function AdminInner({ code }: { code: string }) {
   useEffect(() => {
     if (eventName != null) rememberAdmin(code, eventName);
   }, [code, eventName]);
+
+  const postRunners = useCallback((body: Record<string, unknown>) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const pin = getStoredPin(code);
+    if (pin) headers["X-TT-PIN"] = pin;
+    const key = getMasterKey();
+    if (key) headers["X-TT-KEY"] = key;
+    return fetch(`/api/events/${code}/runners`, {
+      method: "POST",
+      keepalive: true,
+      headers,
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json() as Promise<{ event: EventState }>;
+    });
+  }, [code]);
+
+  useEffect(() => {
+    return () => {
+      const pending = goneRef.current;
+      if (!pending) return;
+      void postRunners({ action: "purge-photo", id: pending.runner.id });
+    };
+  }, [postRunners]);
+
+  function removeRunner(runner: Runner) {
+    if (!event) return;
+    const index = event.runners.findIndex((r) => r.id === runner.id);
+    const prev = goneRef.current;
+    const next = { runner, index: index < 0 ? 0 : index };
+    goneRef.current = next;
+    setGone(next);
+    runnerChain.current = runnerChain.current
+      .then(async () => {
+        if (prev && prev.runner.id !== runner.id) {
+          await postRunners({ action: "purge-photo", id: prev.runner.id }).catch(() => {});
+        }
+        const data = await postRunners({ action: "delete", id: runner.id });
+        if (goneRef.current?.runner.id === runner.id) setEvent(data.event);
+      })
+      .catch(() => {});
+  }
+
+  function undoRunner() {
+    const current = goneRef.current;
+    if (!current) return;
+    goneRef.current = null;
+    setGone(null);
+    runnerChain.current = runnerChain.current
+      .then(async () => {
+        const data = await postRunners({
+          action: "upsert",
+          runner: current.runner,
+          index: current.index,
+        });
+        setEvent(data.event);
+      })
+      .catch(() => {});
+  }
 
   async function saveRunner(runner: Partial<Runner> & { bib?: string; id?: string }) {
     const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
@@ -209,7 +285,9 @@ function AdminInner({ code }: { code: string }) {
         <section>
           <div className="mb-2 flex items-baseline justify-between">
             <h2 className="text-[11px] font-black uppercase tracking-[0.16em] text-dim">Runners</h2>
-            <span className="font-mono text-2xl font-black tabular">{event.runners.length}</span>
+            <span className="font-mono text-2xl font-black tabular">
+              {event.runners.filter((r) => r.id !== gone?.runner.id).length}
+            </span>
           </div>
           <div className="space-y-2">
             <div className="rounded-2xl bg-panel p-2 ring-1 ring-accent/60">
@@ -253,23 +331,30 @@ function AdminInner({ code }: { code: string }) {
                 </button>
               </div>
             </div>
-            {event.runners.map((r) => (
-              <RunnerRow
-                key={r.id}
-                runner={r}
-                eventId={event.id}
-                onChange={(next) => saveRunner({ id: r.id, ...next })}
-                onPhoto={(f) => photo(r.id, f)}
-                onFix={event.status === "setup" ? undefined : () => setFixId(r.id)}
-                onDelete={async () => {
-                  const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
-                    method: "POST",
-                    body: JSON.stringify({ action: "delete", id: r.id }),
-                  });
-                  setEvent(data.event);
-                }}
-              />
-            ))}
+            {runnerSlots(event.runners, gone).map((slot) =>
+              slot.kind === "gone" ? (
+                <button
+                  key="deleted-runner"
+                  type="button"
+                  className="tap flex h-[7.5rem] w-full items-center justify-center rounded-2xl bg-panel text-sm font-black ring-1 ring-line"
+                  onClick={undoRunner}
+                >
+                  <span className="text-dim">Deleted</span>
+                  <span className="px-1.5 text-dim">·</span>
+                  <span className="text-accent">Undo</span>
+                </button>
+              ) : (
+                <RunnerRow
+                  key={slot.runner.id}
+                  runner={slot.runner}
+                  eventId={event.id}
+                  onChange={(next) => saveRunner({ id: slot.runner.id, ...next })}
+                  onPhoto={(f) => photo(slot.runner.id, f)}
+                  onFix={event.status === "setup" ? undefined : () => setFixId(slot.runner.id)}
+                  onDelete={() => removeRunner(slot.runner)}
+                />
+              ),
+            )}
           </div>
         </section>
       </div>

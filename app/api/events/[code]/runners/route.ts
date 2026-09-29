@@ -15,18 +15,28 @@ export async function POST(req: Request, ctx: Ctx) {
   const gate = await requireHelper(req, code);
   if (isDenied(gate)) return gate;
   const body = (await req.json()) as {
-    action?: "upsert" | "delete" | "replace";
+    action?: "upsert" | "delete" | "replace" | "purge-photo";
     runner?: Partial<Runner> & { bib?: string };
     runners?: Runner[];
     id?: string;
+    index?: number;
   };
 
   if (body.action === "delete") {
-    const event = await updateEvent(code, async (e) => {
+    const event = await updateEvent(code, (e) => {
       const id = body.id || body.runner?.id;
-      const gone = e.runners.find((r) => r.id === id);
-      if (gone) await deleteRunnerPhoto(e.id, gone.id);
       return { ...e, runners: e.runners.filter((r) => r.id !== id) };
+    });
+    if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json({ event: toPublic(event), rev: event.rev });
+  }
+
+  if (body.action === "purge-photo") {
+    const event = await updateEvent(code, async (e) => {
+      const id = body.id;
+      if (!id || e.runners.some((r) => r.id === id)) return e;
+      await deleteRunnerPhoto(e.id, id);
+      return e;
     });
     if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ event: toPublic(event), rev: event.rev });
@@ -40,6 +50,25 @@ export async function POST(req: Request, ctx: Ctx) {
     if (!incoming) return e;
     const bib = incoming.bib != null ? normalizeBib(incoming.bib) : "";
     if (incoming.id) {
+      const idx = e.runners.findIndex((r) => r.id === incoming.id);
+      if (idx < 0) {
+        if (!bib) return e;
+        const restored: Runner = {
+          id: incoming.id,
+          bib,
+          name: incoming.name?.trim() || "",
+          studentId: incoming.studentId?.trim() || "",
+          category: normalizeCategory(incoming.category),
+          photoVer: incoming.photoVer ?? null,
+        };
+        const at =
+          typeof body.index === "number"
+            ? Math.max(0, Math.min(Math.floor(body.index), e.runners.length))
+            : e.runners.length;
+        const runners = [...e.runners];
+        runners.splice(at, 0, restored);
+        return { ...e, runners };
+      }
       return {
         ...e,
         runners: e.runners.map((r) =>

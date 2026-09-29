@@ -9,10 +9,12 @@ import {
   type TransitionEvent,
 } from "react";
 import { TrashIcon } from "@/components/trash-icon";
-import { decideSwipe, horizontalIntent } from "@/lib/swipe";
+import { decideSwipe, horizontalIntent, revealProgress } from "@/lib/swipe";
 
 const SLIDE_MS = 160;
 const SPRING_MS = 220;
+/** Width of the ‹ + bin strip. The reveal bin fades in across this distance. */
+const ZONE_PX = 56;
 
 type Drag = {
   id: number;
@@ -167,6 +169,7 @@ export function SwipeRow({
       : anim === "spring"
         ? `transform ${SPRING_MS}ms cubic-bezier(0.2, 0.9, 0.3, 1.15)`
         : "none";
+  const reveal = revealProgress(x, ZONE_PX);
 
   return (
     <div
@@ -179,11 +182,18 @@ export function SwipeRow({
       onPointerCancel={finish}
       onClickCapture={onClickCapture}
     >
-      <div
-        className="pointer-events-none absolute inset-0 flex items-center justify-end bg-stop pr-5 text-sand"
-        aria-hidden
-      >
-        <TrashIcon size={22} />
+      <div className="pointer-events-none absolute inset-0 bg-stop" aria-hidden>
+        <div
+          data-swipe-reveal=""
+          className="absolute inset-y-0 right-0 flex w-14 items-center justify-center text-sand"
+          style={{
+            opacity: reveal,
+            transform: `scale(${0.6 + reveal * 0.4})`,
+            transformOrigin: "center",
+          }}
+        >
+          <TrashIcon size={22} />
+        </div>
       </div>
       <div
         className="swipe-face relative flex w-full min-w-0"
@@ -195,15 +205,16 @@ export function SwipeRow({
           type="button"
           data-swipe-delete=""
           aria-label={label}
-          className="relative flex w-14 shrink-0 items-center justify-center gap-0.5 self-stretch bg-inherit text-stop"
+          className="relative flex w-14 shrink-0 items-center self-stretch bg-inherit pl-2 text-stop"
           style={{ touchAction: "pan-y" }}
           onClick={() => {
             if (exitingRef.current) return;
             onDelete();
           }}
         >
+          <span className="absolute inset-0 bg-inherit" aria-hidden />
           <span className="absolute inset-0 bg-stop/15" aria-hidden />
-          <span className="relative inline-flex items-center gap-0.5">
+          <span className="relative inline-flex items-center gap-2">
             <ChevronHint />
             <TrashIcon size={20} />
           </span>
