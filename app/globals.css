@@ -146,12 +146,12 @@ body {
 /* ---------- Scoreboard (Board) ---------- */
 
 .sb {
-  --name-w: 128px;
+  --name-w: 58px;
   --cell-w: 68px;
   --tot-w: 80px;
   --row-h: 60px;
   --head-h: 40px;
-  --photo-inset: 22px;
+  --photo-inset: 12px;
   background: #081130;
 }
 
@@ -300,16 +300,29 @@ body {
 }
 
 .sb-rank {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 3;
   display: grid;
   place-items: center;
-  flex: 0 0 auto;
-  min-width: calc(var(--row-h) * 0.42);
-  height: calc(var(--row-h) * 0.42);
-  border-radius: 8px;
-  font-size: calc(var(--row-h) * 0.24);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 10px;
   font-weight: 900;
+  line-height: 1;
   background: #1d47c9;
   color: #fff;
+}
+
+@media (min-width: 640px) {
+  .sb-rank {
+    min-width: 18px;
+    height: 18px;
+    font-size: 11px;
+  }
 }
 
 .sb-rank.sb-lead {

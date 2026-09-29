@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { placePopover } from "@/lib/popover";
 
 export function Screen({
   children,
@@ -94,7 +96,9 @@ export function InfoTip({ text }: { text: string }) {
   );
 }
 
-/** ⋯ button that opens a bottom sheet with secondary actions. */
+const MENU_WIDTH = 352;
+
+/** ⋯ button. Menu is portaled to the body so the top bar's blur cannot trap it. */
 export function MenuButton({
   title,
   children,
@@ -103,17 +107,109 @@ export function MenuButton({
   children: (close: () => void) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
   return (
     <>
-      <button type="button" className={ICON_BTN} aria-label="Menu" onClick={() => setOpen(true)}>
+      <button
+        ref={btn}
+        type="button"
+        className={ICON_BTN}
+        aria-label="Menu"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((v) => !v)}
+      >
         ⋯
       </button>
-      {open ? (
-        <Sheet title={title} onClose={() => setOpen(false)}>
-          {children(() => setOpen(false))}
-        </Sheet>
-      ) : null}
+      {open
+        ? createPortal(
+            <AnchoredMenu anchor={btn} title={title} onClose={close}>
+              {children(close)}
+            </AnchoredMenu>,
+            document.body,
+          )
+        : null}
     </>
+  );
+}
+
+/**
+ * Opens downward under the button, right-aligned, and flips above only when
+ * that fits better. Taller than the space: scrolls. Outside click and Esc close it.
+ */
+function AnchoredMenu({
+  anchor,
+  title,
+  onClose,
+  children,
+}: {
+  anchor: React.RefObject<HTMLElement | null>;
+  title?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = panel.current;
+    if (!el) return;
+
+    function apply() {
+      const panelEl = panel.current;
+      const anchorEl = anchor.current;
+      if (!panelEl || !anchorEl) return;
+      const width = Math.min(MENU_WIDTH, window.innerWidth - 16);
+      panelEl.style.width = `${width}px`;
+      const r = anchorEl.getBoundingClientRect();
+      const box = placePopover({
+        anchor: { top: r.top, left: r.left, width: r.width, height: r.height },
+        size: { width, height: panelEl.scrollHeight },
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+      });
+      panelEl.style.top = `${box.top}px`;
+      panelEl.style.left = `${box.left}px`;
+      panelEl.style.maxWidth = `${box.maxWidth}px`;
+      panelEl.style.maxHeight = `${box.maxHeight}px`;
+      panelEl.style.visibility = "visible";
+    }
+
+    apply();
+    window.addEventListener("resize", apply);
+    window.addEventListener("scroll", apply, true);
+    return () => {
+      window.removeEventListener("resize", apply);
+      window.removeEventListener("scroll", apply, true);
+    };
+  }, [anchor, children]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div
+        ref={panel}
+        role="menu"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        style={{ visibility: "hidden" }}
+        className="fixed overflow-auto rounded-2xl bg-panel p-4 shadow-2xl ring-1 ring-line"
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="text-sm font-black uppercase tracking-[0.16em] text-dim">{title}</div>
+          <button type="button" className={ICON_BTN} aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 
