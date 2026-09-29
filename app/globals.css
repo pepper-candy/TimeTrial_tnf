@@ -143,11 +143,12 @@ button:focus-visible,
 /* ---------- Scoreboard (Board) ---------- */
 
 .sb {
-  --name-w: 136px;
-  --cell-w: 74px;
-  --tot-w: 96px;
+  --name-w: 128px;
+  --cell-w: 68px;
+  --tot-w: 80px;
   --row-h: 60px;
   --head-h: 40px;
+  --photo-inset: 22px;
   background: #081130;
 }
 
@@ -158,6 +159,7 @@ button:focus-visible,
     --tot-w: 136px;
     --row-h: 66px;
     --head-h: 44px;
+    --photo-inset: 16px;
   }
 }
 
@@ -254,10 +256,13 @@ button:focus-visible,
   align-items: center;
   justify-content: center;
   min-width: 70%;
-  padding: 0 0.3em;
+  max-width: 100%;
+  padding: 0 0.25em;
   border-left: 1px solid #2d4684;
   border-bottom: 1px solid #2d4684;
-  font-size: calc(var(--row-h) * 0.22);
+  font-size: min(calc(var(--row-h) * 0.22), calc(var(--cell-w) * 0.19));
+  letter-spacing: -0.02em;
+  white-space: nowrap;
   font-weight: 800;
   color: #c9d6ff;
 }
@@ -287,8 +292,8 @@ button:focus-visible,
 }
 
 .sb-photo {
-  width: calc(var(--row-h) - 16px);
-  height: calc(var(--row-h) - 16px);
+  width: calc(var(--row-h) - var(--photo-inset));
+  height: calc(var(--row-h) - var(--photo-inset));
 }
 
 .sb-rank {

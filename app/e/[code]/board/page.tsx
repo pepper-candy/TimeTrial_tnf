@@ -42,6 +42,7 @@ export default function BoardPage() {
   const [helper, setHelper] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const touched = useRef(0);
+  const lastN = useRef(-1);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -66,20 +67,27 @@ export default function BoardPage() {
   useEffect(() => {
     const el = scroller.current;
     if (!el || cols.length === 0) return;
-    if (Date.now() - touched.current < 8000) return;
-    const col = el.querySelector<HTMLElement>(`[data-col="${Math.min(leaderN, cols.length - 1)}"]`);
-    const name = el.querySelector<HTMLElement>("[data-name-head]");
-    const tot = el.querySelector<HTMLElement>("[data-tot-head]");
-    if (!col || !name || !tot) return;
-    const left = col.offsetLeft;
-    const right = left + col.offsetWidth;
-    const viewL = el.scrollLeft + name.offsetWidth;
-    const viewR = el.scrollLeft + el.clientWidth - tot.offsetWidth;
-    if (right > viewR) {
-      el.scrollTo({ left: right - (el.clientWidth - tot.offsetWidth) + 8, behavior: "smooth" });
-    } else if (left < viewL) {
-      el.scrollTo({ left: Math.max(0, left - name.offsetWidth - 8), behavior: "smooth" });
+    function align(behavior: ScrollBehavior) {
+      if (!el || Date.now() - touched.current < 8000) return;
+      const col = el.querySelector<HTMLElement>(`[data-col="${Math.min(leaderN, cols.length - 1)}"]`);
+      const name = el.querySelector<HTMLElement>("[data-name-head]");
+      const tot = el.querySelector<HTMLElement>("[data-tot-head]");
+      if (!col || !name || !tot) return;
+      const left = col.offsetLeft;
+      const right = left + col.offsetWidth;
+      const viewL = el.scrollLeft + name.offsetWidth;
+      const viewR = el.scrollLeft + el.clientWidth - tot.offsetWidth;
+      if (right > viewR) {
+        el.scrollTo({ left: right - (el.clientWidth - tot.offsetWidth) + 8, behavior });
+      } else if (left < viewL) {
+        el.scrollTo({ left: Math.max(0, left - name.offsetWidth - 8), behavior });
+      }
     }
+    align(Math.abs(leaderN - lastN.current) === 1 ? "smooth" : "auto");
+    lastN.current = leaderN;
+    const ro = new ResizeObserver(() => align("auto"));
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [leaderN, cols.length]);
 
   if (!event || !highlights) {
@@ -267,12 +275,18 @@ function BoardRow({
           {rank}
         </span>
         <Thumb race={race} eventId={event.id} />
-        <div className="min-w-0 flex-1">
-          <div className="sb-bib font-mono font-black leading-none tabular">{r.bib}</div>
-          <div className="mt-0.5 truncate text-xs font-bold text-dim sm:text-sm">{r.name || "—"}</div>
-          {showId && r.studentId ? (
-            <div className="hidden truncate font-mono text-xs tabular text-dim/80 lg:block">{r.studentId}</div>
-          ) : null}
+        <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-2">
+          <div className="sb-bib shrink-0 font-mono font-black leading-none tabular sm:min-w-[2ch] sm:text-right">
+            {r.bib}
+          </div>
+          <div className="min-w-0 leading-tight">
+            <div className="mt-0.5 truncate text-xs font-bold text-dim sm:mt-0 sm:text-sm sm:text-sand lg:text-base">
+              {r.name || "—"}
+            </div>
+            {showId && r.studentId ? (
+              <div className="hidden truncate font-mono text-xs tabular text-dim lg:block">{r.studentId}</div>
+            ) : null}
+          </div>
         </div>
       </div>
       {cols.map((c, i) => (
@@ -353,6 +367,7 @@ function TotalCell({ race, event, stats }: { race: RunnerRace; event: EventState
   const last = race.crossings.at(-1);
   const ms = race.finished ? race.finishMs : race.lastElapsed;
   const value = ms != null && last ? formatEst(formatClock(ms, 1), last.estimated) : "—";
+  const dot = value.lastIndexOf(".");
   let status: React.ReactNode;
   if (race.finished) status = <span className="text-go">FIN</span>;
   else if (race.bell) status = <span className="text-bell">BELL</span>;
@@ -360,7 +375,16 @@ function TotalCell({ race, event, stats }: { race: RunnerRace; event: EventState
   else status = <span className="text-dim">{race.crossings.length}/{event.course.requiredCrossings}</span>;
   return (
     <>
-      <div className="sb-total font-mono font-black tabular text-white">{value}</div>
+      <div className="sb-total font-mono font-black tabular text-white">
+        {dot > 0 ? (
+          <>
+            {value.slice(0, dot)}
+            <span className="hidden sm:inline">{value.slice(dot)}</span>
+          </>
+        ) : (
+          value
+        )}
+      </div>
       <div className="sb-status flex items-baseline gap-2 font-mono font-black tabular">
         {stats?.avgPaceSecPerKm ? (
           <span className="hidden text-dim sm:inline">{formatPace(stats.avgPaceSecPerKm)}/k</span>
@@ -400,8 +424,8 @@ function Footer({ event, leader, now }: { event: EventState; leader: RunnerRace 
       <div className="min-w-0">
         <div className="truncate text-lg font-black leading-tight sm:text-2xl lg:text-3xl">{event.name}</div>
         <div className="mt-0.5 flex items-center gap-3 font-mono text-sm font-black tabular text-dim sm:text-base lg:text-xl">
-          <span>{event.course.totalDistanceM} m</span>
-          <span>{lapsText} laps</span>
+          <span className="whitespace-nowrap">{event.course.totalDistanceM} m</span>
+          <span className="whitespace-nowrap">{lapsText} laps</span>
           {lead ? (
             <span className="flex min-w-0 items-center gap-1.5 md:hidden">
               <span className="rounded-md bg-accent px-1.5 text-ink">1</span>
