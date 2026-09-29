@@ -1,11 +1,7 @@
 export function eventLinks(origin: string, code: string) {
   const base = `${origin.replace(/\/$/, "")}/e/${code}`;
   return {
-    home: base,
-    timer: `${base}/timer`,
-    marker: `${base}/marker`,
     board: `${base}/board`,
-    admin: `${base}/admin`,
     helper: helperLink(origin, code),
   };
 }

@@ -31,12 +31,6 @@ export async function preparePhotos(file: File): Promise<{
   }
 }
 
-/** @deprecated use preparePhotos — still encodes a live-UI thumb. */
-export async function compressImage(file: File): Promise<PreparedPhoto> {
-  const { thumb } = await preparePhotos(file);
-  return thumb;
-}
-
 async function encodeThumb(bitmap: ImageBitmap): Promise<PreparedPhoto> {
   const { sx, sy, side } = faceCropRect(bitmap.width, bitmap.height);
   const canvas = document.createElement("canvas");

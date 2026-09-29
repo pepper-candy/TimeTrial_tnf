@@ -96,32 +96,32 @@ export default function HomePage() {
         </header>
 
         <div className="mt-9 flex flex-col gap-3">
-          <div className="relative">
-            <input
-              ref={input}
-              value={code}
-              onChange={(e) => {
-                setCode(e.target.value.toUpperCase().replace(/\s/g, ""));
-                setMissing(false);
-              }}
-              placeholder="EVENT CODE"
-              aria-label="Event code"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={8}
-              className={`home-code w-full rounded-[10px] ring-2 focus:outline-none ${
-                missing ? "ring-stop" : "ring-line focus:ring-accent"
-              }`}
-              onKeyDown={(e) => e.key === "Enter" && join()}
-            />
-            <span aria-hidden className="home-hint">
-              <span className="font-mono text-base font-black uppercase leading-none tracking-[0.2em] text-dim/70">
-                EVENT CODE
-              </span>
-              <span className="home-caret" />
+          <label
+            className={`home-code-field w-full rounded-[10px] ring-2 focus-within:outline-none ${
+              missing ? "ring-stop" : "ring-line focus-within:ring-accent"
+            }`}
+          >
+            <span className="home-code-prefix">EVENT CODE:</span>
+            <span className="home-code-slot">
+              <input
+                ref={input}
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value.toUpperCase().replace(/\s/g, ""));
+                  setMissing(false);
+                }}
+                placeholder=" "
+                aria-label="Event code"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={8}
+                className="home-code focus:outline-none"
+                onKeyDown={(e) => e.key === "Enter" && join()}
+              />
+              <span aria-hidden className="home-caret" />
             </span>
-          </div>
+          </label>
           <button
             type="button"
             onClick={join}

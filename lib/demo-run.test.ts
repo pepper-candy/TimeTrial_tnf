@@ -58,7 +58,7 @@ describe("demo seed playback", () => {
 
     const wall = start + 106_300;
     const live = advanceDemo(demo, raceNow(demo, wall));
-    const races = buildRunnerRaces(live, raceNow(demo, wall));
+    const races = buildRunnerRaces(live);
     const first = races.find((r) => r.runner.bib === "1")!;
     expect(first.finished).toBe(true);
     expect(first.finishMs).toBe(1_063_000);
@@ -78,7 +78,7 @@ describe("demo seed playback", () => {
       endedAt: wallEnd,
     };
     const later = advanceDemo(frozen, raceNow(frozen, wallEnd + 600_000));
-    const races = buildRunnerRaces(later, raceNow(frozen, wallEnd + 600_000));
+    const races = buildRunnerRaces(later);
     const first = races.find((r) => r.runner.bib === "1")!;
     expect(first.finished).toBe(false);
     const again = advanceDemo(later, raceNow(frozen, wallEnd + 1_200_000));

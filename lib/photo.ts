@@ -4,11 +4,6 @@ export const THUMB_MAX_BYTES = 80 * 1024;
 export const FULL_MAX_BYTES = 1024 * 1024;
 export const FULL_EDGE = 2560;
 
-/** @deprecated use THUMB_*; kept so older imports still typecheck during the swap */
-export const PHOTO_SIZE = THUMB_SIZE;
-export const PHOTO_MAX_BYTES = THUMB_MAX_BYTES;
-export const PHOTO_TARGET_BYTES = THUMB_TARGET_BYTES;
-
 export type PhotoKind = "thumb" | "full";
 
 const KEEP_FULL_MIME = new Set(["image/jpeg", "image/jpg", "image/webp", "image/png"]);

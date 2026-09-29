@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getMasterKey, getStoredPin } from "@/lib/client/pin";
 import { advanceDemo, raceNow } from "@/lib/demo-run";
 import { normalizeCode } from "@/lib/ids";
-import { buildRunnerRaces, collectFlags, predictedTileOrder } from "@/lib/race";
+import { buildRunnerRaces } from "@/lib/race";
 import { computeRunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
 
@@ -76,13 +76,8 @@ export function useEvent(code: string, intervalMs = 1000) {
   }, [event, clockNow]);
 
   const races = useMemo(
-    () => (live ? buildRunnerRaces(live, clockNow) : []),
+    () => (live ? buildRunnerRaces(live) : []),
     [live, clockNow],
-  );
-  const tiles = useMemo(() => predictedTileOrder(races), [races]);
-  const flags = useMemo(
-    () => (live ? collectFlags(live, races) : []),
-    [live, races],
   );
   const leader = races[0] ?? null;
   const stats = useMemo(
@@ -98,15 +93,11 @@ export function useEvent(code: string, intervalMs = 1000) {
   return {
     event: live,
     error,
-    refresh,
     setEvent: setEventAndRev,
     offset,
     serverNow: clockNow,
     races,
-    tiles,
-    flags,
     stats,
-    leader,
   };
 }
 

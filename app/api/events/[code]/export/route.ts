@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: Ctx) {
   if (isDenied(gate)) return gate;
   const event = await getEvent(code);
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
-  const races = buildRunnerRaces(event, Date.now());
+  const races = buildRunnerRaces(event);
   const csv = csvOfEvent(event, races);
   return new NextResponse(csv, {
     headers: {

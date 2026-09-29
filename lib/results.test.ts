@@ -133,7 +133,7 @@ describe("club results text", () => {
   it("matches seeded demo crossings for the 28 Sep 2026 5k times with fake IDs", () => {
     const now = Date.UTC(2026, 8, 28, 8, 0, 0);
     const demo = makeDemoEvent(now, 40 * 60 * 1000, 1);
-    const races = buildRunnerRaces(demo, now);
+    const races = buildRunnerRaces(demo);
     const text = formatResultsText(demo, races);
 
     expect(text.startsWith("*5000m TT on 28 September 2026*\n\n*Girls:*\n")).toBe(true);

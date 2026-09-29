@@ -110,16 +110,6 @@ export type PhotoRecord = {
   data: string;
 };
 
-export type FlagKind = "too-fast" | "over-count" | "unknown-bib" | "count-lag";
-
-export type DataFlag = {
-  kind: FlagKind;
-  runnerId?: string;
-  bib: string;
-  index: number;
-  detail: string;
-};
-
 export type Pair = {
   index: number;
   tap: Tap | null;

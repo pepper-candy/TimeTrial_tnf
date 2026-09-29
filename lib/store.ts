@@ -29,10 +29,6 @@ function redis(): Redis | null {
   return redisClient;
 }
 
-export function hasRedis(): boolean {
-  return Boolean(redis());
-}
-
 function eventKey(code: string) {
   return `tt:event:${normalizeCode(code)}`;
 }

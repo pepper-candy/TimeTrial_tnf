@@ -45,13 +45,12 @@ describe("runner stats", () => {
     });
     const marks = splits.map((_, i) => ({ id: `m${i}`, bib: "1" }));
     const event = ev({ taps, marks });
-    const races = buildRunnerRaces(event, t);
+    const races = buildRunnerRaces(event);
     const stats = computeRunnerStats(event, races[0], races[0]);
     expect(stats.avgPaceSecPerKm).toBeCloseTo(200, 6);
     expect(stats.speedKmh).toBeCloseTo(18, 6);
     expect(stats.kmSplits).toHaveLength(1);
     expect(stats.kmSplits[0].elapsedMs).toBe(200_000);
-    expect(races[0].eta).toBeGreaterThan(t);
     expect(stats.projectedFinishMs).toBeCloseTo(1_000_000, -2);
     expect(stats.ignoredSplits).toBe(0);
   });
@@ -66,7 +65,7 @@ describe("runner stats", () => {
     });
     const marks = splits.map((_, i) => ({ id: `m${i}`, bib: "1" }));
     const event = ev({ taps, marks });
-    const races = buildRunnerRaces(event, t);
+    const races = buildRunnerRaces(event);
     const stats = computeRunnerStats(event, races[0], races[0]);
     expect(stats.ignoredSplits).toBe(2);
     expect(stats.fastestLapSec).toBeCloseTo(80, 6);
@@ -85,7 +84,7 @@ describe("runner stats", () => {
     });
     const marks = splits.map((_, i) => ({ id: `m${i}`, bib: "1" }));
     const event = ev({ taps, marks });
-    const races = buildRunnerRaces(event, t);
+    const races = buildRunnerRaces(event);
     const stats = computeRunnerStats(event, races[0], races[0]);
     expect(stats.ignoredSplits).toBe(3);
     expect(stats.fastestLapSec).toBeNull();
@@ -103,7 +102,7 @@ describe("runner stats", () => {
     });
     const marks = splits.map((_, i) => ({ id: `m${i}`, bib: "1" }));
     const event = ev({ taps, marks });
-    const races = buildRunnerRaces(event, t);
+    const races = buildRunnerRaces(event);
     const stats = computeRunnerStats(event, races[0], races[0]);
     expect(stats.ignoredSplits).toBe(0);
     expect(stats.fastestLapSec).toBeCloseTo(20, 6);
@@ -119,7 +118,7 @@ describe("runner stats", () => {
     });
     const marks = splits.map((_, i) => ({ id: `m${i}`, bib: "1" }));
     const event = ev({ taps, marks });
-    const races = buildRunnerRaces(event, t);
+    const races = buildRunnerRaces(event);
     expect(halfSplitFor(event, races[0])).toBeNull();
   });
 });
@@ -133,7 +132,7 @@ describe("demo race", () => {
     expect(demo.taps.length).toBeGreaterThan(30);
     expect(demo.marks.length).toBe(demo.taps.length);
     expect(demo.runners.filter((r) => r.category === "Girls")).toHaveLength(2);
-    const races = buildRunnerRaces(demo, now);
+    const races = buildRunnerRaces(demo);
     expect(races.some((r) => r.finished || r.bell || r.lapDown > 0)).toBe(true);
     expect(races[0].crossings.length).toBeGreaterThan(races[races.length - 1].crossings.length);
   });

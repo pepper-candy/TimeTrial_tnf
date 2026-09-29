@@ -156,5 +156,3 @@ export function makeDemoEvent(
   };
   return advanceDemo(event, raceNow(event, now));
 }
-
-export { advanceDemo, raceNow } from "./demo-run";

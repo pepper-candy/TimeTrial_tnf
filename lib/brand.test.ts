@@ -8,7 +8,6 @@ import {
   APP_TITLE_TEMPLATE,
   boardDocumentTitle,
   boardShareHeadline,
-  documentTitle,
 } from "./brand";
 import { iconSvg } from "./icon-svg";
 
@@ -23,11 +22,7 @@ describe("brand copy", () => {
     expect(APP_DESCRIPTION).toMatch(/splits, paces and rankings/);
   });
 
-  it("builds per-page and board titles", () => {
-    expect(documentTitle("Timer")).toBe("Timer · TNF Time Trial");
-    expect(documentTitle("Marker")).toBe("Marker · TNF Time Trial");
-    expect(documentTitle("Admin")).toBe("Admin · TNF Time Trial");
-    expect(documentTitle("New Event")).toBe("New Event · TNF Time Trial");
+  it("builds board titles", () => {
     expect(boardDocumentTitle("Friday 5000")).toBe("Friday 5000 · Live Board");
     expect(boardDocumentTitle("  ")).toBe("Time trial · Live Board");
     expect(boardShareHeadline("Friday 5000")).toBe("Friday 5000");

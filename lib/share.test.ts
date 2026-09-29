@@ -7,7 +7,6 @@ describe("helper link", () => {
     expect(url).toBe("https://tt.example.com/e/AB12C/help");
     expect(url).not.toMatch(/\n|pin|token/i);
     expect(eventLinks("https://tt.example.com/", "AB12C").helper).toBe(url);
-    expect(eventLinks("https://x.dev", "Q").admin).toBe("https://x.dev/e/Q/admin");
     expect(eventLinks("https://x.dev", "Q").board).toBe("https://x.dev/e/Q/board");
   });
 });

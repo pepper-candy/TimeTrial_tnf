@@ -4,13 +4,8 @@ import {
   appendMark,
   appendTap,
   buildRunnerRaces,
-  collectFlags,
   compareRank,
-  deleteMark,
-  insertMark,
-  predictedTileOrder,
   reassignMark,
-  swapMarks,
   unmatchedTaps,
   zipPairs,
 } from "./race";
@@ -70,18 +65,11 @@ describe("pairing", () => {
     expect(b[0].t).toBe(5);
   });
 
-  it("inserts, deletes, swaps, and reassigns marks", () => {
+  it("reassigns a mark bib", () => {
     let marks = appendMark([], "1");
     marks = appendMark(marks, "2");
-    marks = appendMark(marks, "7");
-    marks = insertMark(marks, 1, "99");
-    expect(marks.map((m) => m.bib)).toEqual(["1", "99", "2", "7"]);
-    marks = deleteMark(marks, 1);
-    expect(marks.map((m) => m.bib)).toEqual(["1", "2", "7"]);
-    marks = swapMarks(marks, 0, 2);
-    expect(marks.map((m) => m.bib)).toEqual(["7", "2", "1"]);
     marks = reassignMark(marks, 1, "3");
-    expect(marks.map((m) => m.bib)).toEqual(["7", "3", "1"]);
+    expect(marks.map((m) => m.bib)).toEqual(["1", "3"]);
   });
 });
 
@@ -103,7 +91,7 @@ describe("ranking and lapped runners", () => {
         { id: "m5", bib: "2" },
       ],
     });
-    const races = buildRunnerRaces(ev, 1_000_300_000);
+    const races = buildRunnerRaces(ev);
     expect(races[0].runner.bib).toBe("1");
     expect(races[0].crossings).toHaveLength(3);
     expect(races[1].runner.bib).toBe("2");
@@ -126,7 +114,7 @@ describe("ranking and lapped runners", () => {
         { id: "m3", bib: "1" },
       ],
     });
-    const races = buildRunnerRaces(ev, 1_000_162_000);
+    const races = buildRunnerRaces(ev);
     expect(races[0].runner.bib).toBe("1");
     expect(races[1].runner.bib).toBe("2");
     expect(races[1].crossings).toHaveLength(1);
@@ -148,32 +136,7 @@ describe("ranking and lapped runners", () => {
   });
 });
 
-describe("predicted next arrival", () => {
-  it("queues a slower lapped runner behind a faster one even if they last appeared later", () => {
-    const ev = event({
-      startedAt: 0,
-      taps: [
-        { id: "t1", t: 200_000 },
-        { id: "t2", t: 400_000 },
-        { id: "t3", t: 410_000 },
-        { id: "t4", t: 600_000 },
-      ],
-      marks: [
-        { id: "m1", bib: "1" },
-        { id: "m2", bib: "1" },
-        { id: "m3", bib: "2" },
-        { id: "m4", bib: "1" },
-      ],
-    });
-    const races = buildRunnerRaces(ev, 610_000);
-    const tiles = predictedTileOrder(races);
-    expect(tiles[0].runner.bib).toBe("1");
-    expect(tiles[1].runner.bib).toBe("2");
-    expect(tiles[0].eta).toBeLessThan(tiles[1].eta!);
-  });
-});
-
-describe("flags", () => {
+describe("extra crossings", () => {
   it("does not let extra crossings leapfrog a faster finisher", () => {
     const ev = event({
       taps: [
@@ -188,52 +151,9 @@ describe("flags", () => {
       ],
       course: { ...defaultFiveK(), requiredCrossings: 1, totalDistanceM: 200, firstPartialM: 200 },
     });
-    const races = buildRunnerRaces(ev, 1_002_000_000);
+    const races = buildRunnerRaces(ev);
     expect(races[0].runner.bib).toBe("1");
     expect(races[0].finished).toBe(true);
-    expect(races[1].flags.some((f) => f.kind === "over-count")).toBe(true);
-  });
-
-  it("flags a same-runner double within a physically impossible split", () => {
-    const ev = event({
-      taps: [
-        { id: "t1", t: 1_000_010_000 },
-        { id: "t2", t: 1_000_010_500 },
-      ],
-      marks: [
-        { id: "m1", bib: "1" },
-        { id: "m2", bib: "1" },
-      ],
-    });
-    const races = buildRunnerRaces(ev, 1_000_020_000);
-    const r1 = races.find((r) => r.runner.bib === "1")!;
-    expect(r1.flags.some((f) => f.kind === "too-fast")).toBe(true);
-  });
-
-  it("flags tap/mark count lag beyond the normal 2-body delay, not a healthy trail", () => {
-    const ok = event({
-      taps: [
-        { id: "a", t: 10 },
-        { id: "b", t: 20 },
-        { id: "c", t: 30 },
-      ],
-      marks: [{ id: "m1", bib: "1" }],
-    });
-    const racesOk = buildRunnerRaces(ok);
-    expect(collectFlags(ok, racesOk).some((f) => f.kind === "count-lag")).toBe(false);
-
-    const bad = event({
-      taps: [
-        { id: "a", t: 10 },
-        { id: "b", t: 20 },
-        { id: "c", t: 30 },
-        { id: "d", t: 40 },
-        { id: "e", t: 50 },
-      ],
-      marks: [{ id: "m1", bib: "1" }],
-    });
-    const racesBad = buildRunnerRaces(bad);
-    const lag = collectFlags(bad, racesBad).find((f) => f.kind === "count-lag");
-    expect(lag?.detail).toBe("5 taps · 1 marks");
+    expect(races[1].crossings).toHaveLength(1);
   });
 });

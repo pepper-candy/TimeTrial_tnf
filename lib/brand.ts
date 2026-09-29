@@ -28,10 +28,6 @@ export function siteUrl(): string {
   return "http://localhost:3000";
 }
 
-export function documentTitle(page: string): string {
-  return APP_TITLE_TEMPLATE.replace("%s", page);
-}
-
 /** Public Board share preview — event name only, never runner PII. */
 export function boardDocumentTitle(eventName: string): string {
   const name = eventName.trim() || "Time trial";
