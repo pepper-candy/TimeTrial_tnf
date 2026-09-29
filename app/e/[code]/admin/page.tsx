@@ -60,7 +60,7 @@ function AdminInner({ code }: { code: string }) {
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "Boys" });
   const [draftPhoto, setDraftPhoto] = useState<File | null>(null);
   const [draftPreview, setDraftPreview] = useState<string | null>(null);
-  const draftFile = useRef<HTMLInputElement>(null);
+  const draftCamera = useRef<HTMLInputElement>(null);
   const [fixId, setFixId] = useState<string | null>(null);
   const [gone, setGone] = useState<{ runner: Runner; index: number } | null>(null);
   const goneRef = useRef<{ runner: Runner; index: number } | null>(null);
@@ -323,8 +323,8 @@ function AdminInner({ code }: { code: string }) {
                 <button
                   type="button"
                   className="tap relative grid w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-panel2 text-3xl font-black text-dim ring-1 ring-line"
-                  aria-label="Add photo"
-                  onClick={() => draftFile.current?.click()}
+                  aria-label="Take photo"
+                  onClick={() => draftCamera.current?.click()}
                 >
                   {draftPreview ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -397,10 +397,11 @@ function AdminInner({ code }: { code: string }) {
                   </div>
                 </div>
                 <input
-                  ref={draftFile}
+                  ref={draftCamera}
                   type="file"
                   accept="image/*"
-                  className="hidden"
+                  capture="environment"
+                  className="sr-only"
                   onChange={(e) => {
                     const picked = e.target.files?.[0];
                     e.target.value = "";
@@ -875,7 +876,7 @@ function RunnerRow({
           ref={file}
           type="file"
           accept="image/*"
-          className="hidden"
+          className="sr-only"
           onChange={(e) => {
             const picked = e.target.files?.[0];
             e.target.value = "";

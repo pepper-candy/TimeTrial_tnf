@@ -33,12 +33,14 @@ export function SwipeRow({
   onDelete,
   label,
   disabled,
+  swipe = true,
   className = "",
 }: {
   children: ReactNode;
   onDelete: () => void;
   label: string;
   disabled?: boolean;
+  swipe?: boolean;
   className?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
@@ -78,6 +80,24 @@ export function SwipeRow({
 
   if (disabled) {
     return <div className={className}>{children}</div>;
+  }
+
+  if (!swipe) {
+    return (
+      <div className={`relative flex overflow-hidden ${className}`}>
+        <div className="min-w-0 flex-1">{children}</div>
+        <button
+          type="button"
+          aria-label={label}
+          className="relative flex w-14 shrink-0 items-center justify-center self-stretch bg-inherit text-stop"
+          onClick={onDelete}
+        >
+          <span className="absolute inset-0 bg-inherit" aria-hidden />
+          <span className="absolute inset-0 bg-stop/15" aria-hidden />
+          <TrashIcon size={20} className="relative" />
+        </button>
+      </div>
+    );
   }
 
   function onPointerDown(e: PointerEvent<HTMLDivElement>) {

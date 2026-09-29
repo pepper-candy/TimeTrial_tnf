@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
-import { Chip, Screen, TopBar } from "@/components/shell";
+import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
@@ -32,14 +32,6 @@ type Editor =
   | { mode: "time"; index: number; tapId: string }
   | { mode: "bib-edit" | "bib-insert"; index: number; markId?: string };
 
-type Hist =
-  | { kind: "tap-delete"; id: string }
-  | { kind: "tap-insert"; id: string }
-  | { kind: "mark-delete"; id: string }
-  | { kind: "mark-insert"; id: string }
-  | { kind: "reassign"; id: string; prevBib: string }
-  | { kind: "time"; id: string; prevT: number; estimated: boolean };
-
 export default function RecordsPage() {
   const { code } = useParams<{ code: string }>();
   return (
@@ -54,9 +46,7 @@ function RecordsInner({ code }: { code: string }) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [filter, setFilter] = useState<"all" | "flagged">("all");
   const [typed, setTyped] = useState("");
-  const [hist, setHist] = useState<Hist[]>([]);
   const latest = useRef<EventState | null>(null);
-  const histRef = useRef<Hist[]>([]);
   const typedRef = useRef("");
   const editorRef = useRef<Editor | null>(null);
   const chain = useRef(Promise.resolve());
@@ -64,20 +54,9 @@ function RecordsInner({ code }: { code: string }) {
   useEffect(() => {
     latest.current = event;
   }, [event]);
-  useEffect(() => {
-    histRef.current = hist;
-  }, [hist]);
 
   function later(task: () => Promise<void>) {
     chain.current = chain.current.then(task, task);
-  }
-
-  function remember(entry: Hist) {
-    setHist((h) => {
-      const next = [...h, entry].slice(-40);
-      histRef.current = next;
-      return next;
-    });
   }
 
   async function post(path: "taps" | "marks", body: Record<string, unknown>) {
@@ -117,7 +96,6 @@ function RecordsInner({ code }: { code: string }) {
     if (!id) return;
     later(async () => {
       await post("taps", { action: "tap-delete", id });
-      remember({ kind: "tap-delete", id });
     });
   }
 
@@ -126,25 +104,18 @@ function RecordsInner({ code }: { code: string }) {
     if (!id) return;
     later(async () => {
       await post("marks", { action: "delete", id });
-      remember({ kind: "mark-delete", id });
     });
   }
 
   function insertTap(index: number) {
     later(async () => {
-      const before = new Set((latest.current?.taps ?? []).map((t) => t.id));
-      const next = await post("taps", { action: "tap-insert-at", index });
-      const added = next.taps.find((t) => !before.has(t.id));
-      if (added) remember({ kind: "tap-insert", id: added.id });
+      await post("taps", { action: "tap-insert-at", index });
     });
   }
 
   function insertBib(index: number, bib: string) {
     later(async () => {
-      const before = new Set((latest.current?.marks ?? []).map((m) => m.id));
-      const next = await post("marks", { action: "insert", index, bib });
-      const added = next.marks.find((m) => !before.has(m.id));
-      if (added) remember({ kind: "mark-insert", id: added.id });
+      await post("marks", { action: "insert", index, bib });
     });
   }
 
@@ -161,12 +132,8 @@ function RecordsInner({ code }: { code: string }) {
       const submitMs = res.submitMs;
       closeEditor();
       later(async () => {
-        const prev = latest.current?.taps.find((t) => t.id === id);
         const started = latest.current?.startedAt ?? 0;
         await post("taps", { action: "tap-set-time", id, t: started + submitMs });
-        if (prev && prev.t !== started + submitMs) {
-          remember({ kind: "time", id, prevT: prev.t, estimated: Boolean(prev.estimated) });
-        }
       });
       return;
     }
@@ -176,9 +143,7 @@ function RecordsInner({ code }: { code: string }) {
     setTyped(res.typed);
     if (!res.submit) return;
     const index = ed.index;
-    const markId = ed.markId;
     const mode = ed.mode;
-    const prevBib = latest.current?.marks.find((m) => m.id === markId)?.bib;
     closeEditor();
     if (mode === "bib-insert") {
       insertBib(index, res.submit);
@@ -186,39 +151,6 @@ function RecordsInner({ code }: { code: string }) {
     }
     later(async () => {
       await post("marks", { action: "reassign", index, bib: res.submit });
-      if (markId && prevBib != null) remember({ kind: "reassign", id: markId, prevBib });
-    });
-  }
-
-  function undo() {
-    const last = histRef.current[histRef.current.length - 1];
-    if (!last) return;
-    const next = histRef.current.slice(0, -1);
-    histRef.current = next;
-    setHist(next);
-    later(async () => {
-      try {
-        if (last.kind === "tap-delete") await post("taps", { action: "tap-restore", id: last.id });
-        else if (last.kind === "tap-insert") await post("taps", { action: "tap-delete", id: last.id });
-        else if (last.kind === "mark-delete") await post("marks", { action: "restore-mark", id: last.id });
-        else if (last.kind === "mark-insert") await post("marks", { action: "delete", id: last.id });
-        else if (last.kind === "time") {
-          await post("taps", {
-            action: "tap-set-time",
-            id: last.id,
-            t: last.prevT,
-            estimated: last.estimated,
-          });
-        }
-        else if (last.kind === "reassign") {
-          const marks = latest.current?.marks ?? [];
-          const index = marks.filter((m) => m.deletedAt == null).findIndex((m) => m.id === last.id);
-          if (index >= 0) await post("marks", { action: "reassign", index, bib: last.prevBib });
-        }
-      } catch {
-        histRef.current = [...histRef.current, last].slice(-40);
-        setHist(histRef.current);
-      }
     });
   }
 
@@ -243,7 +175,20 @@ function RecordsInner({ code }: { code: string }) {
       <TopBar
         backHref={`/e/${code}/admin`}
         title="Records"
-        info="Row n is timer tap n beside marker bib n. A short tag marks a suspicious row. All / Flagged filters the list. Delete, edit, or insert either side. Undo puts back the last change from this phone."
+        extra={
+          <button
+            type="button"
+            aria-pressed={filter === "flagged"}
+            aria-label={filter === "flagged" ? "Show all rows" : "Show flagged rows"}
+            className={`tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl ring-1 ring-line ${
+              filter === "flagged" ? "bg-sand text-ink" : "bg-panel2 text-dim"
+            }`}
+            onClick={() => setFilter((mode) => (mode === "flagged" ? "all" : "flagged"))}
+          >
+            <FlagIcon />
+          </button>
+        }
+        info="Row n is timer tap n beside marker bib n. A short tag marks a suspicious row. The flag shows only tagged rows. Delete, edit, or insert either side."
       />
       <p
         className={`h-5 shrink-0 text-center text-[11px] font-bold uppercase tracking-[0.16em] ${
@@ -252,14 +197,6 @@ function RecordsInner({ code }: { code: string }) {
       >
         {counts.taps} taps · {counts.bibs} bibs
       </p>
-      <div className="flex shrink-0 gap-2 px-3 pb-2">
-        <Chip size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
-          All
-        </Chip>
-        <Chip size="sm" active={filter === "flagged"} onClick={() => setFilter("flagged")}>
-          Flagged
-        </Chip>
-      </div>
       <Windowed
         key={filter}
         count={visible.length}
@@ -294,9 +231,8 @@ function RecordsInner({ code }: { code: string }) {
           );
         }}
       </Windowed>
-      <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-        {editor ? (
-          <div className="mb-2">
+      {editor ? (
+        <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
             <div className="mb-2 flex items-center gap-2">
               <div
                 className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-[12px] bg-panel font-mono text-3xl font-black tabular tracking-[0.08em] ring-1 ring-line"
@@ -336,18 +272,18 @@ function RecordsInner({ code }: { code: string }) {
                 </button>
               ))}
             </div>
-          </div>
-        ) : null}
-        <button
-          type="button"
-          className="tap h-12 w-full rounded-[12px] bg-panel2 text-base font-black uppercase tracking-[0.14em] ring-1 ring-line disabled:cursor-default disabled:text-dim/40 disabled:ring-line/50"
-          onClick={undo}
-          disabled={hist.length === 0}
-        >
-          Undo
-        </button>
-      </div>
+        </div>
+      ) : null}
     </Screen>
+  );
+}
+
+function FlagIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M5.2 1.6h2.4v20.8H5.2z" />
+      <path d="M7.6 3h12.2L16.6 7.4 19.8 11.8H7.6z" />
+    </svg>
   );
 }
 
@@ -433,6 +369,7 @@ function RecordLine({
         <SwipeRow
           label="Delete tap"
           disabled={!row.tap}
+          swipe={false}
           onDelete={onDeleteTap}
           className={`h-full rounded-xl ${
             row.tap ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
@@ -455,6 +392,7 @@ function RecordLine({
         <SwipeRow
           label="Delete bib"
           disabled={!row.mark}
+          swipe={false}
           onDelete={onDeleteBib}
           className={`h-full rounded-xl ${
             row.mark ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
@@ -495,16 +433,16 @@ function RecordLine({
       ) : null}
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <div className="grid grid-cols-2 gap-1">
-          <RowBtn label="Edit tap time" disabled={!row.tap} on={editing === "time"} onClick={onEditTime}>
-            Time
+          <RowBtn label="Change tap time" disabled={!row.tap} on={editing === "time"} onClick={onEditTime}>
+            Change
           </RowBtn>
           <RowBtn label="Insert tap" onClick={onInsertTap}>
             + tap
           </RowBtn>
         </div>
         <div className="grid grid-cols-2 gap-1">
-          <RowBtn label="Edit bib" disabled={!row.mark} on={editing === "bib-edit"} onClick={onEditBib}>
-            Bib
+          <RowBtn label="Change bib" disabled={!row.mark} on={editing === "bib-edit"} onClick={onEditBib}>
+            Change
           </RowBtn>
           <RowBtn label="Insert bib" on={editing === "bib-insert"} onClick={onInsertBib}>
             + bib
