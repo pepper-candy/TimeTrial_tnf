@@ -7,7 +7,7 @@ import {
   siteUrl,
 } from "@/lib/brand";
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Saira_Condensed } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,6 +18,13 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const display = Saira_Condensed({
+  variable: "--font-saira",
+  subsets: ["latin"],
+  weight: ["700", "900"],
+  style: ["normal"],
 });
 
 export const metadata: Metadata = {
@@ -65,7 +72,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full bg-void antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${display.variable} h-full bg-void antialiased`}
     >
       <body className="min-h-full min-h-dvh bg-void text-sand font-sans">{children}</body>
     </html>
