@@ -1,12 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
-import { Field } from "@/components/shell";
-import { UndoToast } from "@/components/undo-toast";
+import { SwipeRow } from "@/components/swipe-row";
 import { formatClock, formatEst } from "@/lib/format";
-import { splitEstimated, type RunnerRace } from "@/lib/race";
+import { liveMarks, splitEstimated, type Crossing, type RunnerRace } from "@/lib/race";
+import { RECORD_TAG_LABEL, recordRowTags, recordRows, type RecordTag } from "@/lib/records";
 import type { EventState } from "@/lib/types";
+
+const TAG_CLASS: Record<RecordTag, string> = {
+  "too-fast": "bg-stop/15 text-stop",
+  duplicate: "bg-accent/15 text-accent",
+  "too-slow": "bg-bell/15 text-bell",
+  "unknown-bib": "bg-bell/15 text-bell",
+  "no-tap": "bg-stop/15 text-stop",
+  "no-bib": "bg-stop/15 text-stop",
+  edited: "bg-sky/15 text-sky",
+};
+
+const MOVE =
+  "tap h-14 w-full rounded-xl bg-panel text-[13px] font-black ring-1 ring-line disabled:text-dim/30";
 
 export function CrossingEditor({
   event,
@@ -20,13 +33,31 @@ export function CrossingEditor({
   onEdit: (body: Record<string, unknown>) => Promise<void>;
 }) {
   const r = race.runner;
-  const [bibDraft, setBibDraft] = useState<Record<string, string>>({});
-  const [toast, setToast] = useState<{ tapId?: string; markId?: string } | null>(null);
+  const [gone, setGone] = useState<{ slot: number; tapId?: string; markId?: string } | null>(null);
+  const lastIndex = Math.max(0, liveMarks(event.marks).length - 1);
+  const tagLists = recordRowTags(event, recordRows(event));
 
-  async function del(index: number, tapId?: string, markId?: string) {
+  async function del(slot: number, index: number, tapId?: string, markId?: string) {
     await onEdit({ action: "pair-delete", index, actor: "admin" });
-    setToast({ tapId, markId });
+    setGone({ slot, tapId, markId });
   }
+
+  async function undo() {
+    if (!gone) return;
+    await onEdit({
+      action: "restore-last",
+      actor: "admin",
+      tapId: gone.tapId,
+      markId: gone.markId,
+    });
+    setGone(null);
+  }
+
+  type Row =
+    | { kind: "cross"; crossing: Crossing; lap: number }
+    | { kind: "gone" };
+  const rows: Row[] = race.crossings.map((crossing, lap) => ({ kind: "cross", crossing, lap }));
+  if (gone) rows.splice(Math.min(gone.slot, rows.length), 0, { kind: "gone" });
 
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/70" onClick={onClose}>
@@ -42,101 +73,204 @@ export function CrossingEditor({
           </div>
         </div>
         <div className="mt-4 space-y-2">
-          {race.crossings.length === 0 ? (
+          {rows.length === 0 ? (
             <p className="py-8 text-center text-sm text-dim">No crossings</p>
           ) : (
-            race.crossings.map((c, i) => {
-              const split = race.splitMs[i];
-              const estSplit = splitEstimated(race.crossings, i);
-              const draft = bibDraft[c.markId] ?? c.bib;
-              return (
-                <div key={c.tapId} className="rounded-2xl bg-panel2 p-3 ring-1 ring-line">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 font-mono text-xs font-black tabular text-dim">{i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-mono text-xl font-black tabular">
-                        {formatEst(formatClock(c.elapsedMs), c.estimated)}
-                      </div>
-                      {split != null ? (
-                        <div className="font-mono text-xs font-bold tabular text-accent">
-                          {formatEst(formatClock(split, 1), estSplit)}
-                        </div>
-                      ) : null}
-                    </div>
-                    <Field
-                      value={draft}
-                      onChange={(v) => setBibDraft((d) => ({ ...d, [c.markId]: v }))}
-                      placeholder="Bib"
-                      inputMode="numeric"
-                      className="h-12 w-20 font-mono text-xl font-black tabular"
-                      onSubmit={() => {
-                        if (draft && draft !== c.bib) {
-                          void onEdit({
-                            action: "reassign",
-                            index: c.index,
-                            bib: draft,
-                            actor: "admin",
-                          });
-                        }
-                      }}
-                    />
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      className="tap h-12 rounded-xl bg-panel font-black ring-1 ring-line"
-                      disabled={c.index <= 0}
-                      onClick={() =>
-                        void onEdit({ action: "move", index: c.index, to: c.index - 1, actor: "admin" })
-                      }
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="tap h-12 rounded-xl bg-panel font-black ring-1 ring-line"
-                      onClick={() =>
-                        void onEdit({ action: "move", index: c.index, to: c.index + 1, actor: "admin" })
-                      }
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      className="tap h-12 rounded-xl bg-stop/20 font-black text-stop ring-1 ring-stop"
-                      onClick={() => void del(c.index, c.tapId, c.markId)}
-                    >
-                      Del
-                    </button>
-                  </div>
-                </div>
-              );
-            })
+            rows.map((row) =>
+              row.kind === "gone" ? (
+                <button
+                  key="deleted"
+                  type="button"
+                  className="tap flex h-12 w-full items-center justify-center rounded-xl bg-panel2 text-sm font-black ring-1 ring-line"
+                  onClick={() => void undo()}
+                >
+                  <span className="text-dim">Deleted</span>
+                  <span className="px-1.5 text-dim">·</span>
+                  <span className="text-accent">Undo</span>
+                </button>
+              ) : (
+                <CrossingRow
+                  key={row.crossing.tapId}
+                  crossing={row.crossing}
+                  lap={row.lap + 1}
+                  splitMs={race.splitMs[row.lap]}
+                  estSplit={splitEstimated(race.crossings, row.lap)}
+                  tags={tagLists[row.crossing.index] ?? []}
+                  upDisabled={row.crossing.index <= 0}
+                  downDisabled={row.crossing.index >= lastIndex}
+                  onCommit={(bib) =>
+                    onEdit({
+                      action: "reassign",
+                      index: row.crossing.index,
+                      bib,
+                      actor: "admin",
+                    })
+                  }
+                  onUp={() =>
+                    void onEdit({
+                      action: "move",
+                      index: row.crossing.index,
+                      to: row.crossing.index - 1,
+                      actor: "admin",
+                    })
+                  }
+                  onDown={() =>
+                    void onEdit({
+                      action: "move",
+                      index: row.crossing.index,
+                      to: row.crossing.index + 1,
+                      actor: "admin",
+                    })
+                  }
+                  onDelete={() =>
+                    void del(row.lap, row.crossing.index, row.crossing.tapId, row.crossing.markId)
+                  }
+                />
+              ),
+            )
           )}
         </div>
         <button
           type="button"
-          className="tap mt-4 h-14 w-full rounded-2xl bg-panel2 font-bold ring-1 ring-line"
+          className="tap mt-3 h-12 w-full rounded-xl bg-panel2 text-sm font-black ring-1 ring-line"
+          onClick={() =>
+            void onEdit({ action: "pair-insert-estimated", bib: r.bib, actor: "admin" })
+          }
+        >
+          Insert crossing
+        </button>
+        <button
+          type="button"
+          className="tap mt-2 h-14 w-full rounded-2xl bg-panel2 font-bold ring-1 ring-line"
           onClick={onClose}
         >
           Close
         </button>
       </div>
-      {toast ? (
-        <UndoToast
-          message="Crossing deleted"
-          onUndo={() => {
-            void onEdit({
-              action: "restore-last",
-              actor: "admin",
-              tapId: toast.tapId,
-              markId: toast.markId,
-            });
-            setToast(null);
-          }}
-          onGone={() => setToast(null)}
-        />
-      ) : null}
+    </div>
+  );
+}
+
+function CrossingRow({
+  crossing,
+  lap,
+  splitMs,
+  estSplit,
+  tags,
+  upDisabled,
+  downDisabled,
+  onCommit,
+  onUp,
+  onDown,
+  onDelete,
+}: {
+  crossing: Crossing;
+  lap: number;
+  splitMs: number | undefined;
+  estSplit: boolean;
+  tags: RecordTag[];
+  upDisabled: boolean;
+  downDisabled: boolean;
+  onCommit: (bib: string) => Promise<void>;
+  onUp: () => void;
+  onDown: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <SwipeRow
+      label="Delete crossing"
+      onDelete={onDelete}
+      className="rounded-2xl bg-panel2 ring-1 ring-line"
+    >
+      <div className="p-3">
+        <div className="flex items-start gap-2">
+          <span className="flex h-12 w-6 shrink-0 items-center font-mono text-xs font-black tabular text-dim">
+            {lap}
+          </span>
+          <div className="flex h-12 min-w-0 flex-1 flex-col justify-center">
+            <div className="truncate font-mono text-2xl font-black leading-none tabular">
+              {formatEst(formatClock(crossing.elapsedMs), crossing.estimated)}
+            </div>
+            {splitMs != null ? (
+              <div className="mt-1 truncate font-mono text-xs font-bold leading-none tabular text-accent">
+                {formatEst(formatClock(splitMs, 1), estSplit)}
+              </div>
+            ) : null}
+          </div>
+          <BibBox bib={crossing.bib} onCommit={onCommit} />
+        </div>
+        <div className="mt-1.5 flex h-5 items-center gap-1 overflow-hidden">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap ${TAG_CLASS[tag]}`}
+            >
+              {RECORD_TAG_LABEL[tag]}
+            </span>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button type="button" className={MOVE} disabled={upDisabled} onClick={onUp} aria-label="Move earlier">
+            ↑ Earlier
+          </button>
+          <button type="button" className={MOVE} disabled={downDisabled} onClick={onDown} aria-label="Move later">
+            ↓ Later
+          </button>
+        </div>
+      </div>
+    </SwipeRow>
+  );
+}
+
+function BibBox({ bib, onCommit }: { bib: string; onCommit: (next: string) => Promise<void> }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [ack, setAck] = useState<string | null>(null);
+  const busy = useRef(false);
+  const value = draft ?? bib;
+  const saved = ack != null && ack === value;
+
+  async function commit() {
+    if (busy.current) return;
+    const next = value.trim();
+    if (!next || next === bib) {
+      setDraft(null);
+      return;
+    }
+    busy.current = true;
+    setAck(next);
+    try {
+      await onCommit(next);
+      setDraft(null);
+    } catch {
+      setAck(null);
+    } finally {
+      busy.current = false;
+    }
+  }
+
+  return (
+    <div className="w-[4.5rem] shrink-0">
+      <input
+        value={value}
+        placeholder="Bib"
+        aria-label="Bib"
+        inputMode="numeric"
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setAck(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        onBlur={() => void commit()}
+        className="h-12 w-full rounded-xl bg-panel px-1 text-center font-mono text-lg font-black tabular text-sand ring-1 ring-line"
+      />
+      <div className="h-4 text-center text-[10px] font-black leading-4 text-go" aria-live="polite">
+        {saved ? "✓ Saved" : ""}
+      </div>
     </div>
   );
 }

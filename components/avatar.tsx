@@ -13,6 +13,7 @@ export function Avatar({
   className = "",
   overlay = true,
   lightbox = false,
+  onReplace,
 }: {
   runner: Pick<Runner, "id" | "name" | "bib" | "photoVer">;
   eventId?: string;
@@ -20,6 +21,7 @@ export function Avatar({
   className?: string;
   overlay?: boolean;
   lightbox?: boolean;
+  onReplace?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const src =
@@ -60,6 +62,7 @@ export function Avatar({
             : undefined
         }
         role={canOpen ? "button" : undefined}
+        aria-label={canOpen ? "Photo" : undefined}
       >
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -85,7 +88,12 @@ export function Avatar({
         ) : null}
       </div>
       {open && full ? (
-        <PhotoLightbox src={full} alt={runner.name || runner.bib} onClose={() => setOpen(false)} />
+        <PhotoLightbox
+          src={full}
+          alt={runner.name || runner.bib}
+          onClose={() => setOpen(false)}
+          onReplace={onReplace}
+        />
       ) : null}
     </>
   );

@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
+import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { json, useEvent } from "@/lib/client/hooks";
@@ -248,29 +249,26 @@ function TimerInner({ code }: { code: string }) {
         <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
           <ul className="flex flex-col gap-1.5">
             {rows.map((row) => (
-              <li
-                key={row.id}
-                className={`grid grid-cols-[2.5rem_minmax(0,1fr)_auto_2.75rem] items-center gap-2 rounded-xl px-3 py-1.5 ${
-                  row.estimated ? "bg-panel ring-1 ring-accent/50" : "bg-panel2"
-                }`}
-              >
-                <span className="font-mono text-sm font-bold tabular text-dim">
-                  {String(row.n).padStart(2, "0")}
-                </span>
-                <span className="truncate text-center font-mono text-sm font-bold tabular text-dim">
-                  {formatStopwatch(row.splitMs, true)}
-                </span>
-                <span className="font-mono text-base font-black tabular">
-                  {formatEst(formatStopwatch(row.elapsedMs), row.estimated)}
-                </span>
-                <button
-                  type="button"
-                  className="tap grid h-11 w-11 place-items-center rounded-lg text-dim active:bg-sand active:text-ink"
-                  aria-label={`Delete tap ${row.n}`}
-                  onClick={() => void deleteTap(row.id)}
+              <li key={row.id}>
+                <SwipeRow
+                  label={`Delete tap ${row.n}`}
+                  onDelete={() => void deleteTap(row.id)}
+                  className={`min-h-11 rounded-xl ${
+                    row.estimated ? "bg-panel ring-1 ring-accent/50" : "bg-panel2"
+                  }`}
                 >
-                  <TrashIcon />
-                </button>
+                  <div className="grid min-h-11 grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1.5">
+                    <span className="font-mono text-sm font-bold tabular text-dim">
+                      {String(row.n).padStart(2, "0")}
+                    </span>
+                    <span className="truncate text-center font-mono text-sm font-bold tabular text-dim">
+                      {formatStopwatch(row.splitMs, true)}
+                    </span>
+                    <span className="font-mono text-base font-black tabular">
+                      {formatEst(formatStopwatch(row.elapsedMs), row.estimated)}
+                    </span>
+                  </div>
+                </SwipeRow>
               </li>
             ))}
           </ul>
@@ -312,22 +310,3 @@ function TimerInner({ code }: { code: string }) {
   );
 }
 
-function TrashIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 7h16" />
-      <path d="M9 7V5h6v2" />
-      <path d="M8 7l1 13h6l1-13" />
-    </svg>
-  );
-}

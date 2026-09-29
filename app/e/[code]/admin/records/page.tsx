@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Chip, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
@@ -321,8 +322,8 @@ function RecordsInner({ code }: { code: string }) {
                   key={key.id}
                   type="button"
                   className={`tap h-14 rounded-2xl bg-panel2 font-black tabular text-sand ring-1 ring-line active:bg-sand active:text-ink ${
-                    key.id === "clear" ? "text-lg" : "text-2xl"
-                  }`}
+                    key.id === "0" ? "col-span-2" : ""
+                  } ${key.id === "clear" ? "text-lg" : "text-2xl"}`}
                   aria-label={key.label}
                   onPointerDown={(e) => {
                     e.preventDefault();
@@ -427,46 +428,56 @@ function RecordLine({
   return (
     <div className="flex h-[134px] flex-col gap-1">
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
-        <div
-          className={`flex min-w-0 items-center gap-1.5 rounded-xl px-2 ${
+        <SwipeRow
+          label="Delete tap"
+          disabled={!row.tap}
+          onDelete={onDeleteTap}
+          className={`h-full rounded-xl ${
             row.tap ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
           }`}
         >
-          <span className="w-6 shrink-0 font-mono text-xs font-bold tabular text-dim">{n}</span>
-          {row.tap && row.elapsedMs != null && row.splitMs != null ? (
-            <span className="min-w-0">
-              <span className="block truncate font-mono text-sm font-black tabular">
-                {formatEst(formatStopwatch(row.elapsedMs), row.estimated)}
+          <div className="flex h-full min-w-0 items-center gap-1.5 px-2">
+            <span className="w-6 shrink-0 font-mono text-xs font-bold tabular text-dim">{n}</span>
+            {row.tap && row.elapsedMs != null && row.splitMs != null ? (
+              <span className="min-w-0">
+                <span className="block truncate font-mono text-sm font-black tabular">
+                  {formatEst(formatStopwatch(row.elapsedMs), row.estimated)}
+                </span>
+                <span className="block truncate font-mono text-[11px] font-bold tabular text-dim">
+                  {formatStopwatch(row.splitMs, true)}
+                </span>
               </span>
-              <span className="block truncate font-mono text-[11px] font-bold tabular text-dim">
-                {formatStopwatch(row.splitMs, true)}
-              </span>
-            </span>
-          ) : null}
-        </div>
-        <div
-          className={`flex min-w-0 items-center gap-1.5 rounded-xl px-2 ${
+            ) : null}
+          </div>
+        </SwipeRow>
+        <SwipeRow
+          label="Delete bib"
+          disabled={!row.mark}
+          onDelete={onDeleteBib}
+          className={`h-full rounded-xl ${
             row.mark ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
           }`}
         >
-          {row.mark ? (
-            <>
-              {runner ? (
-                <Avatar runner={runner} eventId={eventId} size={36} overlay={false} lightbox={false} />
-              ) : (
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-bell/10 font-black text-bell ring-1 ring-bell/40">
-                  ?
+          <div className="flex h-full min-w-0 items-center gap-1.5 px-2">
+            {row.mark ? (
+              <>
+                {runner ? (
+                  <Avatar runner={runner} eventId={eventId} size={36} overlay={false} lightbox={false} />
+                ) : (
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-bell/10 font-black text-bell ring-1 ring-bell/40">
+                    ?
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="block font-mono text-lg font-black leading-none tabular">{bib}</span>
+                  <span className="mt-0.5 block h-4 truncate text-[11px] font-semibold text-dim">
+                    {runner?.name ?? ""}
+                  </span>
                 </span>
-              )}
-              <span className="min-w-0">
-                <span className="block font-mono text-lg font-black leading-none tabular">{bib}</span>
-                <span className="mt-0.5 block h-4 truncate text-[11px] font-semibold text-dim">
-                  {runner?.name ?? ""}
-                </span>
-              </span>
-            </>
-          ) : null}
-        </div>
+              </>
+            ) : null}
+          </div>
+        </SwipeRow>
       </div>
       <div className="flex h-5 shrink-0 items-center gap-1 overflow-hidden">
         {tags.map((tag) => (
@@ -479,10 +490,7 @@ function RecordLine({
         ))}
       </div>
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
-        <div className="grid grid-cols-3 gap-1">
-          <RowBtn label="Delete tap" disabled={!row.tap} onClick={onDeleteTap}>
-            Del
-          </RowBtn>
+        <div className="grid grid-cols-2 gap-1">
           <RowBtn label="Edit tap time" disabled={!row.tap} on={editing === "time"} onClick={onEditTime}>
             Time
           </RowBtn>
@@ -490,10 +498,7 @@ function RecordLine({
             + tap
           </RowBtn>
         </div>
-        <div className="grid grid-cols-3 gap-1">
-          <RowBtn label="Delete bib" disabled={!row.mark} onClick={onDeleteBib}>
-            Del
-          </RowBtn>
+        <div className="grid grid-cols-2 gap-1">
           <RowBtn label="Edit bib" disabled={!row.mark} on={editing === "bib-edit"} onClick={onEditBib}>
             Bib
           </RowBtn>
@@ -519,15 +524,14 @@ function RowBtn({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const tone = on ? "bg-sand text-ink ring-sand" : "bg-panel text-sand ring-line";
   return (
     <button
       type="button"
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className={`tap h-8 whitespace-nowrap rounded-lg px-0.5 text-[10px] font-black uppercase tracking-wide ring-1 disabled:text-dim/30 ${
-        on ? "bg-sand text-ink ring-sand" : "bg-panel text-sand ring-line"
-      }`}
+      className={`tap grid h-8 place-items-center whitespace-nowrap rounded-lg px-0.5 text-[10px] font-black uppercase tracking-wide ring-1 disabled:text-dim/30 ${tone}`}
     >
       {children}
     </button>
@@ -554,7 +558,6 @@ const PAD_KEYS: { id: string; face: string; label: string }[] = [
   { id: "7", face: "7", label: "7" },
   { id: "8", face: "8", label: "8" },
   { id: "9", face: "9", label: "9" },
-  { id: "back", face: "⌫", label: "Backspace" },
   { id: "0", face: "0", label: "0" },
   { id: "clear", face: "Clear", label: "Clear" },
 ];

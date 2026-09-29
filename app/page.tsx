@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { BrandMark } from "@/components/brand-mark";
 import { rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
 import { normalizeCode } from "@/lib/ids";
@@ -89,33 +88,40 @@ export default function HomePage() {
       </div>
 
       <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col px-6 pb-6 pt-[9dvh]">
-        <header className="flex flex-col items-center text-center">
-          <BrandMark className="h-14 w-14 drop-shadow-[0_0_18px_rgba(255,77,46,0.45)]" />
-          <h1 className="home-title mt-4 font-display font-black uppercase italic leading-[0.85] text-accent">
-            <span className="block text-[5.5rem] tracking-[0.04em]">TNF</span>
-            <span className="block text-[2.4rem] tracking-[0.12em] text-sand">Time Trial</span>
+        <header className="home-lockup">
+          <h1 className="home-title flex items-baseline justify-center gap-[0.16em] font-display font-black uppercase italic leading-none whitespace-nowrap">
+            <span className="tracking-[0.04em] text-accent">TNF</span>
+            <span className="text-[0.44em] tracking-[0.12em] text-sand">Time Trial</span>
           </h1>
         </header>
 
         <div className="mt-9 flex flex-col gap-3">
-          <input
-            ref={input}
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value.toUpperCase().replace(/\s/g, ""));
-              setMissing(false);
-            }}
-            placeholder="EVENT CODE"
-            aria-label="Event code"
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-            maxLength={8}
-            className={`h-16 w-full rounded-[10px] bg-black/50 text-center font-mono text-3xl font-black uppercase tabular tracking-[0.3em] ring-2 backdrop-blur-sm placeholder:text-base placeholder:tracking-[0.2em] placeholder:text-dim/70 focus:outline-none ${
-              missing ? "ring-stop" : "ring-line focus:ring-accent"
-            }`}
-            onKeyDown={(e) => e.key === "Enter" && join()}
-          />
+          <div className="relative">
+            <input
+              ref={input}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value.toUpperCase().replace(/\s/g, ""));
+                setMissing(false);
+              }}
+              placeholder="EVENT CODE"
+              aria-label="Event code"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              maxLength={8}
+              className={`home-code w-full rounded-[10px] ring-2 focus:outline-none ${
+                missing ? "ring-stop" : "ring-line focus:ring-accent"
+              }`}
+              onKeyDown={(e) => e.key === "Enter" && join()}
+            />
+            <span aria-hidden className="home-hint">
+              <span className="font-mono text-base font-black uppercase leading-none tracking-[0.2em] text-dim/70">
+                EVENT CODE
+              </span>
+              <span className="home-caret" />
+            </span>
+          </div>
           <button
             type="button"
             onClick={join}

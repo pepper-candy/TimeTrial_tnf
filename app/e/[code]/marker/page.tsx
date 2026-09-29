@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
@@ -203,36 +204,35 @@ function MarkerInner({ code }: { code: string }) {
             const runner = runnerByBib(event.runners, row.bib);
             const shown = padBib(row.bib, width);
             return (
-              <li
-                key={row.id}
-                className={`grid grid-cols-[2.5rem_auto_minmax(0,1fr)_2.75rem] items-center gap-2 rounded-xl px-3 py-1.5 ${
-                  runner ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
-                }`}
-              >
-                <span className="font-mono text-sm font-bold tabular text-dim">
-                  {String(row.n).padStart(2, "0")}
-                </span>
-                {runner ? (
-                  <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
-                ) : (
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-panel font-black text-bell">
-                    ?
-                  </span>
-                )}
-                <span className="min-w-0">
-                  <span className="block font-mono text-2xl font-black leading-none tabular">{shown}</span>
-                  <span className="mt-1 block h-4 truncate text-xs font-semibold text-dim">
-                    {runner?.name ?? ""}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="tap grid h-11 w-11 place-items-center rounded-lg text-dim active:bg-sand active:text-ink"
-                  aria-label={`Delete bib ${shown}`}
-                  onClick={() => deleteRow(row)}
+              <li key={row.id}>
+                <SwipeRow
+                  label={`Delete bib ${shown}`}
+                  onDelete={() => deleteRow(row)}
+                  className={`rounded-xl ${
+                    runner
+                      ? "bg-panel2"
+                      : "bg-[color-mix(in_srgb,var(--color-bell)_12%,var(--color-panel))] ring-1 ring-bell/40"
+                  }`}
                 >
-                  <TrashIcon />
-                </button>
+                  <div className="grid min-h-11 grid-cols-[2.5rem_auto_minmax(0,1fr)] items-center gap-2 px-3 py-1.5">
+                    <span className="font-mono text-sm font-bold tabular text-dim">
+                      {String(row.n).padStart(2, "0")}
+                    </span>
+                    {runner ? (
+                      <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
+                    ) : (
+                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-panel font-black text-bell">
+                        ?
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block font-mono text-2xl font-black leading-none tabular">{shown}</span>
+                      <span className="mt-1 block h-4 truncate text-xs font-semibold text-dim">
+                        {runner?.name ?? ""}
+                      </span>
+                    </span>
+                  </div>
+                </SwipeRow>
               </li>
             );
           })}
@@ -265,8 +265,8 @@ function MarkerInner({ code }: { code: string }) {
               key={key.id}
               type="button"
               className={`tap h-16 rounded-2xl bg-panel2 font-black tabular text-sand ring-1 ring-line active:bg-sand active:text-ink ${
-                key.id === "clear" ? "text-lg" : "text-2xl"
-              }`}
+                key.id === "0" ? "col-span-2" : ""
+              } ${key.id === "clear" ? "text-lg" : "text-2xl"}`}
               aria-label={key.label}
               onPointerDown={(e) => {
                 e.preventDefault();
@@ -292,27 +292,7 @@ const PAD_KEYS: { id: string; face: string; label: string }[] = [
   { id: "7", face: "7", label: "7" },
   { id: "8", face: "8", label: "8" },
   { id: "9", face: "9", label: "9" },
-  { id: "back", face: "⌫", label: "Backspace" },
   { id: "0", face: "0", label: "0" },
   { id: "clear", face: "Clear", label: "Clear" },
 ];
 
-function TrashIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 7h16" />
-      <path d="M9 7V5h6v2" />
-      <path d="M8 7l1 13h6l1-13" />
-    </svg>
-  );
-}

@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { SwipeRow } from "@/components/swipe-row";
+import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
 import { Qr } from "@/components/qr";
 import { BigBtn, Chip, Field, MenuButton, Screen, TopBar, useCopied } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
-import { forgetAdmin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
+import { forgetAdmin, getMasterKey, getStoredPin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
 import { CATEGORIES } from "@/lib/category";
 import { kmCrossings } from "@/lib/course";
@@ -18,6 +20,19 @@ import { recordCounts } from "@/lib/records";
 import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
+
+function runnerSlots(
+  runners: Runner[],
+  gone: { runner: Runner; index: number } | null,
+): Array<{ kind: "runner"; runner: Runner } | { kind: "gone" }> {
+  const kept = runners.filter((r) => r.id !== gone?.runner.id);
+  const slots: Array<{ kind: "runner"; runner: Runner } | { kind: "gone" }> = kept.map((runner) => ({
+    kind: "runner",
+    runner,
+  }));
+  if (gone) slots.splice(Math.min(gone.index, slots.length), 0, { kind: "gone" });
+  return slots;
+}
 
 export default function AdminPage() {
   const { code } = useParams<{ code: string }>();
@@ -33,6 +48,9 @@ function AdminInner({ code }: { code: string }) {
   const { event, setEvent, races } = useEvent(code, 2000);
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "" });
   const [fixId, setFixId] = useState<string | null>(null);
+  const [gone, setGone] = useState<{ runner: Runner; index: number } | null>(null);
+  const goneRef = useRef<{ runner: Runner; index: number } | null>(null);
+  const runnerChain = useRef(Promise.resolve());
   const [storage, setStorage] = useState<{ used: number; cap: number } | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -52,6 +70,66 @@ function AdminInner({ code }: { code: string }) {
   useEffect(() => {
     if (eventName != null) rememberAdmin(code, eventName);
   }, [code, eventName]);
+
+  const postRunners = useCallback((body: Record<string, unknown>) => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const pin = getStoredPin(code);
+    if (pin) headers["X-TT-PIN"] = pin;
+    const key = getMasterKey();
+    if (key) headers["X-TT-KEY"] = key;
+    return fetch(`/api/events/${code}/runners`, {
+      method: "POST",
+      keepalive: true,
+      headers,
+      body: JSON.stringify(body),
+    }).then(async (res) => {
+      if (!res.ok) throw new Error(String(res.status));
+      return res.json() as Promise<{ event: EventState }>;
+    });
+  }, [code]);
+
+  useEffect(() => {
+    return () => {
+      const pending = goneRef.current;
+      if (!pending) return;
+      void postRunners({ action: "purge-photo", id: pending.runner.id });
+    };
+  }, [postRunners]);
+
+  function removeRunner(runner: Runner) {
+    if (!event) return;
+    const index = event.runners.findIndex((r) => r.id === runner.id);
+    const prev = goneRef.current;
+    const next = { runner, index: index < 0 ? 0 : index };
+    goneRef.current = next;
+    setGone(next);
+    runnerChain.current = runnerChain.current
+      .then(async () => {
+        if (prev && prev.runner.id !== runner.id) {
+          await postRunners({ action: "purge-photo", id: prev.runner.id }).catch(() => {});
+        }
+        const data = await postRunners({ action: "delete", id: runner.id });
+        if (goneRef.current?.runner.id === runner.id) setEvent(data.event);
+      })
+      .catch(() => {});
+  }
+
+  function undoRunner() {
+    const current = goneRef.current;
+    if (!current) return;
+    goneRef.current = null;
+    setGone(null);
+    runnerChain.current = runnerChain.current
+      .then(async () => {
+        const data = await postRunners({
+          action: "upsert",
+          runner: current.runner,
+          index: current.index,
+        });
+        setEvent(data.event);
+      })
+      .catch(() => {});
+  }
 
   async function saveRunner(runner: Partial<Runner> & { bib?: string; id?: string }) {
     const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
@@ -207,7 +285,9 @@ function AdminInner({ code }: { code: string }) {
         <section>
           <div className="mb-2 flex items-baseline justify-between">
             <h2 className="text-[11px] font-black uppercase tracking-[0.16em] text-dim">Runners</h2>
-            <span className="font-mono text-2xl font-black tabular">{event.runners.length}</span>
+            <span className="font-mono text-2xl font-black tabular">
+              {event.runners.filter((r) => r.id !== gone?.runner.id).length}
+            </span>
           </div>
           <div className="space-y-2">
             <div className="rounded-2xl bg-panel p-2 ring-1 ring-accent/60">
@@ -251,23 +331,30 @@ function AdminInner({ code }: { code: string }) {
                 </button>
               </div>
             </div>
-            {event.runners.map((r) => (
-              <RunnerRow
-                key={r.id}
-                runner={r}
-                eventId={event.id}
-                onChange={(next) => saveRunner({ id: r.id, ...next })}
-                onPhoto={(f) => photo(r.id, f)}
-                onFix={event.status === "setup" ? undefined : () => setFixId(r.id)}
-                onDelete={async () => {
-                  const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
-                    method: "POST",
-                    body: JSON.stringify({ action: "delete", id: r.id }),
-                  });
-                  setEvent(data.event);
-                }}
-              />
-            ))}
+            {runnerSlots(event.runners, gone).map((slot) =>
+              slot.kind === "gone" ? (
+                <button
+                  key="deleted-runner"
+                  type="button"
+                  className="tap flex h-[7.5rem] w-full items-center justify-center rounded-2xl bg-panel text-sm font-black ring-1 ring-line"
+                  onClick={undoRunner}
+                >
+                  <span className="text-dim">Deleted</span>
+                  <span className="px-1.5 text-dim">·</span>
+                  <span className="text-accent">Undo</span>
+                </button>
+              ) : (
+                <RunnerRow
+                  key={slot.runner.id}
+                  runner={slot.runner}
+                  eventId={event.id}
+                  onChange={(next) => saveRunner({ id: slot.runner.id, ...next })}
+                  onPhoto={(f) => photo(slot.runner.id, f)}
+                  onFix={event.status === "setup" ? undefined : () => setFixId(slot.runner.id)}
+                  onDelete={() => removeRunner(slot.runner)}
+                />
+              ),
+            )}
           </div>
         </section>
       </div>
@@ -593,8 +680,17 @@ function StorageBar({ used, cap }: { used: number; cap: number }) {
 function DeleteButton({ onDelete }: { onDelete: () => void }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <BigBtn tone={confirm ? "danger" : "plain"} className="w-full" onClick={() => (confirm ? onDelete() : setConfirm(true))}>
-      {confirm ? "Tap again to delete" : "Delete event"}
+    <BigBtn
+      tone="plain"
+      className={`w-full ${confirm ? "shadow-[inset_0_0_0_2px_#ff3b5c]" : ""}`}
+      onClick={() => (confirm ? onDelete() : setConfirm(true))}
+    >
+      <span className="inline-flex items-center gap-2">
+        <TrashIcon size={22} className="text-stop" />
+        <span className={confirm ? "text-stop" : undefined}>
+          {confirm ? "Tap again to delete" : "Delete event"}
+        </span>
+      </span>
     </BigBtn>
   );
 }
@@ -632,96 +728,97 @@ function RunnerRow({
   onDelete: () => void;
   onFix?: () => void;
 }) {
-  const cam = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [bib, setBib] = useState(runner.bib);
   const [name, setName] = useState(runner.name);
   const [studentId, setStudentId] = useState(runner.studentId);
-  const [confirmDel, setConfirmDel] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-panel p-2 ring-1 ring-line">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          className="tap shrink-0"
-          onClick={() => !runner.photoVer && cam.current?.click()}
-          aria-label="Photo"
-        >
-          <Avatar runner={runner} eventId={eventId} size={48} lightbox={Boolean(runner.photoVer)} />
-        </button>
-        <input
-          value={bib}
-          onChange={(e) => setBib(e.target.value)}
-          onBlur={() => bib !== runner.bib && onChange({ bib })}
-          aria-label="Bib"
-          className="h-12 w-16 bg-transparent text-center font-mono text-2xl font-black tabular"
-        />
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name !== runner.name && onChange({ name })}
-          placeholder="Name"
-          aria-label="Name"
-          className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-dim"
-        />
-        <input
-          value={studentId}
-          onChange={(e) => setStudentId(e.target.value)}
-          onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
-          placeholder="SID"
-          aria-label="Student ID"
-          className="hidden h-12 w-28 bg-transparent font-mono text-sm font-bold tabular placeholder:text-dim sm:block"
-        />
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <CategoryChips value={runner.category} onChange={(category) => onChange({ category })} />
-        <div className="ml-auto flex gap-2">
-          {onFix ? (
-            <button
-              type="button"
-              className="tap h-12 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
-              onClick={onFix}
-            >
-              Fix
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="tap h-12 w-12 rounded-xl bg-panel2 text-lg font-black text-dim ring-1 ring-line"
-            onClick={() => file.current?.click()}
-            aria-label="Upload photo"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className={`tap h-12 rounded-xl px-3 font-black ring-1 ${
-              confirmDel ? "bg-stop text-sand ring-stop" : "bg-panel2 text-stop ring-line"
-            }`}
-            onClick={() => (confirmDel ? onDelete() : setConfirmDel(true))}
-            onBlur={() => setConfirmDel(false)}
-            aria-label="Remove runner"
-          >
-            {confirmDel ? "Remove" : "×"}
-          </button>
+    <SwipeRow
+      label={runner.name ? `Remove ${runner.name}` : "Remove runner"}
+      onDelete={onDelete}
+      className="rounded-2xl bg-panel ring-1 ring-line"
+    >
+      <div className="p-2">
+        <div className="flex items-center gap-2">
+          <div className="relative shrink-0">
+            {runner.photoVer ? (
+              <Avatar
+                runner={runner}
+                eventId={eventId}
+                size={48}
+                lightbox
+                onReplace={() => file.current?.click()}
+              />
+            ) : (
+              <button
+                type="button"
+                className="tap block"
+                onClick={() => file.current?.click()}
+                aria-label="Add photo"
+              >
+                <Avatar runner={runner} eventId={eventId} size={48} lightbox={false} />
+              </button>
+            )}
+            {runner.photoVer ? null : (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute right-0 top-0 z-10 grid h-[15px] w-[15px] place-items-center bg-accent text-[12px] font-black leading-none text-ink"
+              >
+                +
+              </span>
+            )}
+          </div>
+          <input
+            value={bib}
+            onChange={(e) => setBib(e.target.value)}
+            onBlur={() => bib !== runner.bib && onChange({ bib })}
+            aria-label="Bib"
+            className="h-12 w-16 bg-transparent text-center font-mono text-2xl font-black tabular"
+          />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name !== runner.name && onChange({ name })}
+            placeholder="Name"
+            aria-label="Name"
+            className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-dim"
+          />
+          <input
+            value={studentId}
+            onChange={(e) => setStudentId(e.target.value)}
+            onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
+            placeholder="SID"
+            aria-label="Student ID"
+            className="hidden h-12 w-28 bg-transparent font-mono text-sm font-bold tabular placeholder:text-dim sm:block"
+          />
         </div>
+        <div className="mt-2 flex items-center gap-2">
+          <CategoryChips value={runner.category} onChange={(category) => onChange({ category })} />
+          <div className="ml-auto flex gap-2">
+            {onFix ? (
+              <button
+                type="button"
+                className="tap h-12 shrink-0 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
+                onClick={onFix}
+              >
+                Fix
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <input
+          ref={file}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const picked = e.target.files?.[0];
+            e.target.value = "";
+            if (picked) onPhoto(picked);
+          }}
+        />
       </div>
-      <input
-        ref={cam}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => e.target.files?.[0] && onPhoto(e.target.files[0])}
-      />
-      <input
-        ref={file}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => e.target.files?.[0] && onPhoto(e.target.files[0])}
-      />
-    </div>
+    </SwipeRow>
   );
 }
