@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
-import { TrashIcon } from "@/components/trash-icon";
+import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
@@ -204,36 +204,35 @@ function MarkerInner({ code }: { code: string }) {
             const runner = runnerByBib(event.runners, row.bib);
             const shown = padBib(row.bib, width);
             return (
-              <li
-                key={row.id}
-                className={`grid grid-cols-[2.5rem_auto_minmax(0,1fr)_2.75rem] items-center gap-2 rounded-xl px-3 py-1.5 ${
-                  runner ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
-                }`}
-              >
-                <span className="font-mono text-sm font-bold tabular text-dim">
-                  {String(row.n).padStart(2, "0")}
-                </span>
-                {runner ? (
-                  <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
-                ) : (
-                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-panel font-black text-bell">
-                    ?
-                  </span>
-                )}
-                <span className="min-w-0">
-                  <span className="block font-mono text-2xl font-black leading-none tabular">{shown}</span>
-                  <span className="mt-1 block h-4 truncate text-xs font-semibold text-dim">
-                    {runner?.name ?? ""}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="tap grid h-11 w-11 place-items-center rounded-lg text-stop active:bg-stop/20"
-                  aria-label={`Delete bib ${shown}`}
-                  onClick={() => deleteRow(row)}
+              <li key={row.id}>
+                <SwipeRow
+                  label={`Delete bib ${shown}`}
+                  onDelete={() => deleteRow(row)}
+                  className={`rounded-xl ${
+                    runner
+                      ? "bg-panel2"
+                      : "bg-[color-mix(in_srgb,var(--color-bell)_12%,var(--color-panel))] ring-1 ring-bell/40"
+                  }`}
                 >
-                  <TrashIcon size={20} />
-                </button>
+                  <div className="grid min-h-11 grid-cols-[2.5rem_auto_minmax(0,1fr)] items-center gap-2 px-3 py-1.5">
+                    <span className="font-mono text-sm font-bold tabular text-dim">
+                      {String(row.n).padStart(2, "0")}
+                    </span>
+                    {runner ? (
+                      <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
+                    ) : (
+                      <span className="grid h-10 w-10 place-items-center rounded-xl bg-panel font-black text-bell">
+                        ?
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block font-mono text-2xl font-black leading-none tabular">{shown}</span>
+                      <span className="mt-1 block h-4 truncate text-xs font-semibold text-dim">
+                        {runner?.name ?? ""}
+                      </span>
+                    </span>
+                  </div>
+                </SwipeRow>
               </li>
             );
           })}

@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
-import { TrashIcon } from "@/components/trash-icon";
+import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Chip, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
@@ -428,46 +428,56 @@ function RecordLine({
   return (
     <div className="flex h-[134px] flex-col gap-1">
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
-        <div
-          className={`flex min-w-0 items-center gap-1.5 rounded-xl px-2 ${
+        <SwipeRow
+          label="Delete tap"
+          disabled={!row.tap}
+          onDelete={onDeleteTap}
+          className={`h-full rounded-xl ${
             row.tap ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
           }`}
         >
-          <span className="w-6 shrink-0 font-mono text-xs font-bold tabular text-dim">{n}</span>
-          {row.tap && row.elapsedMs != null && row.splitMs != null ? (
-            <span className="min-w-0">
-              <span className="block truncate font-mono text-sm font-black tabular">
-                {formatEst(formatStopwatch(row.elapsedMs), row.estimated)}
+          <div className="flex h-full min-w-0 items-center gap-1.5 px-2">
+            <span className="w-6 shrink-0 font-mono text-xs font-bold tabular text-dim">{n}</span>
+            {row.tap && row.elapsedMs != null && row.splitMs != null ? (
+              <span className="min-w-0">
+                <span className="block truncate font-mono text-sm font-black tabular">
+                  {formatEst(formatStopwatch(row.elapsedMs), row.estimated)}
+                </span>
+                <span className="block truncate font-mono text-[11px] font-bold tabular text-dim">
+                  {formatStopwatch(row.splitMs, true)}
+                </span>
               </span>
-              <span className="block truncate font-mono text-[11px] font-bold tabular text-dim">
-                {formatStopwatch(row.splitMs, true)}
-              </span>
-            </span>
-          ) : null}
-        </div>
-        <div
-          className={`flex min-w-0 items-center gap-1.5 rounded-xl px-2 ${
+            ) : null}
+          </div>
+        </SwipeRow>
+        <SwipeRow
+          label="Delete bib"
+          disabled={!row.mark}
+          onDelete={onDeleteBib}
+          className={`h-full rounded-xl ${
             row.mark ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
           }`}
         >
-          {row.mark ? (
-            <>
-              {runner ? (
-                <Avatar runner={runner} eventId={eventId} size={36} overlay={false} lightbox={false} />
-              ) : (
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-bell/10 font-black text-bell ring-1 ring-bell/40">
-                  ?
+          <div className="flex h-full min-w-0 items-center gap-1.5 px-2">
+            {row.mark ? (
+              <>
+                {runner ? (
+                  <Avatar runner={runner} eventId={eventId} size={36} overlay={false} lightbox={false} />
+                ) : (
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-bell/10 font-black text-bell ring-1 ring-bell/40">
+                    ?
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="block font-mono text-lg font-black leading-none tabular">{bib}</span>
+                  <span className="mt-0.5 block h-4 truncate text-[11px] font-semibold text-dim">
+                    {runner?.name ?? ""}
+                  </span>
                 </span>
-              )}
-              <span className="min-w-0">
-                <span className="block font-mono text-lg font-black leading-none tabular">{bib}</span>
-                <span className="mt-0.5 block h-4 truncate text-[11px] font-semibold text-dim">
-                  {runner?.name ?? ""}
-                </span>
-              </span>
-            </>
-          ) : null}
-        </div>
+              </>
+            ) : null}
+          </div>
+        </SwipeRow>
       </div>
       <div className="flex h-5 shrink-0 items-center gap-1 overflow-hidden">
         {tags.map((tag) => (
@@ -480,10 +490,7 @@ function RecordLine({
         ))}
       </div>
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
-        <div className="grid grid-cols-3 gap-1">
-          <RowBtn label="Delete tap" danger disabled={!row.tap} onClick={onDeleteTap}>
-            <TrashIcon size={16} />
-          </RowBtn>
+        <div className="grid grid-cols-2 gap-1">
           <RowBtn label="Edit tap time" disabled={!row.tap} on={editing === "time"} onClick={onEditTime}>
             Time
           </RowBtn>
@@ -491,10 +498,7 @@ function RecordLine({
             + tap
           </RowBtn>
         </div>
-        <div className="grid grid-cols-3 gap-1">
-          <RowBtn label="Delete bib" danger disabled={!row.mark} onClick={onDeleteBib}>
-            <TrashIcon size={16} />
-          </RowBtn>
+        <div className="grid grid-cols-2 gap-1">
           <RowBtn label="Edit bib" disabled={!row.mark} on={editing === "bib-edit"} onClick={onEditBib}>
             Bib
           </RowBtn>
@@ -511,22 +515,16 @@ function RowBtn({
   label,
   disabled,
   on,
-  danger,
   onClick,
   children,
 }: {
   label: string;
   disabled?: boolean;
   on?: boolean;
-  danger?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
-  const tone = on
-    ? "bg-sand text-ink ring-sand"
-    : danger
-      ? "bg-panel text-stop ring-line"
-      : "bg-panel text-sand ring-line";
+  const tone = on ? "bg-sand text-ink ring-sand" : "bg-panel text-sand ring-line";
   return (
     <button
       type="button"

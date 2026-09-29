@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
-import { TrashIcon } from "@/components/trash-icon";
+import { SwipeRow } from "@/components/swipe-row";
 import { formatClock, formatEst } from "@/lib/format";
 import { liveMarks, splitEstimated, type Crossing, type RunnerRace } from "@/lib/race";
 import { RECORD_TAG_LABEL, recordRowTags, recordRows, type RecordTag } from "@/lib/records";
@@ -177,50 +177,48 @@ function CrossingRow({
   onDelete: () => void;
 }) {
   return (
-    <div className="rounded-2xl bg-panel2 p-3 ring-1 ring-line">
-      <div className="flex items-start gap-2">
-        <span className="flex h-12 w-6 shrink-0 items-center font-mono text-xs font-black tabular text-dim">
-          {lap}
-        </span>
-        <div className="flex h-12 min-w-0 flex-1 flex-col justify-center">
-          <div className="truncate font-mono text-2xl font-black leading-none tabular">
-            {formatEst(formatClock(crossing.elapsedMs), crossing.estimated)}
-          </div>
-          {splitMs != null ? (
-            <div className="mt-1 truncate font-mono text-xs font-bold leading-none tabular text-accent">
-              {formatEst(formatClock(splitMs, 1), estSplit)}
-            </div>
-          ) : null}
-        </div>
-        <BibBox bib={crossing.bib} onCommit={onCommit} />
-      </div>
-      <div className="mt-1.5 flex h-5 items-center gap-1 overflow-hidden">
-        {tags.map((tag) => (
-          <span
-            key={tag}
-            className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap ${TAG_CLASS[tag]}`}
-          >
-            {RECORD_TAG_LABEL[tag]}
+    <SwipeRow
+      label="Delete crossing"
+      onDelete={onDelete}
+      className="rounded-2xl bg-panel2 ring-1 ring-line"
+    >
+      <div className="p-3">
+        <div className="flex items-start gap-2">
+          <span className="flex h-12 w-6 shrink-0 items-center font-mono text-xs font-black tabular text-dim">
+            {lap}
           </span>
-        ))}
+          <div className="flex h-12 min-w-0 flex-1 flex-col justify-center">
+            <div className="truncate font-mono text-2xl font-black leading-none tabular">
+              {formatEst(formatClock(crossing.elapsedMs), crossing.estimated)}
+            </div>
+            {splitMs != null ? (
+              <div className="mt-1 truncate font-mono text-xs font-bold leading-none tabular text-accent">
+                {formatEst(formatClock(splitMs, 1), estSplit)}
+              </div>
+            ) : null}
+          </div>
+          <BibBox bib={crossing.bib} onCommit={onCommit} />
+        </div>
+        <div className="mt-1.5 flex h-5 items-center gap-1 overflow-hidden">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap ${TAG_CLASS[tag]}`}
+            >
+              {RECORD_TAG_LABEL[tag]}
+            </span>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button type="button" className={MOVE} disabled={upDisabled} onClick={onUp} aria-label="Move earlier">
+            ↑ Earlier
+          </button>
+          <button type="button" className={MOVE} disabled={downDisabled} onClick={onDown} aria-label="Move later">
+            ↓ Later
+          </button>
+        </div>
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <button type="button" className={MOVE} disabled={upDisabled} onClick={onUp} aria-label="Move earlier">
-          ↑ Earlier
-        </button>
-        <button type="button" className={MOVE} disabled={downDisabled} onClick={onDown} aria-label="Move later">
-          ↓ Later
-        </button>
-        <button
-          type="button"
-          className="tap grid h-14 w-full place-items-center rounded-xl bg-stop/20 text-stop ring-1 ring-stop"
-          onClick={onDelete}
-          aria-label="Delete crossing"
-        >
-          <TrashIcon size={26} />
-        </button>
-      </div>
-    </div>
+    </SwipeRow>
   );
 }
 

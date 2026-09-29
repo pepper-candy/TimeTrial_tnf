@@ -557,9 +557,42 @@ body {
   transform: translateY(2px);
 }
 
+/* Sliding face keeps the row colour so the red reveal only shows in the gap. */
+.swipe-face {
+  background: inherit;
+}
+
+.swipe-row {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.swipe-row input,
+.swipe-row textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+@keyframes swipe-hint-nudge {
+  0% {
+    transform: translateX(0);
+  }
+  40% {
+    transform: translateX(-3px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.swipe-hint {
+  animation: swipe-hint-nudge 0.7s ease-out 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .home-line,
-  .home-caret {
+  .home-caret,
+  .swipe-hint {
     animation: none;
   }
 }

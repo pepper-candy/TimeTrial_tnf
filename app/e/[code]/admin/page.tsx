@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { SwipeRow } from "@/components/swipe-row";
 import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
 import { Qr } from "@/components/qr";
@@ -646,99 +647,93 @@ function RunnerRow({
   const [bib, setBib] = useState(runner.bib);
   const [name, setName] = useState(runner.name);
   const [studentId, setStudentId] = useState(runner.studentId);
-  const [confirmDel, setConfirmDel] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-panel p-2 ring-1 ring-line">
-      <div className="flex items-center gap-2">
-        <div className="relative shrink-0">
-          {runner.photoVer ? (
-            <Avatar
-              runner={runner}
-              eventId={eventId}
-              size={48}
-              lightbox
-              onReplace={() => file.current?.click()}
-            />
-          ) : (
-            <button
-              type="button"
-              className="tap block"
-              onClick={() => file.current?.click()}
-              aria-label="Add photo"
-            >
-              <Avatar runner={runner} eventId={eventId} size={48} lightbox={false} />
-            </button>
-          )}
-          {runner.photoVer ? null : (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute right-0 top-0 z-10 grid h-[15px] w-[15px] place-items-center bg-accent text-[12px] font-black leading-none text-ink"
-            >
-              +
-            </span>
-          )}
+    <SwipeRow
+      label={runner.name ? `Remove ${runner.name}` : "Remove runner"}
+      onDelete={onDelete}
+      className="rounded-2xl bg-panel ring-1 ring-line"
+    >
+      <div className="p-2">
+        <div className="flex items-center gap-2">
+          <div className="relative shrink-0">
+            {runner.photoVer ? (
+              <Avatar
+                runner={runner}
+                eventId={eventId}
+                size={48}
+                lightbox
+                onReplace={() => file.current?.click()}
+              />
+            ) : (
+              <button
+                type="button"
+                className="tap block"
+                onClick={() => file.current?.click()}
+                aria-label="Add photo"
+              >
+                <Avatar runner={runner} eventId={eventId} size={48} lightbox={false} />
+              </button>
+            )}
+            {runner.photoVer ? null : (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute right-0 top-0 z-10 grid h-[15px] w-[15px] place-items-center bg-accent text-[12px] font-black leading-none text-ink"
+              >
+                +
+              </span>
+            )}
+          </div>
+          <input
+            value={bib}
+            onChange={(e) => setBib(e.target.value)}
+            onBlur={() => bib !== runner.bib && onChange({ bib })}
+            aria-label="Bib"
+            className="h-12 w-16 bg-transparent text-center font-mono text-2xl font-black tabular"
+          />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name !== runner.name && onChange({ name })}
+            placeholder="Name"
+            aria-label="Name"
+            className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-dim"
+          />
+          <input
+            value={studentId}
+            onChange={(e) => setStudentId(e.target.value)}
+            onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
+            placeholder="SID"
+            aria-label="Student ID"
+            className="hidden h-12 w-28 bg-transparent font-mono text-sm font-bold tabular placeholder:text-dim sm:block"
+          />
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <CategoryChips value={runner.category} onChange={(category) => onChange({ category })} />
+          <div className="ml-auto flex gap-2">
+            {onFix ? (
+              <button
+                type="button"
+                className="tap h-12 shrink-0 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
+                onClick={onFix}
+              >
+                Fix
+              </button>
+            ) : null}
+          </div>
         </div>
         <input
-          value={bib}
-          onChange={(e) => setBib(e.target.value)}
-          onBlur={() => bib !== runner.bib && onChange({ bib })}
-          aria-label="Bib"
-          className="h-12 w-16 bg-transparent text-center font-mono text-2xl font-black tabular"
-        />
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name !== runner.name && onChange({ name })}
-          placeholder="Name"
-          aria-label="Name"
-          className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-dim"
-        />
-        <input
-          value={studentId}
-          onChange={(e) => setStudentId(e.target.value)}
-          onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
-          placeholder="SID"
-          aria-label="Student ID"
-          className="hidden h-12 w-28 bg-transparent font-mono text-sm font-bold tabular placeholder:text-dim sm:block"
+          ref={file}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const picked = e.target.files?.[0];
+            e.target.value = "";
+            if (picked) onPhoto(picked);
+          }}
         />
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <CategoryChips value={runner.category} onChange={(category) => onChange({ category })} />
-        <div className="ml-auto flex gap-2">
-          {onFix ? (
-            <button
-              type="button"
-              className="tap h-12 shrink-0 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
-              onClick={onFix}
-            >
-              Fix
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={`tap grid h-12 w-12 shrink-0 place-items-center rounded-xl text-stop ring-1 ${
-              confirmDel ? "bg-stop/25 ring-stop" : "bg-panel2 ring-line"
-            }`}
-            onClick={() => (confirmDel ? onDelete() : setConfirmDel(true))}
-            onBlur={() => setConfirmDel(false)}
-            aria-label={confirmDel ? "Confirm remove runner" : "Remove runner"}
-          >
-            <TrashIcon size={22} />
-          </button>
-        </div>
-      </div>
-      <input
-        ref={file}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const picked = e.target.files?.[0];
-          e.target.value = "";
-          if (picked) onPhoto(picked);
-        }}
-      />
-    </div>
+    </SwipeRow>
   );
 }
