@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
@@ -8,13 +9,13 @@ import { Qr } from "@/components/qr";
 import { BigBtn, Chip, Field, MenuButton, Screen, TopBar, useCopied } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
-import { MismatchPanel } from "@/components/mismatch-panel";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { forgetAdmin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
 import { CATEGORIES } from "@/lib/category";
 import { kmCrossings } from "@/lib/course";
-import { eventLinks, helperShareText } from "@/lib/share";
+import { recordCounts } from "@/lib/records";
+import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
 
@@ -29,7 +30,7 @@ export default function AdminPage() {
 
 function AdminInner({ code }: { code: string }) {
   const router = useRouter();
-  const { event, setEvent, races, flags } = useEvent(code, 2000);
+  const { event, setEvent, races } = useEvent(code, 2000);
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "" });
   const [fixId, setFixId] = useState<string | null>(null);
   const [storage, setStorage] = useState<{ used: number; cap: number } | null>(null);
@@ -195,21 +196,13 @@ function AdminInner({ code }: { code: string }) {
             )}
           </MenuButton>
         }
-        info="Timer taps. Marker enters bibs in order. The server pairs them. Alerts below show count lag, too-fast laps and extra taps or bibs. Tap Fix on a runner to shift, delete or add an estimated (~) crossing."
+        info="Timer taps. Marker enters bibs in order. The server pairs tap n with bib n. Modify records to delete, edit, or insert a tap or bib. Fix on a runner still shifts that runner's bibs."
       />
 
       <div className="flex-1 space-y-4 px-4 pb-28">
         <AccessCard code={code} event={event} origin={origin} />
 
-        {event.status !== "setup" ? (
-          <MismatchPanel
-            code={code}
-            event={event}
-            flags={flags}
-            onEvent={setEvent}
-            onFixRunner={setFixId}
-          />
-        ) : null}
+        {event.status !== "setup" ? <ModifyRecordsLink code={code} event={event} /> : null}
 
         <section>
           <div className="mb-2 flex items-baseline justify-between">
@@ -329,6 +322,27 @@ function AdminInner({ code }: { code: string }) {
   );
 }
 
+function ModifyRecordsLink({ code, event }: { code: string; event: EventState }) {
+  const counts = recordCounts(event.taps, event.marks);
+  return (
+    <Link
+      href={`/e/${code}/admin/records`}
+      aria-label={`Modify records, ${counts.taps} taps, ${counts.bibs} bibs${
+        counts.differ ? ", counts differ" : ""
+      }`}
+      className="launch launch-solid tap relative flex min-h-36 w-full flex-col items-center justify-center gap-1 rounded-[10px] bg-accent px-4 text-ink"
+    >
+      {counts.differ ? (
+        <span className="absolute right-4 top-4 h-3.5 w-3.5 rounded-full bg-bell ring-2 ring-ink" />
+      ) : null}
+      <span className="text-3xl font-black uppercase tracking-[0.08em] sm:text-4xl">Modify records</span>
+      <span className="font-mono text-sm font-bold tabular text-ink/80">
+        {counts.taps} taps · {counts.bibs} bibs
+      </span>
+    </Link>
+  );
+}
+
 function AccessCard({ code, event, origin }: { code: string; event: EventState; origin: string }) {
   const [pin, setPin] = useState<string | null | undefined>(undefined);
   const [shown, setShown] = useState(false);
@@ -336,7 +350,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
   const [nextPin, setNextPin] = useState("");
   const [err, setErr] = useState(false);
   const [qr, setQr] = useState<"off" | "helper" | "board">("off");
-  const { copied, copy } = useCopied();
+  const { copied, copy } = useCopied(1500);
   const links = eventLinks(origin, event.code);
 
   const load = useCallback(async () => {
@@ -374,7 +388,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
     setErr(false);
   }
 
-  const share = helperShareText({ origin, code: event.code, name: event.name, pin: pin ?? null });
+  const helperUrl = helperLink(origin, event.code);
 
   return (
     <section className="rounded-3xl bg-panel p-3 ring-1 ring-line">
@@ -382,41 +396,60 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
         <button
           type="button"
           onClick={() => void copy("code", event.code)}
-          className="tap rounded-2xl bg-panel2 px-3 py-3 text-left ring-1 ring-line active:bg-sand active:text-ink"
+          className={`tap min-w-0 rounded-2xl px-3 py-3 text-left ring-1 ring-line ${
+            copied === "code" ? "bg-sand text-ink" : "bg-panel2 active:bg-sand active:text-ink"
+          }`}
           aria-label="Copy event code"
         >
-          <div className="text-[11px] font-black uppercase tracking-[0.16em] text-dim">
-            {copied === "code" ? "Copied" : "Code"}
-          </div>
-          <div className="font-mono text-4xl font-black tabular tracking-[0.12em] sm:text-5xl">
+          <CopyLabel
+            on={copied === "code"}
+            className={`text-[11px] uppercase tracking-[0.16em] ${copied === "code" ? "text-ink/70" : "text-dim"}`}
+          >
+            Code
+          </CopyLabel>
+          <div className="flex h-12 items-center overflow-hidden whitespace-nowrap font-mono text-4xl font-black leading-none tabular tracking-[0.12em] sm:h-14 sm:text-5xl">
             {event.code}
           </div>
         </button>
-        <div className="flex rounded-2xl bg-panel2 ring-1 ring-line">
-          <button
-            type="button"
-            onClick={() => (pin ? setShown((v) => !v) : setResetting(true))}
-            className="tap min-w-0 flex-1 px-3 py-3 text-left"
-            aria-label={shown ? "Hide PIN" : "Show PIN"}
+        <button
+          type="button"
+          onClick={() => {
+            if (!pin) {
+              setResetting(true);
+              return;
+            }
+            setShown(true);
+            void copy("pin", pin);
+          }}
+          className={`tap min-w-0 rounded-2xl px-3 py-3 text-left ring-1 ring-line ${
+            copied === "pin" ? "bg-sand text-ink" : "bg-panel2 active:bg-sand active:text-ink"
+          }`}
+          aria-label={pin ? "Show and copy PIN" : "Set PIN"}
+        >
+          <CopyLabel
+            on={copied === "pin"}
+            className={`text-[11px] uppercase tracking-[0.16em] ${copied === "pin" ? "text-ink/70" : "text-dim"}`}
           >
-            <div className="text-[11px] font-black uppercase tracking-[0.16em] text-dim">
-              {pin === null ? "PIN" : shown ? "PIN" : "PIN · tap"}
-            </div>
-            <div className="font-mono text-4xl font-black tabular tracking-[0.12em] sm:text-5xl">
-              {pin === undefined ? "…" : pin === null ? <span className="text-xl text-bell">Set</span> : shown ? pin : "••••"}
-            </div>
-          </button>
-          {pin ? (
-            <button
-              type="button"
-              onClick={() => void copy("pin", pin)}
-              className="tap w-14 shrink-0 rounded-r-2xl border-l border-line text-xs font-black uppercase text-dim active:bg-sand active:text-ink"
-              aria-label="Copy PIN"
-            >
-              {copied === "pin" ? "✓" : "Copy"}
-            </button>
-          ) : null}
-        </div>
+            {pin === null ? "PIN" : shown ? "PIN" : "PIN · tap"}
+          </CopyLabel>
+          <div
+            className={`flex h-12 items-center overflow-hidden whitespace-nowrap font-mono font-black leading-none tabular sm:h-14 ${
+              (shown || copied === "pin") && pin && pin.length > 5
+                ? "text-[1.35rem] tracking-normal sm:text-4xl"
+                : "text-4xl tracking-[0.12em] sm:text-5xl"
+            }`}
+          >
+            {pin === undefined ? (
+              "…"
+            ) : pin === null ? (
+              <span className="text-xl text-bell">Set</span>
+            ) : shown || copied === "pin" ? (
+              pin
+            ) : (
+              "••••"
+            )}
+          </div>
+        </button>
       </div>
 
       {resetting ? (
@@ -453,26 +486,26 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
         </div>
       ) : null}
 
-      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
+      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_max-content_max-content] gap-2">
         <button
           type="button"
-          onClick={() => void copy("share", share)}
-          className="tap h-14 rounded-2xl bg-accent px-3 text-lg font-black text-ink shadow-[inset_0_-4px_0_rgba(0,0,0,0.25)]"
+          onClick={() => void copy("share", helperUrl)}
+          className="tap flex h-14 min-w-0 items-center justify-center overflow-hidden rounded-2xl bg-accent px-3 text-lg font-black text-ink shadow-[inset_0_-4px_0_rgba(0,0,0,0.25)]"
         >
-          {copied === "share" ? "Copied" : "Share helper"}
+          <CopyLabel on={copied === "share"}>Share helper</CopyLabel>
         </button>
         <button
           type="button"
           onClick={() => void copy("board", links.board)}
-          className="tap h-14 rounded-2xl bg-panel2 px-4 font-black ring-1 ring-line"
+          className="tap flex h-14 items-center justify-center rounded-2xl bg-panel2 px-4 font-black ring-1 ring-line"
         >
-          {copied === "board" ? "✓" : "Board link"}
+          <CopyLabel on={copied === "board"}>Board link</CopyLabel>
         </button>
         <button
           type="button"
           aria-pressed={qr !== "off"}
           onClick={() => setQr((v) => (v === "off" ? "helper" : "off"))}
-          className={`tap h-14 rounded-2xl px-4 font-black ring-1 ${
+          className={`tap flex h-14 w-14 items-center justify-center rounded-2xl font-black ring-1 ${
             qr !== "off" ? "bg-sand text-ink ring-sand" : "bg-panel2 ring-line"
           }`}
         >
@@ -482,15 +515,15 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
 
       {qr !== "off" ? (
         <div className="mt-3 flex flex-col items-center gap-2">
-          <div className="flex gap-2">
-            <Chip size="sm" active={qr === "helper"} onClick={() => setQr("helper")}>
+          <div className="grid w-44 grid-cols-2 gap-2">
+            <Chip size="sm" active={qr === "helper"} onClick={() => setQr("helper")} className="w-full">
               Helper
             </Chip>
-            <Chip size="sm" active={qr === "board"} onClick={() => setQr("board")}>
+            <Chip size="sm" active={qr === "board"} onClick={() => setQr("board")} className="w-full">
               Board
             </Chip>
           </div>
-          <Qr value={qr === "helper" ? links.home : links.board} />
+          <Qr value={qr === "helper" ? helperUrl : links.board} />
         </div>
       ) : null}
 
@@ -504,6 +537,24 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
         </button>
       ) : null}
     </section>
+  );
+}
+
+/** Both labels stay in the layout, so swapping to "✓ Copied" cannot resize the control. */
+function CopyLabel({
+  on,
+  children,
+  className = "",
+}: {
+  on: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`inline-grid font-black ${className}`}>
+      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "invisible" : ""}`}>{children}</span>
+      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "" : "invisible"}`}>✓ Copied</span>
+    </span>
   );
 }
 

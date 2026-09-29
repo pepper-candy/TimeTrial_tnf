@@ -52,11 +52,17 @@ export default function RolePage() {
     <Screen>
       <TopBar
         backHref="/"
-        title={event.code}
+        title={
+          <div className="min-w-0 text-center leading-tight">
+            <h1 className="truncate font-mono text-base font-black tracking-[0.16em]">{event.code}</h1>
+            {event.name ? (
+              <p className="truncate text-xs font-bold text-dim">{event.name}</p>
+            ) : null}
+          </div>
+        }
         info="Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN."
       />
-      <p className="truncate px-4 text-center text-sm font-bold text-dim">{event.name}</p>
-      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 p-4 pb-8">
+      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 px-4 pb-8">
         {ROLES.map((r) => {
           const hot = r.href === "admin" ? admin : false;
           return (

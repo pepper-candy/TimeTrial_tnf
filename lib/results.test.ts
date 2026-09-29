@@ -88,7 +88,7 @@ describe("club results text", () => {
     ]);
     const b = crossings(start, "1", [
       36_600, 109_800, 183_000, 256_200, 329_400, 402_600, 475_800, 685_000,
-      790_600, 896_200, 1_001_800, 1_007_400, 1_063_000,
+      760_600, 836_200, 911_800, 987_400, 1_063_000,
     ]);
     // 12 crossings = 11.5 laps (4600 m). 1K = #3, 3K = #8.
     const d = crossings(start, "16", [
@@ -293,5 +293,26 @@ describe("detailed results text", () => {
     expect(formatSplitDelta(11_400)).toBe("+11");
     expect(formatSplitDelta(-12_400)).toBe("-12");
     expect(formatSplitDelta(0)).toBe("0");
+  });
+
+  it("does not list a sub-20s lap as the fast lap", () => {
+    const start = Date.UTC(2026, 8, 28, 2, 0, 0);
+    const splits = [40_000, 80_000, 5_000, 90_000];
+    let acc = 0;
+    const elapsed = splits.map((s) => {
+      acc += s;
+      return acc;
+    });
+    const c = crossings(start, "1", elapsed);
+    const ev = event({
+      runners: [runner({ bib: "1", studentId: "20881001", category: "Boys" })],
+      taps: c.taps,
+      marks: c.marks,
+    });
+    const text = formatResultsText(ev, undefined, "detailed");
+    expect(text).toContain("Fast L1 1'20");
+    expect(text).toContain("Slow L3 1'30");
+    expect(text).not.toContain("0'05");
+    expect(text).toContain("Avg 3'30/K");
   });
 });

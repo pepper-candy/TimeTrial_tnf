@@ -81,12 +81,38 @@ describe("board highlights", () => {
     expect(h.personalBest.get("id-2")).toBe(3);
   });
 
+  it("does not ring a lap under 20s per 400m", () => {
+    const { taps, marks } = race({ "1": [30_000, 35_000, 105_000] });
+    const ev = event({ runners: [runner("1")], taps, marks });
+    const h = boardHighlights(ev, buildRunnerRaces(ev));
+    expect(h.raceBest).toEqual({ runnerId: "id-1", index: 2, ms: 70_000 });
+    expect(h.personalBest.get("id-1")).toBe(2);
+  });
+
   it("never picks an estimated split as a best lap", () => {
     const { taps, marks } = race({ "1": [30_000, 90_000, 170_000] }, ["1-1"]);
     const ev = event({ runners: [runner("1")], taps, marks });
     const h = boardHighlights(ev, buildRunnerRaces(ev));
     expect(h.raceBest).toBeNull();
     expect(h.personalBest.has("id-1")).toBe(false);
+  });
+
+  it("does not treat a live marker bib as an edit", () => {
+    const { taps, marks } = race({ "1": [30_000, 100_000, 170_000] });
+    const ev = event({
+      runners: [runner("1")],
+      taps,
+      marks,
+      edits: [0, 1, 2].map((i) => ({
+        id: `e${i}`,
+        at: 0,
+        actor: "marker" as const,
+        kind: "mark-insert" as const,
+        markId: `m-1-${i}`,
+      })),
+    });
+    const h = boardHighlights(ev, buildRunnerRaces(ev));
+    expect(h.edited.size).toBe(0);
   });
 
   it("marks crossings whose tap or bib was edited", () => {
@@ -98,6 +124,24 @@ describe("board highlights", () => {
       edits: [
         { id: "x", at: 0, actor: "admin", kind: "mark-reassign", markId: "m-1-1" },
         { id: "y", at: 0, actor: "timer", kind: "tap-restore", tapId: "t-1-2" },
+      ],
+    });
+    const h = boardHighlights(ev, buildRunnerRaces(ev));
+    expect(h.edited.has(cellKey("id-1", 0))).toBe(false);
+    expect(h.edited.has(cellKey("id-1", 1))).toBe(true);
+    expect(h.edited.has(cellKey("id-1", 2))).toBe(true);
+  });
+
+  it("flags an admin bib insert and a time edit, not the marker append beside them", () => {
+    const { taps, marks } = race({ "1": [30_000, 100_000, 170_000] });
+    const ev = event({
+      runners: [runner("1")],
+      taps,
+      marks,
+      edits: [
+        { id: "a", at: 0, actor: "marker", kind: "mark-insert", markId: "m-1-0" },
+        { id: "b", at: 0, actor: "admin", kind: "mark-insert", markId: "m-1-1" },
+        { id: "c", at: 0, actor: "admin", kind: "tap-time", tapId: "t-1-2" },
       ],
     });
     const h = boardHighlights(ev, buildRunnerRaces(ev));

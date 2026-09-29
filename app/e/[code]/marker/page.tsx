@@ -1,18 +1,22 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
-import { NumberPad } from "@/components/pad";
-import { Chip, Screen, TopBar } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
+import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
-import { UndoToast } from "@/components/undo-toast";
 import { json, useEvent } from "@/lib/client/hooks";
+import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { liveMarks, runnerByBib } from "@/lib/race";
-import { shortName } from "@/lib/format";
-import type { EventState, Mark, Runner } from "@/lib/types";
-import type { RunnerRace } from "@/lib/race";
+import type { EventState } from "@/lib/types";
+
+type Hist =
+  | { kind: "mark"; id: string }
+  | { kind: "delete"; id: string }
+  | { kind: "drop"; bib: string };
+
+type Pending = { id: string; bib: string };
 
 export default function MarkerPage() {
   const { code } = useParams<{ code: string }>();
@@ -24,45 +28,40 @@ export default function MarkerPage() {
 }
 
 function MarkerInner({ code }: { code: string }) {
-  const { event, setEvent, tiles } = useEvent(code, 800);
-  const [mode, setMode] = useState<"auto" | "pad" | "tiles">("auto");
-  const [bib, setBib] = useState("");
-  const [reassign, setReassign] = useState<number | null>(null);
-  const [insertAt, setInsertAt] = useState<number | null>(null);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [toast, setToast] = useState<{ id: string; label: string } | null>(null);
+  const { event, setEvent } = useEvent(code, 800);
+  const [typed, setTyped] = useState("");
+  const [pending, setPending] = useState<Pending[]>([]);
+  const [gone, setGone] = useState<string[]>([]);
+  const [hist, setHist] = useState<Hist[]>([]);
+  const latest = useRef<EventState | null>(null);
+  const histRef = useRef<Hist[]>([]);
+  const typedRef = useRef("");
+  const chain = useRef(Promise.resolve());
+  const dropped = useRef(new Set<string>());
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const hasTiles = tiles.length > 0;
-  const showPad = mode === "pad" || (mode === "auto" && !hasTiles);
+  useEffect(() => {
+    latest.current = event;
+  }, [event]);
+  useEffect(() => {
+    histRef.current = hist;
+  }, [hist]);
+
+  function later(task: () => Promise<void>) {
+    chain.current = chain.current.then(task, task);
+  }
 
   async function post(body: Record<string, unknown>) {
     const data = await json<{ event: EventState }>(`/api/events/${code}/marks`, {
       method: "POST",
       body: JSON.stringify({ ...body, actor: "marker" }),
     });
+    latest.current = data.event;
     setEvent(data.event);
     return data.event;
   }
 
-  async function mark(nextBib: string) {
-    const b = nextBib.trim();
-    if (!b) return;
-    if (reassign != null) {
-      await post({ action: "reassign", index: reassign, bib: b });
-      setReassign(null);
-      setSelected(null);
-      setBib("");
-      return;
-    }
-    if (insertAt != null) {
-      await post({ action: "insert", index: insertAt, bib: b });
-      setInsertAt(null);
-      setSelected(null);
-      setBib("");
-      return;
-    }
-    await post({ action: "append", bib: b });
-    setBib("");
+  function buzz() {
     try {
       navigator.vibrate?.(12);
     } catch {
@@ -70,267 +69,250 @@ function MarkerInner({ code }: { code: string }) {
     }
   }
 
-  async function deleteMark(index: number) {
-    const mark = event ? liveMarks(event.marks)[index] : undefined;
-    await post({ action: "delete", index });
-    if (mark) setToast({ id: mark.id, label: "Bib deleted" });
-    setSelected(null);
+  function remember(entry: Hist) {
+    setHist((h) => [...h, entry].slice(-40));
   }
 
-  async function restoreMark(id: string) {
-    await post({ action: "mark-restore", id });
-    setToast(null);
+  function mark(padded: string) {
+    const localId = crypto.randomUUID();
+    setPending((p) => [...p, { id: localId, bib: padded }]);
+    later(async () => {
+      if (dropped.current.has(localId)) {
+        dropped.current.delete(localId);
+        setPending((p) => p.filter((x) => x.id !== localId));
+        return;
+      }
+      try {
+        const before = new Set(liveMarks(latest.current?.marks ?? []).map((m) => m.id));
+        const next = await post({ action: "append", bib: padded });
+        setPending((p) => p.filter((x) => x.id !== localId));
+        const added = liveMarks(next.marks).find((m) => !before.has(m.id));
+        if (dropped.current.has(localId)) {
+          dropped.current.delete(localId);
+          if (added) await post({ action: "delete", id: added.id });
+          return;
+        }
+        if (added) remember({ kind: "mark", id: added.id });
+      } catch {
+        setPending((p) => p.filter((x) => x.id !== localId));
+      }
+    });
   }
 
-  async function moveMark(from: number, to: number) {
-    if (from === to) return;
-    await post({ action: "move", index: from, to });
+  function press(key: string) {
+    const roster = latest.current?.runners ?? event?.runners ?? [];
+    const width = bibDigitWidth(roster.map((r) => r.bib));
+    const next = applyBibKey(typedRef.current, key, width);
+    typedRef.current = next.typed;
+    setTyped(next.typed);
+    buzz();
+    if (next.submit) mark(next.submit);
   }
+
+  function deleteRow(row: { id: string; bib: string; local: boolean }) {
+    if (row.local) {
+      dropped.current.add(row.id);
+      setPending((p) => p.filter((x) => x.id !== row.id));
+      remember({ kind: "drop", bib: row.bib });
+      return;
+    }
+    setGone((g) => (g.includes(row.id) ? g : [...g, row.id]));
+    remember({ kind: "delete", id: row.id });
+    later(async () => {
+      try {
+        await post({ action: "delete", id: row.id });
+      } catch {
+        setGone((g) => g.filter((x) => x !== row.id));
+        setHist((h) => h.filter((entry) => !(entry.kind === "delete" && entry.id === row.id)));
+      }
+    });
+  }
+
+  function undo() {
+    const last = histRef.current[histRef.current.length - 1];
+    if (!last) return;
+    setHist((h) => h.slice(0, -1));
+    if (last.kind === "drop") {
+      mark(last.bib);
+      return;
+    }
+    if (last.kind === "mark") {
+      setGone((g) => (g.includes(last.id) ? g : [...g, last.id]));
+      later(async () => {
+        try {
+          await post({ action: "delete", id: last.id });
+        } catch {
+          setGone((g) => g.filter((x) => x !== last.id));
+          remember(last);
+        }
+      });
+      return;
+    }
+    setGone((g) => g.filter((x) => x !== last.id));
+    later(async () => {
+      try {
+        await post({ action: "mark-restore", id: last.id });
+      } catch {
+        setGone((g) => [...g, last.id]);
+        remember(last);
+      }
+    });
+  }
+
+  const width = bibDigitWidth((event?.runners ?? []).map((r) => r.bib));
+  const hidden = new Set(gone);
+  const server = event ? liveMarks(event.marks).filter((m) => !hidden.has(m.id)) : [];
+  const rows = [
+    ...server.map((m) => ({ id: m.id, bib: m.bib, local: false })),
+    ...pending.map((m) => ({ id: m.id, bib: m.bib, local: true })),
+  ]
+    .map((m, i) => ({ ...m, n: i + 1 }))
+    .reverse();
+  const newest = rows[0]?.id ?? "";
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: 0 });
+  }, [newest]);
 
   if (!event) {
     return (
-      <Screen>
+      <Screen className="h-dvh max-h-dvh max-w-none overflow-hidden">
+        <TopBar backHref={`/e/${code}`} title={code} />
         <LoadingState />
       </Screen>
     );
   }
 
-  const seq = liveMarks(event.marks);
-  const start = Math.max(0, seq.length - 8);
-  const recent = seq.slice(start).map((m, i) => ({ mark: m, index: start + i }));
+  const prompt = bibPrompt(typed, width);
 
   return (
-    <Screen className="max-w-none">
+    <Screen className="h-dvh max-h-dvh max-w-none overflow-hidden">
       <TopBar
         backHref={`/e/${code}`}
         title={
           <div className="text-center leading-none">
-            <div className="font-mono text-3xl font-black tabular">{seq.length}</div>
+            <div className="font-mono text-3xl font-black tabular">{server.length + pending.length}</div>
             <div className="text-[10px] font-black uppercase tracking-wider text-dim">Bibs</div>
           </div>
         }
-        menu={
-          <Chip size="icon" onClick={() => setMode(showPad ? "tiles" : "pad")}>
-            {showPad ? "Tiles" : "Pad"}
-          </Chip>
-        }
-        info="Enter bibs in crossing order. The server pairs them with Timer taps. Tap a recent bib to change it, insert before or after it, or delete it. Drag a bib sideways to reorder."
+        info="Type the bib in crossing order. It saves when every digit is filled. Delete drops a bib. Undo puts back the last bib or the last delete."
       />
-      {!hasTiles && !showPad ? (
-        <p className="px-4 text-center text-sm font-bold text-dim">Tiles appear once runners cross.</p>
-      ) : null}
-
-      {recent.length > 0 ? (
-        <RecentSequence
-          event={event}
-          recent={recent}
-          selected={selected}
-          onSelect={(i) => {
-            setSelected((cur) => (cur === i ? null : i));
-            setReassign(null);
-            setInsertAt(null);
-            setBib("");
-          }}
-          onMove={(from, to) => void moveMark(from, to)}
-        />
-      ) : null}
-
-      {selected != null ? (
-        <div className="mx-3 mt-2 grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            className="tap h-14 rounded-2xl bg-panel2 text-base font-black ring-1 ring-line"
-            onClick={() => {
-              setReassign(selected);
-              setInsertAt(null);
-            }}
-          >
-            Bib
-          </button>
-          <button
-            type="button"
-            className="tap h-14 rounded-2xl bg-panel2 text-base font-black ring-1 ring-line"
-            onClick={() => {
-              setInsertAt(selected);
-              setReassign(null);
-            }}
-          >
-            Before
-          </button>
-          <button
-            type="button"
-            className="tap h-14 rounded-2xl bg-panel2 text-base font-black ring-1 ring-line"
-            onClick={() => {
-              setInsertAt(selected + 1);
-              setReassign(null);
-            }}
-          >
-            After
-          </button>
-          <button
-            type="button"
-            className="tap h-14 rounded-2xl bg-stop/20 text-base font-black text-stop ring-1 ring-stop"
-            onClick={() => void deleteMark(selected)}
-          >
-            Delete
-          </button>
-        </div>
-      ) : null}
-
-      <div className="flex flex-1 flex-col overflow-hidden p-3 pt-2">
-        {reassign != null || insertAt != null ? (
-          <div className="mb-2 rounded-xl bg-accent/15 px-3 py-2 text-center text-sm font-black text-accent ring-1 ring-accent/40">
-            {reassign != null ? "Change bib" : "Insert bib"}
-          </div>
-        ) : null}
-        {showPad ? (
-          <div className="flex flex-1 flex-col">
-            <div className="mb-2 flex h-16 items-center justify-center rounded-2xl bg-panel font-mono text-5xl font-black tabular ring-1 ring-line">
-              {reassign != null ? `→${bib || "_"}` : insertAt != null ? `+${bib || "_"}` : bib || " "}
-            </div>
-            <NumberPad value={bib} onChange={setBib} onEnter={() => void mark(bib)} enterLabel="Enter" />
-          </div>
-        ) : (
-          <TileGrid tiles={tiles} eventId={event.id} onPick={(r) => void mark(r.runner.bib)} />
-        )}
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
+        <ul className="flex flex-col gap-1.5">
+          {rows.map((row) => {
+            const runner = runnerByBib(event.runners, row.bib);
+            const shown = padBib(row.bib, width);
+            return (
+              <li
+                key={row.id}
+                className={`grid grid-cols-[2.5rem_auto_minmax(0,1fr)_2.75rem] items-center gap-2 rounded-xl px-3 py-1.5 ${
+                  runner ? "bg-panel2" : "bg-bell/10 ring-1 ring-bell/40"
+                }`}
+              >
+                <span className="font-mono text-sm font-bold tabular text-dim">
+                  {String(row.n).padStart(2, "0")}
+                </span>
+                {runner ? (
+                  <Avatar runner={runner} eventId={event.id} size={40} overlay={false} />
+                ) : (
+                  <span className="grid h-10 w-10 place-items-center rounded-xl bg-panel font-black text-bell">
+                    ?
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="block font-mono text-2xl font-black leading-none tabular">{shown}</span>
+                  <span className="mt-1 block h-4 truncate text-xs font-semibold text-dim">
+                    {runner?.name ?? ""}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="tap grid h-11 w-11 place-items-center rounded-lg text-dim active:bg-sand active:text-ink"
+                  aria-label={`Delete bib ${shown}`}
+                  onClick={() => deleteRow(row)}
+                >
+                  <TrashIcon />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </div>
-      {toast ? (
-        <UndoToast
-          key={toast.id}
-          message={toast.label}
-          onUndo={() => void restoreMark(toast.id)}
-          onGone={() => setToast(null)}
-        />
-      ) : null}
+      <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div
+          className="mb-2 flex h-12 items-center justify-center rounded-[12px] bg-panel font-mono text-4xl font-black tabular tracking-[0.08em] ring-1 ring-line"
+          aria-label="Bib being typed"
+        >
+          <span>
+            {prompt.split("").map((ch, i) => (
+              <span key={i} className={ch === "_" ? "text-dim/40" : "text-sand"}>
+                {ch}
+              </span>
+            ))}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="tap mb-2 h-12 w-full rounded-[12px] bg-panel2 text-base font-black uppercase tracking-[0.14em] ring-1 ring-line disabled:cursor-default disabled:text-dim/40 disabled:ring-line/50"
+          onClick={() => undo()}
+          disabled={hist.length === 0}
+        >
+          Undo
+        </button>
+        <div className="grid grid-cols-3 gap-2">
+          {PAD_KEYS.map((key) => (
+            <button
+              key={key.id}
+              type="button"
+              className={`tap h-16 rounded-2xl bg-panel2 font-black tabular text-sand ring-1 ring-line active:bg-sand active:text-ink ${
+                key.id === "clear" ? "text-lg" : "text-2xl"
+              }`}
+              aria-label={key.label}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                press(key.id);
+              }}
+            >
+              {key.face}
+            </button>
+          ))}
+        </div>
+      </div>
     </Screen>
   );
 }
 
-function RecentSequence({
-  event,
-  recent,
-  selected,
-  onSelect,
-  onMove,
-}: {
-  event: EventState;
-  recent: { mark: Mark; index: number }[];
-  selected: number | null;
-  onSelect: (index: number) => void;
-  onMove: (from: number, to: number) => void;
-}) {
-  const drag = useRef<{ from: number; x: number; dragging: boolean } | null>(null);
+const PAD_KEYS: { id: string; face: string; label: string }[] = [
+  { id: "1", face: "1", label: "1" },
+  { id: "2", face: "2", label: "2" },
+  { id: "3", face: "3", label: "3" },
+  { id: "4", face: "4", label: "4" },
+  { id: "5", face: "5", label: "5" },
+  { id: "6", face: "6", label: "6" },
+  { id: "7", face: "7", label: "7" },
+  { id: "8", face: "8", label: "8" },
+  { id: "9", face: "9", label: "9" },
+  { id: "back", face: "⌫", label: "Backspace" },
+  { id: "0", face: "0", label: "0" },
+  { id: "clear", face: "Clear", label: "Clear" },
+];
 
+function TrashIcon() {
   return (
-    <div className="mx-3 mt-1 flex gap-2 overflow-x-auto pb-1">
-      {recent.map((p) => {
-        const runner: Runner | undefined = runnerByBib(event.runners, p.mark.bib);
-        const active = selected === p.index;
-        return (
-          <button
-            key={p.mark.id}
-            type="button"
-            className={`tap flex h-16 shrink-0 items-center gap-2 rounded-xl px-2 ring-1 ${
-              active ? "bg-accent text-ink ring-accent" : "bg-panel ring-line"
-            }`}
-            onPointerDown={(e) => {
-              (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
-              drag.current = { from: p.index, x: e.clientX, dragging: false };
-            }}
-            onPointerMove={(e) => {
-              const d = drag.current;
-              if (!d || d.from !== p.index) return;
-              if (Math.abs(e.clientX - d.x) > 14) d.dragging = true;
-            }}
-            onPointerUp={(e) => {
-              const d = drag.current;
-              drag.current = null;
-              if (!d || d.from !== p.index) return;
-              if (d.dragging) {
-                const delta = Math.round((e.clientX - d.x) / 72);
-                const lo = recent[0].index;
-                const hi = recent[recent.length - 1].index;
-                const to = Math.max(lo, Math.min(hi, d.from + delta));
-                onMove(d.from, to);
-                return;
-              }
-              onSelect(p.index);
-            }}
-          >
-            {runner ? (
-              <Avatar runner={runner} eventId={event.id} size={40} overlay={false} lightbox />
-            ) : (
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-panel2 font-black">?</div>
-            )}
-            <div className="font-mono text-2xl font-black leading-none tabular">{p.mark.bib}</div>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function TileGrid({
-  tiles,
-  eventId,
-  onPick,
-}: {
-  tiles: RunnerRace[];
-  eventId: string;
-  onPick: (r: RunnerRace) => void;
-}) {
-  const top = tiles.slice(0, 3);
-  const rest = tiles.slice(3);
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
-      {top[0] ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="col-span-2">
-            <Tile race={top[0]} eventId={eventId} large onPick={() => onPick(top[0])} />
-          </div>
-          {top[1] ? (
-            <Tile race={top[1]} eventId={eventId} onPick={() => onPick(top[1])} />
-          ) : null}
-          {top[2] ? (
-            <Tile race={top[2]} eventId={eventId} onPick={() => onPick(top[2])} />
-          ) : null}
-        </div>
-      ) : null}
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {rest.map((r) => (
-          <Tile key={r.runner.id} race={r} eventId={eventId} onPick={() => onPick(r)} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Tile({
-  race,
-  eventId,
-  large,
-  onPick,
-}: {
-  race: RunnerRace;
-  eventId: string;
-  large?: boolean;
-  onPick: () => void;
-}) {
-  const r = race.runner;
-  return (
-    <button
-      type="button"
-      onPointerDown={(e) => {
-        e.preventDefault();
-        onPick();
-      }}
-      className={`tap flex w-full flex-col items-center justify-center rounded-2xl bg-panel p-2 ring-1 ring-line active:bg-accent active:text-ink ${
-        large ? "min-h-40" : "min-h-28"
-      } ${race.bell ? "ring-2 ring-bell" : ""}`}
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      <Avatar runner={r} eventId={eventId} size={large ? 72 : 52} lightbox />
-      <div className="mt-1 font-mono text-3xl font-black leading-none tabular">{r.bib}</div>
-      <div className="text-xs font-semibold text-dim">{shortName(r.name)}</div>
-    </button>
+      <path d="M4 7h16" />
+      <path d="M9 7V5h6v2" />
+      <path d="M8 7l1 13h6l1-13" />
+    </svg>
   );
 }

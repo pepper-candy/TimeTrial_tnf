@@ -40,13 +40,6 @@ export function CrossingEditor({
             <div className="text-lg font-black">{r.name || "—"}</div>
             <div className="font-mono text-sm font-black tabular text-accent">{r.bib}</div>
           </div>
-          <button
-            type="button"
-            className="tap h-12 rounded-xl bg-accent px-4 font-black text-ink"
-            onClick={() => void onEdit({ action: "pair-insert-estimated", bib: r.bib, actor: "admin" })}
-          >
-            +~
-          </button>
         </div>
         <div className="mt-4 space-y-2">
           {race.crossings.length === 0 ? (

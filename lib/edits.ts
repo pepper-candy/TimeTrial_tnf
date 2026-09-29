@@ -60,6 +60,45 @@ export function insertEstimatedTap(taps: Tap[], t: number, id?: string): Tap[] {
   return appendTap(taps, { id: id ?? newId(), t: Math.round(t), estimated: true });
 }
 
+/**
+ * Insert one live tap so it sorts at `liveIndex`, shifting later taps.
+ * The time is the midpoint of the neighbours. A 1ms pack is opened just
+ * enough that sort order matches the index; recorded times move by 1ms.
+ */
+export function insertTapAtLiveIndex(taps: Tap[], liveIndex: number, explicitT?: number): Tap[] {
+  if (explicitT != null && Number.isFinite(explicitT)) {
+    return appendTap(taps, { id: newId(), t: Math.round(explicitT), estimated: false });
+  }
+  const live = liveTaps(taps);
+  const i = Math.max(0, Math.min(Math.floor(liveIndex), live.length));
+  const id = newId();
+  const prev = i > 0 ? live[i - 1].t : null;
+  const nextT = i < live.length ? live[i].t : null;
+  let t: number;
+  if (prev != null && nextT != null && nextT - prev >= 2) t = Math.round((prev + nextT) / 2);
+  else if (prev != null && nextT != null) t = prev;
+  else if (nextT != null) t = nextT - 800;
+  else if (prev != null) t = prev + 800;
+  else t = 0;
+  const order = live.slice();
+  order.splice(i, 0, { id, t, estimated: true });
+  const fixed = order.map((tap) => ({ ...tap }));
+  for (let k = 1; k < fixed.length; k++) {
+    const before = fixed[k - 1];
+    const cur = fixed[k];
+    if (cur.t < before.t || (cur.t === before.t && cur.id.localeCompare(before.id) < 0)) {
+      fixed[k] = { ...cur, t: before.t + 1 };
+    }
+  }
+  const byId = new Map(fixed.map((tap) => [tap.id, tap]));
+  const rewritten = taps.map((tap) => {
+    const next = byId.get(tap.id);
+    if (!next || next.t === tap.t) return tap;
+    return { ...tap, t: next.t };
+  });
+  return appendTap(rewritten, byId.get(id)!);
+}
+
 /** Midpoint of the two latest live taps, or 800ms before a single tap. */
 export function estimateMissedTapTime(taps: Tap[], beforeId?: string): number | null {
   const live = liveTaps(taps);
@@ -177,6 +216,7 @@ export type EditInput = {
   j?: number;
   to?: number;
   t?: number;
+  estimated?: boolean;
   beforeId?: string;
   taps?: Tap[];
   tap?: Tap;
@@ -237,6 +277,34 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       ...event,
       taps: restoreTap(event.taps, id),
       edits: log(event, actor, "tap-restore", { tapId: id, t: target.t }, at),
+    };
+  }
+
+  if (action === "tap-set-time") {
+    const id = body.id ?? body.tapId;
+    if (!id || typeof body.t !== "number" || !Number.isFinite(body.t)) return event;
+    const target = event.taps.find((t) => t.id === id);
+    if (!target || !isLive(target)) return event;
+    const t = Math.round(body.t);
+    const estimated = typeof body.estimated === "boolean" ? body.estimated : false;
+    if (t === target.t && Boolean(target.estimated) === estimated) return event;
+    return {
+      ...event,
+      taps: event.taps.map((tap) => (tap.id === id ? { ...tap, t, estimated } : tap)),
+      edits: log(event, actor, "tap-time", { tapId: id, t, prevT: target.t }, at),
+    };
+  }
+
+  if (action === "tap-insert-at") {
+    if (body.index == null || !Number.isFinite(body.index)) return event;
+    const before = new Set(event.taps.map((t) => t.id));
+    const taps = insertTapAtLiveIndex(event.taps, body.index, body.t);
+    const added = liveTaps(taps).find((t) => !before.has(t.id));
+    if (!added) return event;
+    return {
+      ...event,
+      taps,
+      edits: log(event, actor, "tap-insert", { tapId: added.id, t: added.t, toIndex: body.index }, at),
     };
   }
 

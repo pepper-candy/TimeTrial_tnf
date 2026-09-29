@@ -105,7 +105,7 @@ export function PinGate({
       />
       <div className="flex flex-1 flex-col px-4 pb-6">
         {keyMode ? (
-          <div className="mt-4 flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
             <Field
               value={key}
               onChange={setKey}
@@ -120,7 +120,7 @@ export function PinGate({
           </div>
         ) : (
           <>
-            <div className="mt-2 mb-3 flex h-20 items-center justify-center rounded-2xl bg-panel font-mono text-6xl font-black tabular tracking-[0.35em] ring-1 ring-line">
+            <div className="mb-3 flex h-20 items-center justify-center rounded-2xl bg-panel font-mono text-6xl font-black tabular tracking-[0.35em] ring-1 ring-line">
               {pin ? "•".repeat(pin.length) : " "}
             </div>
             {err ? <p className="mb-3 text-center text-sm font-black text-stop">Wrong PIN</p> : null}

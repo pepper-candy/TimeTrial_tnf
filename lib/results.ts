@@ -3,10 +3,12 @@ import { kmCrossings } from "./course";
 import { formatClubMs, formatClubPace, formatEst, formatEventDate, formatSplitDelta } from "./format";
 import { buildRunnerRaces, compareRank, type RunnerRace } from "./race";
 import {
+  consistencyPctOf,
   fastestSlowestLap,
   fullLapsFor,
   halfSplitFor,
   kmMarksFor,
+  plausibleEffort,
 } from "./stats";
 import type { CourseConfig, EventState } from "./types";
 
@@ -27,6 +29,11 @@ export function rankEmoji(place: number): string {
     .split("")
     .map((d) => keys[Number(d)] ?? d)
     .join("");
+}
+
+export function formatConsistencyPct(pct: number): string {
+  const shown = Math.round(pct * 10) / 10;
+  return `${Number.isInteger(shown) ? String(shown) : shown.toFixed(1)}%`;
 }
 
 export function lapsCompleted(event: EventState, race: RunnerRace): number {
@@ -93,7 +100,6 @@ function formatSummaryRunner(
   const r = race.runner;
   const last = race.crossings[race.crossings.length - 1];
   const elapsed = last && event.startedAt != null ? last.t - event.startedAt : 0;
-  const distM = last?.distanceM ?? 0;
   const dnf = !race.finished;
   const time = formatEst(formatClubMs(elapsed), last?.estimated);
   const lapsBit = dnf ? ` (${formatLapsShort(lapsCompleted(event, race))} laps)` : "";
@@ -107,7 +113,7 @@ function formatSummaryRunner(
     parts.push(`${km}K: ${formatEst(formatClubMs(ms), crossing?.estimated)}`);
   }
   const splitsBit = parts.length ? ` (${parts.join("; ")})` : "";
-  const avgSec = distM > 0 ? elapsed / 1000 / (distM / 1000) : 0;
+  const avgSec = paceSecPerKm(event, race);
 
   return [
     `${rankEmoji(place)}Bib No.${r.bib} (${r.studentId})`,
@@ -120,11 +126,10 @@ function formatDetailedRunner(event: EventState, race: RunnerRace, place: number
   const r = race.runner;
   const last = race.crossings[race.crossings.length - 1];
   const elapsed = last && event.startedAt != null ? last.t - event.startedAt : 0;
-  const distM = last?.distanceM ?? 0;
   const dnf = !race.finished;
   const time = formatEst(formatClubMs(elapsed), last?.estimated);
   const lapsBit = dnf ? ` (${formatLapsShort(lapsCompleted(event, race))} laps)` : "";
-  const avgSec = distM > 0 ? elapsed / 1000 / (distM / 1000) : 0;
+  const avgSec = paceSecPerKm(event, race);
 
   const lines = [
     `${rankEmoji(place)}*Bib No.${r.bib}* (${r.studentId})`,
@@ -141,7 +146,8 @@ function formatDetailedRunner(event: EventState, race: RunnerRace, place: number
   }
 
   const bits: string[] = [];
-  const pair = fastestSlowestLap(fullLapsFor(event, race));
+  const laps = fullLapsFor(event, race);
+  const pair = fastestSlowestLap(laps);
   if (pair) {
     if (!pair.fast.estimated) bits.push(`Fast L${pair.fast.lap} ${formatClubMs(pair.fast.ms)}`);
     bits.push(`Slow L${pair.slow.lap} ${formatEst(formatClubMs(pair.slow.ms), pair.slow.estimated)}`);
@@ -152,16 +158,21 @@ function formatDetailedRunner(event: EventState, race: RunnerRace, place: number
       `Half ${formatClubMs(half.firstMs)}/${formatClubMs(half.secondMs)} (${formatSplitDelta(half.deltaMs)})`,
     );
   }
-  const laps = fullLapsFor(event, race);
-  if (laps.length >= 2) {
-    const mean = laps.reduce((s, x) => s + x.ms, 0) / laps.length;
-    const variance = laps.reduce((s, x) => s + (x.ms - mean) ** 2, 0) / laps.length;
-    const pct = mean > 0 ? (Math.sqrt(variance) / mean) * 100 : 0;
-    const shown = Math.round(pct * 10) / 10;
-    bits.push(`Cons ${Number.isInteger(shown) ? String(shown) : shown.toFixed(1)}%`);
-  }
+  const pct = consistencyPctOf(laps);
+  if (pct != null) bits.push(`Cons ${formatConsistencyPct(pct)}`);
   if (bits.length) lines.push(bits.join(" · "));
   return lines.join("\n");
+}
+
+/** Pace of real splits. A lap under 20s per 400m is left out so a test tap cannot set the average. */
+function paceSecPerKm(event: EventState, race: RunnerRace): number {
+  const last = race.crossings[race.crossings.length - 1];
+  const wallDist = last?.distanceM ?? 0;
+  const wallElapsed = last && event.startedAt != null ? last.t - event.startedAt : 0;
+  const effort = plausibleEffort(event, race);
+  const distM = effort.ignored === 0 ? wallDist : effort.distM;
+  const elapsedMs = effort.ignored === 0 ? wallElapsed : effort.elapsedMs;
+  return distM > 0 ? elapsedMs / 1000 / (distM / 1000) : 0;
 }
 
 /** Girls, Boys, then runners with no category ("Other"; no heading if nobody has one). */

@@ -1,6 +1,8 @@
 import { inCategory, type Category } from "./category";
 import { crossingDistance, splitDistance } from "./course";
 import { compareRank, splitEstimated, type RunnerRace } from "./race";
+import { correctedIds } from "./records";
+import { isImpossibleSplit } from "./stats";
 import type { CourseConfig, EventState } from "./types";
 
 export type BoardFilter = "all" | Category;
@@ -31,7 +33,7 @@ export type BoardHighlights = {
   raceBest: { runnerId: string; index: number; ms: number } | null;
   /** runnerId → split index of that runner's fastest full lap. */
   personalBest: Map<string, number>;
-  /** `${runnerId}:${index}` for crossings whose tap or bib was edited. */
+  /** `${runnerId}:${index}` for a real correction. A live tap or marker bib append is not edited. */
   edited: Set<string>;
 };
 
@@ -40,12 +42,7 @@ export function cellKey(runnerId: string, index: number): string {
 }
 
 export function boardHighlights(event: EventState, races: RunnerRace[]): BoardHighlights {
-  const editedTaps = new Set<string>();
-  const editedMarks = new Set<string>();
-  for (const e of event.edits ?? []) {
-    if (e.tapId) editedTaps.add(e.tapId);
-    if (e.markId) editedMarks.add(e.markId);
-  }
+  const corrected = correctedIds(event.edits);
 
   let raceBest: BoardHighlights["raceBest"] = null;
   const personalBest = new Map<string, number>();
@@ -55,9 +52,17 @@ export function boardHighlights(event: EventState, races: RunnerRace[]): BoardHi
     const id = race.runner.id;
     let pb: { index: number; ms: number } | null = null;
     race.crossings.forEach((c, i) => {
-      if (editedTaps.has(c.tapId) || editedMarks.has(c.markId)) edited.add(cellKey(id, i));
+      if (corrected.has(c.tapId) || corrected.has(c.markId)) edited.add(cellKey(id, i));
       const ms = race.splitMs[i];
-      if (ms == null || !isFullLap(event.course, i) || splitEstimated(race.crossings, i)) return;
+      const dist = splitDistance(event.course, i + 1);
+      if (
+        ms == null ||
+        !isFullLap(event.course, i) ||
+        splitEstimated(race.crossings, i) ||
+        isImpossibleSplit(ms, dist)
+      ) {
+        return;
+      }
       if (!pb || ms < pb.ms) pb = { index: i, ms };
     });
     if (pb) {

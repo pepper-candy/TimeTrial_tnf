@@ -10,7 +10,6 @@ import { EmptyState, LoadingState } from "@/components/states";
 import {
   boardHighlights,
   boardRows,
-  cellKey,
   formatCum,
   formatLapSplit,
   lapColumns,
@@ -27,11 +26,12 @@ import { formatClock, formatEst, formatPace, formatSpeed, bibColor, initials } f
 import { photoPath } from "@/lib/photo";
 import { splitEstimated, type RunnerRace } from "@/lib/race";
 import { formatResultsText } from "@/lib/results";
+import { textFits } from "@/lib/text-fit";
 import type { RunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
 
 const INFO =
-  "Live board — no PIN. Each box: small = lap split, big = running time. Orange circle = fastest lap of the race. Blue ring = runner's best lap. Yellow corner = edited or estimated (~). Yellow box = bell lap. Tap a runner for details.";
+  "Live board — no PIN. Each box: small = lap split, big = running time. Orange cell = fastest lap of the race. Blue border = runner's best lap. ~ = estimated time. Yellow box = bell lap. Tap a runner for details.";
 
 export default function BoardPage() {
   const { code } = useParams<{ code: string }>();
@@ -207,8 +207,8 @@ function Screen({ children }: { children: React.ReactNode }) {
 function HeaderRow({ cols, nowCol }: { cols: LapColumn[]; nowCol: number }) {
   return (
     <div className="sb-head font-mono font-black tabular text-white">
-      <div data-name-head className="sb-name flex items-center px-3 text-xs uppercase tracking-[0.2em] text-white/80">
-        Runner
+      <div data-name-head className="sb-name flex items-center px-1 text-[10px] uppercase tracking-normal text-white/80 sm:px-3 sm:text-xs sm:tracking-[0.2em]">
+        <span className="truncate">Runner</span>
       </div>
       {cols.map((c, i) => (
         <div
@@ -270,24 +270,23 @@ function BoardRow({
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
       className={`sb-row tap ${tone}`}
     >
-      <div className="sb-name flex items-center gap-2 px-2">
+      <div className="sb-name flex items-center px-1 sm:gap-2 sm:px-2">
         <span className={`sb-rank font-mono tabular ${rank === 1 && race.crossings.length > 0 ? "sb-lead" : ""}`}>
           {rank}
         </span>
         <Thumb race={race} eventId={event.id} />
-        <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:gap-2">
+        <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex" title={r.name || undefined}>
           <div className="sb-bib shrink-0 font-mono font-black leading-none tabular sm:min-w-[2ch] sm:text-right">
             {r.bib}
           </div>
           <div className="min-w-0 leading-tight">
-            <div className="mt-0.5 truncate text-xs font-bold text-dim sm:mt-0 sm:text-sm sm:text-sand lg:text-base">
-              {r.name || "—"}
-            </div>
+            <div className="truncate text-sm font-bold text-sand lg:text-base">{r.name || "—"}</div>
             {showId && r.studentId ? (
               <div className="hidden truncate font-mono text-xs tabular text-dim lg:block">{r.studentId}</div>
             ) : null}
           </div>
         </div>
+        <PhoneName name={r.name} />
       </div>
       {cols.map((c, i) => (
         <LapCell
@@ -345,19 +344,17 @@ function LapCell({
   const splitEst = splitEstimated(race.crossings, index);
   const best = highlights.raceBest?.runnerId === id && highlights.raceBest.index === index;
   const pb = !best && highlights.personalBest.get(id) === index;
-  const flagged = c.estimated || splitEst || highlights.edited.has(cellKey(id, index));
-  const ring = best ? "sb-ring-best" : pb ? "sb-ring-pb" : "";
   const splitText = formatEst(formatLapSplit(split), splitEst);
   const cumText = formatEst(formatCum(c.elapsedMs), c.estimated);
   const splitBig = big === "split";
+  const mark = best ? "sb-best" : pb ? "sb-pb" : "";
   return (
-    <div className={`sb-cell font-mono tabular ${fresh ? "sb-fresh" : ""}`}>
-      {flagged ? <span className="sb-flag" aria-label="Edited" /> : null}
+    <div className={`sb-cell font-mono tabular ${fresh ? "sb-fresh" : ""} ${mark}`}>
       <div className="sb-top">
-        <span className={`sb-mini ${splitBig ? "" : ring}`}>{splitBig ? cumText : splitText}</span>
+        <span className="sb-mini">{splitBig ? cumText : splitText}</span>
       </div>
       <div className="sb-big">
-        <span className={splitBig ? ring : ""}>{splitBig ? splitText : cumText}</span>
+        <span>{splitBig ? splitText : cumText}</span>
       </div>
     </div>
   );
@@ -399,7 +396,7 @@ function Thumb({ race, eventId }: { race: RunnerRace; eventId: string }) {
   const r = race.runner;
   const src = r.photoVer ? photoPath(eventId, r.id, r.photoVer, "thumb") : null;
   return (
-    <div className="sb-photo shrink-0 overflow-hidden rounded-lg ring-1 ring-black/60">
+    <div className="sb-photo relative shrink-0 overflow-hidden rounded-lg ring-1 ring-black/60">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="h-full w-full object-cover" />
@@ -408,11 +405,67 @@ function Thumb({ race, eventId }: { race: RunnerRace; eventId: string }) {
           className="grid h-full w-full place-items-center text-sm font-black text-white"
           style={{ background: bibColor(r.bib || r.name || "?") }}
         >
-          {initials(r.name) || r.bib.slice(0, 2)}
+          <span className="hidden sm:inline">{initials(r.name) || r.bib.slice(0, 2)}</span>
         </div>
       )}
+      <span className="absolute inset-x-0 bottom-0 grid h-[58%] place-items-center bg-gradient-to-t from-black/85 to-black/25 font-mono text-[15px] font-black leading-none tabular tracking-tight text-white [text-shadow:0_1px_2px_#000] sm:hidden">
+        {r.bib}
+      </span>
     </div>
   );
+}
+
+/** Phone only. Shown only when the full name fits; a truncated stub is hidden. */
+function PhoneName({ name }: { name: string }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [fits, setFits] = useState(false);
+
+  useEffect(() => {
+    const el = anchor.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+    const label = name || "—";
+    const measure = () => {
+      if (!window.matchMedia("(max-width: 639px)").matches) {
+        setFits(false);
+        return;
+      }
+      const avatar = parent.querySelector(".sb-photo") as HTMLElement | null;
+      const cs = getComputedStyle(parent);
+      const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const gap = parseFloat(cs.columnGap) || 0;
+      const available = parent.clientWidth - pad - (avatar?.offsetWidth ?? 0) - (avatar ? gap : 0);
+      setFits(textFits(labelWidth(label), available));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(parent);
+    const mq = window.matchMedia("(max-width: 639px)");
+    mq.addEventListener("change", measure);
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener("change", measure);
+    };
+  }, [name]);
+
+  return (
+    <span ref={anchor} className="contents">
+      {fits ? (
+        <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-sand sm:hidden">{name || "—"}</span>
+      ) : null}
+    </span>
+  );
+}
+
+function labelWidth(text: string): number {
+  const span = document.createElement("span");
+  span.className = "text-[11px] font-bold";
+  span.style.cssText = "position:fixed;left:-9999px;top:0;white-space:nowrap;visibility:hidden";
+  span.textContent = text;
+  document.body.appendChild(span);
+  const width = span.scrollWidth;
+  span.remove();
+  return width;
 }
 
 function Footer({ event, leader, now }: { event: EventState; leader: RunnerRace | null; now: number }) {
@@ -600,7 +653,7 @@ function Detail({
       <div className="flex items-center gap-3">
         <Avatar runner={r} eventId={event.id} size={72} lightbox />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-xl font-black">{r.name || "—"}</div>
+          <div className="text-xl font-black leading-tight break-words">{r.name || "—"}</div>
           <div className="font-mono text-sm tabular text-dim">
             {[showId ? r.studentId : "", normalizeCategory(r.category)].filter(Boolean).join(" · ")}
           </div>

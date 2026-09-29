@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { BrandMark } from "@/components/brand-mark";
-import { adminEvents, rememberAdmin, setStoredPin, type AdminEvent } from "@/lib/client/pin";
+import { rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
 import { normalizeCode } from "@/lib/ids";
 import type { EventState } from "@/lib/types";
@@ -37,12 +37,6 @@ export default function HomePage() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<"join" | "demo" | null>(null);
   const [missing, setMissing] = useState(false);
-  const [mine, setMine] = useState<AdminEvent[]>([]);
-
-  useEffect(() => {
-    const kick = window.setTimeout(() => setMine(adminEvents().slice(0, 3)), 0);
-    return () => window.clearTimeout(kick);
-  }, []);
 
   async function join() {
     const c = normalizeCode(code);
@@ -148,21 +142,6 @@ export default function HomePage() {
             {busy === "demo" ? "…" : "Watch demo"}
           </button>
         </div>
-
-        {mine.length > 0 ? (
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            {mine.map((e) => (
-              <Link
-                key={e.code}
-                href={`/e/${e.code}/admin`}
-                title={e.name}
-                className="launch launch-outline tap flex h-12 items-center rounded-[8px] bg-panel/70 px-4 font-mono text-lg font-black tabular tracking-[0.14em] ring-1 ring-line active:bg-sand active:text-ink"
-              >
-                {e.code}
-              </Link>
-            ))}
-          </div>
-        ) : null}
 
         <p className="mt-8 text-center font-mono text-xs font-bold uppercase tracking-[0.25em] text-dim/80">
           Tap · Mark · Watch live

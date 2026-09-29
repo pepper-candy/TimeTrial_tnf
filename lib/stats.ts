@@ -2,6 +2,17 @@ import { crossingDistance, splitDistance } from "./course";
 import type { EventState } from "./types";
 import { splitEstimated, type RunnerRace } from "./race";
 
+/** Quicker than this cannot be a running lap (double-tap or a test mash). */
+export const IMPOSSIBLE_MS_PER_400 = 20_000;
+
+export function impossibleSplitMs(distanceM: number): number {
+  return (distanceM / 400) * IMPOSSIBLE_MS_PER_400;
+}
+
+export function isImpossibleSplit(ms: number, distanceM: number): boolean {
+  return distanceM > 0 && ms < impossibleSplitMs(distanceM);
+}
+
 export type RunnerStats = {
   avgPaceSecPerKm: number | null;
   lastLapPaceSecPerKm: number | null;
@@ -15,6 +26,8 @@ export type RunnerStats = {
   gapToLeaderMs: number | null;
   kmSplits: { km: number; elapsedMs: number; splitMs: number; paceSecPerKm: number }[];
   vsTargetSecPerKm: number | null;
+  /** Splits quicker than 20s per 400m. Left out of pace, speed, and lap records. */
+  ignoredSplits: number;
 };
 
 export function computeRunnerStats(
@@ -24,65 +37,50 @@ export function computeRunnerStats(
 ): RunnerStats {
   const start = event.startedAt;
   const last = race.crossings[race.crossings.length - 1];
-  const distM = last ? last.distanceM : 0;
-  const elapsed = last && start != null ? last.t - start : null;
+  const wallDist = last ? last.distanceM : 0;
+  const wallElapsed = last && start != null ? last.t - start : null;
+  const effort = plausibleEffort(event, race);
+  const distM = effort.ignored === 0 ? wallDist : effort.distM;
+  const elapsed = effort.ignored === 0 ? wallElapsed : effort.elapsedMs;
 
   const avgPaceSecPerKm =
     elapsed != null && distM > 0 ? elapsed / 1000 / (distM / 1000) : null;
   const speedKmh =
-    elapsed != null && distM > 0 ? distM / 1000 / (elapsed / 3_600_000) : null;
+    elapsed != null && elapsed > 0 && distM > 0 ? distM / 1000 / (elapsed / 3_600_000) : null;
 
-  const fullLapIdx: number[] = [];
-  for (let i = 0; i < race.splitMs.length; i++) {
-    const d = splitDistance(event.course, i + 1);
-    if (Math.abs(d - event.course.lapLengthM) < 0.5) fullLapIdx.push(i);
-  }
-  const full = fullLapIdx.map((i) => ({
-    i,
-    ms: race.splitMs[i],
-    d: splitDistance(event.course, i + 1),
-    estimated: splitEstimated(race.crossings, i),
-  }));
-
+  const laps = fullLapsFor(event, race);
+  const pair = fastestSlowestLap(laps);
   let fastestLapSec: number | null = null;
   let slowestLapSec: number | null = null;
   let fastestLapPaceSecPerKm: number | null = null;
   let slowestLapPaceSecPerKm: number | null = null;
-  if (full.length > 0) {
-    const measurable = full.filter((x) => !x.estimated);
-    const fastest =
-      measurable.length > 0 ? measurable.reduce((a, b) => (a.ms < b.ms ? a : b)) : null;
-    const slowest = full.reduce((a, b) => (a.ms > b.ms ? a : b));
-    if (fastest) {
-      fastestLapSec = fastest.ms / 1000;
-      fastestLapPaceSecPerKm = fastest.ms / 1000 / (fastest.d / 1000);
-    }
-    slowestLapSec = slowest.ms / 1000;
-    slowestLapPaceSecPerKm = slowest.ms / 1000 / (slowest.d / 1000);
+  if (pair && !pair.fast.estimated) {
+    fastestLapSec = pair.fast.ms / 1000;
+    fastestLapPaceSecPerKm = pair.fast.ms / 1000 / (pair.fast.distanceM / 1000);
+  }
+  if (pair) {
+    slowestLapSec = pair.slow.ms / 1000;
+    slowestLapPaceSecPerKm = pair.slow.ms / 1000 / (pair.slow.distanceM / 1000);
   }
 
-  const lastIdx = race.splitMs.length - 1;
-  const lastLapPaceSecPerKm =
-    lastIdx >= 0
-      ? race.splitMs[lastIdx] / 1000 / (splitDistance(event.course, lastIdx + 1) / 1000)
-      : null;
-
-  let consistencyPct: number | null = null;
-  const consist = full.filter((x) => !x.estimated);
-  if (consist.length >= 2) {
-    const mean = consist.reduce((s, x) => s + x.ms, 0) / consist.length;
-    const variance = consist.reduce((s, x) => s + (x.ms - mean) ** 2, 0) / consist.length;
-    const sd = Math.sqrt(variance);
-    consistencyPct = mean > 0 ? (sd / mean) * 100 : null;
+  let lastLapPaceSecPerKm: number | null = null;
+  for (let i = race.splitMs.length - 1; i >= 0; i--) {
+    const d = splitDistance(event.course, i + 1);
+    const ms = race.splitMs[i];
+    if (isImpossibleSplit(ms, d) || splitEstimated(race.crossings, i)) continue;
+    lastLapPaceSecPerKm = ms / 1000 / (d / 1000);
+    break;
   }
+
+  const consistencyPct = consistencyPctOf(laps);
 
   let projectedFinishMs: number | null = null;
   if (race.finished && race.finishMs != null) {
     projectedFinishMs = race.finishMs;
-  } else if (avgPaceSecPerKm != null && start != null) {
+  } else if (avgPaceSecPerKm != null && start != null && elapsed != null) {
     const remainingM = event.course.totalDistanceM - distM;
     const remainingMs = (remainingM / 1000) * avgPaceSecPerKm * 1000;
-    projectedFinishMs = (elapsed ?? 0) + remainingMs;
+    projectedFinishMs = elapsed + remainingMs;
   }
 
   let gapToLeaderMs: number | null = null;
@@ -121,7 +119,30 @@ export function computeRunnerStats(
     gapToLeaderMs,
     kmSplits,
     vsTargetSecPerKm,
+    ignoredSplits: effort.ignored,
   };
+}
+
+/** Distance and time of splits that could be real running. Impossible taps are counted, not credited. */
+export function plausibleEffort(event: EventState, race: RunnerRace): {
+  distM: number;
+  elapsedMs: number;
+  ignored: number;
+} {
+  let distM = 0;
+  let elapsedMs = 0;
+  let ignored = 0;
+  for (let i = 0; i < race.splitMs.length; i++) {
+    const d = splitDistance(event.course, i + 1);
+    const ms = race.splitMs[i];
+    if (isImpossibleSplit(ms, d)) {
+      ignored += 1;
+      continue;
+    }
+    distM += d;
+    elapsedMs += ms;
+  }
+  return { distM, elapsedMs, ignored };
 }
 
 export function kmSplitsFrom(event: EventState, race: RunnerRace) {
@@ -207,6 +228,7 @@ export type FullLap = {
   /** 1-based among full (lap-length) splits only; first 200 m is not a lap. */
   lap: number;
   ms: number;
+  distanceM: number;
   estimated: boolean;
 };
 
@@ -217,7 +239,12 @@ export function fullLapsFor(event: EventState, race: RunnerRace): FullLap[] {
     const d = splitDistance(event.course, i + 1);
     if (Math.abs(d - event.course.lapLengthM) < 0.5) {
       n += 1;
-      out.push({ lap: n, ms: race.splitMs[i], estimated: splitEstimated(race.crossings, i) });
+      out.push({
+        lap: n,
+        ms: race.splitMs[i],
+        distanceM: d,
+        estimated: splitEstimated(race.crossings, i),
+      });
     }
   }
   return out;
@@ -243,18 +270,33 @@ export function halfSplitFor(event: EventState, race: RunnerRace): HalfSplit | n
   const firstMs = tHalf - start;
   const secondMs = last.t - tHalf;
   if (firstMs <= 0 || secondMs <= 0) return null;
+  if (isImpossibleSplit(firstMs, halfM) || isImpossibleSplit(secondMs, halfM)) return null;
   return { firstMs, secondMs, deltaMs: secondMs - firstMs };
+}
+
+export function usableLaps(laps: FullLap[]): FullLap[] {
+  return laps.filter((l) => !isImpossibleSplit(l.ms, l.distanceM));
+}
+
+/** Spread of real full laps, as a percent of the mean. Impossible taps are left out. */
+export function consistencyPctOf(laps: FullLap[]): number | null {
+  const consist = usableLaps(laps).filter((l) => !l.estimated);
+  if (consist.length < 2) return null;
+  const mean = consist.reduce((s, x) => s + x.ms, 0) / consist.length;
+  const variance = consist.reduce((s, x) => s + (x.ms - mean) ** 2, 0) / consist.length;
+  return mean > 0 ? (Math.sqrt(variance) / mean) * 100 : null;
 }
 
 export function fastestSlowestLap(laps: FullLap[]): {
   fast: FullLap;
   slow: FullLap;
 } | null {
-  if (laps.length === 0) return null;
-  const real = laps.filter((l) => !l.estimated);
+  const pool = usableLaps(laps);
+  if (pool.length === 0) return null;
+  const real = pool.filter((l) => !l.estimated);
   return {
-    fast: (real.length ? real : laps).reduce((a, b) => (a.ms <= b.ms ? a : b)),
-    slow: laps.reduce((a, b) => (a.ms > b.ms ? a : b)),
+    fast: (real.length ? real : pool).reduce((a, b) => (a.ms <= b.ms ? a : b)),
+    slow: pool.reduce((a, b) => (a.ms > b.ms ? a : b)),
   };
 }
 
