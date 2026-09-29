@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { NumberPad } from "@/components/pad";
-import { Chip, HelpTip, Screen } from "@/components/shell";
+import { Chip, Screen, TopBar } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
 import { LoadingState } from "@/components/states";
 import { UndoToast } from "@/components/undo-toast";
@@ -101,22 +101,24 @@ function MarkerInner({ code }: { code: string }) {
 
   return (
     <Screen className="max-w-none">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <a
-          href={`/e/${code}`}
-          className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-lg font-semibold ring-1 ring-line"
-        >
-          ←
-        </a>
-        <div className="flex-1 text-center font-mono text-3xl font-black tabular">{seq.length}</div>
-        <Chip
-          active={showPad && reassign == null && insertAt == null}
-          onClick={() => setMode((m) => (m === "pad" ? "tiles" : "pad"))}
-        >
-          {showPad ? "Tiles" : "Pad"}
-        </Chip>
-        <HelpTip text="Enter bibs in crossing order. Server pairs them with Timer taps. Tap a recent bib to change, insert, delete, or drag to reorder." />
-      </div>
+      <TopBar
+        backHref={`/e/${code}`}
+        title={
+          <div className="text-center leading-none">
+            <div className="font-mono text-3xl font-black tabular">{seq.length}</div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-dim">Bibs</div>
+          </div>
+        }
+        menu={
+          <Chip size="icon" onClick={() => setMode(showPad ? "tiles" : "pad")}>
+            {showPad ? "Tiles" : "Pad"}
+          </Chip>
+        }
+        info="Enter bibs in crossing order. The server pairs them with Timer taps. Tap a recent bib to change it, insert before or after it, or delete it. Drag a bib sideways to reorder."
+      />
+      {!hasTiles && !showPad ? (
+        <p className="px-4 text-center text-sm font-bold text-dim">Tiles appear once runners cross.</p>
+      ) : null}
 
       {recent.length > 0 ? (
         <RecentSequence
@@ -137,7 +139,7 @@ function MarkerInner({ code }: { code: string }) {
         <div className="mx-3 mt-2 grid grid-cols-4 gap-2">
           <button
             type="button"
-            className="tap h-12 rounded-xl bg-panel2 text-sm font-black ring-1 ring-line"
+            className="tap h-14 rounded-2xl bg-panel2 text-base font-black ring-1 ring-line"
             onClick={() => {
               setReassign(selected);
               setInsertAt(null);
@@ -147,37 +149,37 @@ function MarkerInner({ code }: { code: string }) {
           </button>
           <button
             type="button"
-            className="tap h-12 rounded-xl bg-panel2 text-sm font-black ring-1 ring-line"
+            className="tap h-14 rounded-2xl bg-panel2 text-base font-black ring-1 ring-line"
             onClick={() => {
               setInsertAt(selected);
               setReassign(null);
             }}
           >
-            +‹
+            Before
           </button>
           <button
             type="button"
-            className="tap h-12 rounded-xl bg-panel2 text-sm font-black ring-1 ring-line"
+            className="tap h-14 rounded-2xl bg-panel2 text-base font-black ring-1 ring-line"
             onClick={() => {
               setInsertAt(selected + 1);
               setReassign(null);
             }}
           >
-            +›
+            After
           </button>
           <button
             type="button"
-            className="tap h-12 rounded-xl bg-stop/20 text-sm font-black text-stop ring-1 ring-stop"
+            className="tap h-14 rounded-2xl bg-stop/20 text-base font-black text-stop ring-1 ring-stop"
             onClick={() => void deleteMark(selected)}
           >
-            Del
+            Delete
           </button>
         </div>
       ) : null}
 
       <div className="flex flex-1 flex-col overflow-hidden p-3 pt-2">
         {reassign != null || insertAt != null ? (
-          <div className="mb-2 rounded-xl bg-gold/15 px-3 py-2 text-center text-sm font-black text-gold ring-1 ring-gold/40">
+          <div className="mb-2 rounded-xl bg-accent/15 px-3 py-2 text-center text-sm font-black text-accent ring-1 ring-accent/40">
             {reassign != null ? "Change bib" : "Insert bib"}
           </div>
         ) : null}
@@ -229,7 +231,7 @@ function RecentSequence({
             key={p.mark.id}
             type="button"
             className={`tap flex h-16 shrink-0 items-center gap-2 rounded-xl px-2 ring-1 ${
-              active ? "bg-gold text-ink ring-gold" : "bg-panel ring-line"
+              active ? "bg-accent text-ink ring-accent" : "bg-panel ring-line"
             }`}
             onPointerDown={(e) => {
               (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
@@ -322,7 +324,7 @@ function Tile({
         e.preventDefault();
         onPick();
       }}
-      className={`tap flex w-full flex-col items-center justify-center rounded-2xl bg-panel p-2 ring-1 ring-line active:bg-gold active:text-ink ${
+      className={`tap flex w-full flex-col items-center justify-center rounded-2xl bg-panel p-2 ring-1 ring-line active:bg-accent active:text-ink ${
         large ? "min-h-40" : "min-h-28"
       } ${race.bell ? "ring-2 ring-bell" : ""}`}
     >

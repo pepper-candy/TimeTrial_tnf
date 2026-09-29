@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { Chip, HelpTip, Screen, TopBar } from "@/components/shell";
+import { BigBtn, Chip, Screen, TopBar } from "@/components/shell";
 import { PinGate } from "@/components/pin-gate";
 import { EmptyState, LoadingState } from "@/components/states";
 import { fetchWithPin, useEvent } from "@/lib/client/hooks";
@@ -61,30 +61,22 @@ function StatsInner({ code }: { code: string }) {
     <Screen className="max-w-6xl">
       <TopBar
         backHref={`/e/${code}/board`}
-        title="Stats"
-        right={<HelpTip text="Summary is the coach WhatsApp paste. Detailed adds every km ( ~ = estimated ), fast/slow lap, half-split, and consistency." />}
+        title="Results"
+        info="Summary is the coach WhatsApp paste. Detailed adds every km (~ = estimated), fastest and slowest lap, half splits and consistency."
       />
-      <div className="flex flex-wrap gap-2 px-3 pb-2">
-        <Chip active={style === "summary"} onClick={() => setStyle("summary")}>
+      <div className="grid grid-cols-2 gap-2 px-3 pb-3 sm:grid-cols-4">
+        <Chip size="lg" active={style === "summary"} onClick={() => setStyle("summary")}>
           Summary
         </Chip>
-        <Chip active={style === "detailed"} onClick={() => setStyle("detailed")}>
+        <Chip size="lg" active={style === "detailed"} onClick={() => setStyle("detailed")}>
           Detailed
         </Chip>
-        <button
-          type="button"
-          className="tap rounded-full bg-gold px-3.5 py-2 text-sm font-black text-ink"
-          onClick={() => void copyResults()}
-        >
-          {copied ? "Copied" : "Copy results"}
-        </button>
-        <button
-          type="button"
-          className="tap rounded-full bg-panel2 px-3.5 py-2 text-sm font-semibold ring-1 ring-line"
-          onClick={() => void downloadCsv()}
-        >
-          Export CSV
-        </button>
+        <BigBtn size="md" onClick={() => void copyResults()}>
+          {copied ? "Copied" : "Copy"}
+        </BigBtn>
+        <BigBtn size="md" tone="plain" onClick={() => void downloadCsv()}>
+          CSV
+        </BigBtn>
       </div>
       <div className="flex-1 overflow-auto px-3 pb-8">
         {races.length === 0 ? (
@@ -112,18 +104,18 @@ function StatsInner({ code }: { code: string }) {
                 return (
                   <tr
                     key={r.runner.id}
-                    className={`border-t border-line ${i === 0 ? "p1-row" : ""}`}
+                    className={`border-t border-line ${i === 0 ? "bg-accent/10" : ""}`}
                   >
                     <td
                       className={`py-2 pr-2 font-mono text-xs font-black tabular ${
-                        i === 0 ? "text-gold" : "text-dim"
+                        i === 0 ? "text-accent" : "text-dim"
                       }`}
                     >
                       {i + 1}
                     </td>
                     <td className="pr-2 font-mono text-lg font-black tabular">{r.runner.bib}</td>
                     <td className="pr-2 font-bold">{r.runner.name}</td>
-                    <td className="pr-2 text-xs font-bold uppercase tracking-wide text-gold">
+                    <td className="pr-2 text-xs font-bold uppercase tracking-wide text-accent">
                       {r.runner.category}
                     </td>
                     <td className="pr-2 font-mono text-xs tabular text-dim">{r.runner.studentId}</td>
@@ -135,7 +127,7 @@ function StatsInner({ code }: { code: string }) {
                     <td className="pr-2 font-mono font-black tabular">
                       {formatPace(s.avgPaceSecPerKm ?? 0)}
                     </td>
-                    <td className="pr-2 font-mono font-black tabular text-gold">
+                    <td className="pr-2 font-mono font-black tabular text-accent">
                       {formatPace(s.lastLapPaceSecPerKm ?? 0)}
                     </td>
                     <td className="pr-2 font-mono font-black tabular">

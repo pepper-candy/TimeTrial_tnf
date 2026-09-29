@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
 import { PinGate } from "@/components/pin-gate";
-import { HelpTip, Screen } from "@/components/shell";
+import { Screen, TopBar } from "@/components/shell";
 import { UndoToast } from "@/components/undo-toast";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatClock, formatEst } from "@/lib/format";
@@ -188,52 +188,55 @@ function TimerInner({ code }: { code: string }) {
   }
 
   const live = event ? liveTaps(event.taps) : [];
-  const recent = live.slice(-8);
+  const recent = live.slice(-8).reverse();
   const running = event?.status === "running" && event.startedAt != null;
 
   return (
     <Screen className="max-w-none">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <a
-          href={`/e/${code}`}
-          className="tap grid h-11 w-11 place-items-center rounded-xl bg-panel2 text-lg font-semibold ring-1 ring-line"
-        >
-          ←
-        </a>
-        <RaceClock
-          startedAt={event?.startedAt ?? null}
-          now={serverNow}
-          className="flex-1 text-center text-3xl sm:text-4xl"
-        />
-        <button
-          type="button"
-          className="tap h-11 rounded-xl bg-panel2 px-3 text-sm font-black ring-1 ring-line"
-          onClick={() => void undoLast()}
-        >
-          Undo
-        </button>
-        <HelpTip text="Tap every torso at the line. Extra is easy to delete; a miss loses the true time. Tap a recent time to drop it. +~ inserts a guessed tap (shown as ~)." />
-      </div>
-      <div className="px-3 pb-1 text-center font-mono text-sm font-black tabular text-dim">
-        {live.length}
-        {queued ? ` · ${queued}` : ""}
-      </div>
+      <TopBar
+        backHref={`/e/${code}`}
+        title={
+          <RaceClock
+            startedAt={event?.startedAt ?? null}
+            now={serverNow}
+            className="text-3xl sm:text-4xl"
+          />
+        }
+        info="Tap every torso at the line. An extra tap is easy to delete; a missed one loses the true time. Tap a recent time to drop it. +~ inserts a guessed tap (shown as ~)."
+      />
       {running && event ? (
-        <div className="mx-3 mb-1 flex items-stretch gap-2 overflow-x-auto pb-1">
+        <div className="mx-3 grid grid-cols-3 gap-2">
           <button
             type="button"
-            className="tap h-14 shrink-0 rounded-xl bg-panel2 px-3 text-sm font-black text-gold ring-1 ring-line"
+            className="tap h-16 rounded-2xl bg-panel2 text-xl font-black ring-1 ring-line active:bg-sand active:text-ink"
+            onClick={() => void undoLast()}
+          >
+            Undo
+          </button>
+          <div className="flex flex-col items-center justify-center rounded-2xl bg-panel ring-1 ring-line">
+            <div className="font-mono text-3xl font-black leading-none tabular">{live.length}</div>
+            <div className={`mt-1 text-[10px] font-black uppercase tracking-wider ${queued ? "text-bell" : "text-dim"}`}>
+              {queued ? `${queued} sending` : "Taps"}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="tap h-16 rounded-2xl bg-panel2 text-xl font-black text-accent ring-1 ring-line active:bg-sand active:text-ink"
             onClick={() => void insertEstimated()}
           >
             +~
           </button>
+        </div>
+      ) : null}
+      {running && event && recent.length > 0 ? (
+        <div className="mx-3 mt-2 flex items-stretch gap-2 overflow-x-auto pb-1">
           {recent.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => void deleteTap(t.id)}
                 className={`tap h-14 shrink-0 rounded-xl px-3 text-left ring-1 ${
-                  t.estimated ? "bg-panel ring-gold/60" : "bg-panel ring-line"
+                  t.estimated ? "bg-panel ring-accent/60" : "bg-panel ring-line"
                 }`}
               >
                 <div className="font-mono text-lg font-black tabular leading-none">
@@ -250,7 +253,7 @@ function TimerInner({ code }: { code: string }) {
         <button
           type="button"
           className={`tap m-3 flex flex-1 items-center justify-center rounded-[2rem] text-7xl font-black tracking-tight ${
-            flash ? "bg-sand text-ink" : "bg-gold text-ink"
+            flash ? "bg-sand text-ink" : "bg-accent text-ink"
           }`}
           onPointerDown={tap}
         >
