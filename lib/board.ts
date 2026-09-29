@@ -82,13 +82,24 @@ export function boardRows(races: RunnerRace[], filter: BoardFilter): RunnerRace[
 
 /** Lap split for the small top line: 58.3 or 1:02.4 */
 export function formatLapSplit(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) ms = 0;
-  const tenths = Math.floor(ms / 100);
-  const sec = Math.floor(tenths / 10);
-  const t = tenths % 10;
+  const { sec, t } = splitParts(ms);
   if (sec < 60) return `${sec}.${t}`;
   const m = Math.floor(sec / 60);
   return `${m}:${String(sec % 60).padStart(2, "0")}.${t}`;
+}
+
+/** Big lap split: 58.3 under a minute, 1:02 once it reaches a minute. */
+export function formatLapSplitBig(ms: number): string {
+  const { sec, t } = splitParts(ms);
+  if (sec < 60) return `${sec}.${t}`;
+  const m = Math.floor(sec / 60);
+  return `${m}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+function splitParts(ms: number): { sec: number; t: number } {
+  if (!Number.isFinite(ms) || ms < 0) ms = 0;
+  const tenths = Math.floor(ms / 100);
+  return { sec: Math.floor(tenths / 10), t: tenths % 10 };
 }
 
 /** Running time for the big bottom line: 4:40 or 1:02:05 */

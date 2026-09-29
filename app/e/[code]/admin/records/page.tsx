@@ -24,7 +24,9 @@ import {
 import { formatStopwatch } from "@/lib/tap-list";
 import type { EventState } from "@/lib/types";
 
-const ROW_H = 140;
+const ROW_BODY = 134;
+const ROW_GAP = 18;
+const ROW_H = ROW_BODY + ROW_GAP;
 
 type Editor =
   | { mode: "time"; index: number; tapId: string }
@@ -426,7 +428,7 @@ function RecordLine({
   const runner = row.mark ? runnerByBib(runners, row.mark.bib) : undefined;
   const bib = row.mark ? padBib(row.mark.bib, width) : "";
   return (
-    <div className="flex h-[134px] flex-col gap-1">
+    <div className="flex flex-col gap-1 rounded-2xl ring-1 ring-line" style={{ height: ROW_BODY }}>
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
         <SwipeRow
           label="Delete tap"
@@ -479,16 +481,18 @@ function RecordLine({
           </div>
         </SwipeRow>
       </div>
-      <div className="flex h-5 shrink-0 items-center gap-1 overflow-hidden">
-        {tags.map((tag) => (
-          <span
-            key={tag}
-            className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap ${TAG_CLASS[tag]}`}
-          >
-            {RECORD_TAG_LABEL[tag]}
-          </span>
-        ))}
-      </div>
+      {tags.length > 0 ? (
+        <div className="flex h-5 shrink-0 items-center gap-1 overflow-hidden">
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className={`inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap ${TAG_CLASS[tag]}`}
+            >
+              {RECORD_TAG_LABEL[tag]}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <div className="grid grid-cols-2 gap-1">
           <RowBtn label="Edit tap time" disabled={!row.tap} on={editing === "time"} onClick={onEditTime}>

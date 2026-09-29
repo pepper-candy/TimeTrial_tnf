@@ -16,10 +16,6 @@ const QUEUE_KEY = (code: string) => `tt:tapq:${code}`;
 
 type Queued = Tap & { sent?: boolean };
 
-type Hist =
-  | { kind: "tap"; id: string }
-  | { kind: "delete"; id: string; local: Queued | null };
-
 export default function TimerPage() {
   const { code } = useParams<{ code: string }>();
   return (
@@ -34,13 +30,11 @@ function TimerInner({ code }: { code: string }) {
   const [flash, setFlash] = useState(false);
   const [queued, setQueued] = useState(0);
   const [localTaps, setLocalTaps] = useState<Queued[]>([]);
-  const [hist, setHist] = useState<Hist[]>([]);
   const [gone, setGone] = useState<string[]>([]);
   const pending = useRef<Queued[]>([]);
   const sending = useRef(false);
   const origin = useRef(0);
   const offsetRef = useRef(0);
-  const histRef = useRef<Hist[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const flushRef = useRef<() => Promise<void>>(async () => {});
 
@@ -106,26 +100,17 @@ function TimerInner({ code }: { code: string }) {
   }, [flush]);
 
   useEffect(() => {
-    histRef.current = hist;
-  }, [hist]);
-
-  useEffect(() => {
     const id = window.setInterval(() => {
       void flushRef.current();
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
 
-  function remember(entry: Hist) {
-    setHist((h) => [...h, entry].slice(-40));
-  }
-
   function tap(e: React.PointerEvent) {
     e.preventDefault();
     const t = Math.round(origin.current + performance.now() + offsetRef.current);
     const item: Queued = { id: crypto.randomUUID(), t, sent: false };
     pending.current.push(item);
-    remember({ kind: "tap", id: item.id });
     persist();
     setFlash(true);
     window.setTimeout(() => setFlash(false), 70);
@@ -144,28 +129,11 @@ function TimerInner({ code }: { code: string }) {
     setEvent(data.event);
   }
 
-  async function undoTap(id: string) {
-    const localUnsent = pending.current.find((q) => q.id === id && !q.sent);
-    if (localUnsent) {
-      pending.current = pending.current.filter((q) => q.id !== id);
-      persist();
-      return;
-    }
-    const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
-      method: "POST",
-      body: JSON.stringify({ undo: true, id, actor: "timer" }),
-    });
-    pending.current = pending.current.filter((q) => q.id !== id);
-    persist();
-    setEvent(data.event);
-  }
-
   async function deleteTap(id: string) {
     const local = pending.current.find((q) => q.id === id && !q.sent);
     if (local) {
       pending.current = pending.current.filter((q) => q.id !== id);
       persist();
-      remember({ kind: "delete", id, local });
       return;
     }
     setGone((g) => (g.includes(id) ? g : [...g, id]));
@@ -177,36 +145,8 @@ function TimerInner({ code }: { code: string }) {
       pending.current = pending.current.filter((q) => q.id !== id);
       persist();
       setEvent(data.event);
-      remember({ kind: "delete", id, local: null });
     } catch {
       setGone((g) => g.filter((x) => x !== id));
-    }
-  }
-
-  async function restoreDeleted(item: Extract<Hist, { kind: "delete" }>) {
-    setGone((g) => g.filter((x) => x !== item.id));
-    if (item.local) {
-      pending.current.push(item.local);
-      persist();
-      void flush();
-      return;
-    }
-    const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
-      method: "POST",
-      body: JSON.stringify({ action: "tap-restore", id: item.id, actor: "timer" }),
-    });
-    setEvent(data.event);
-  }
-
-  async function undo() {
-    const last = histRef.current[histRef.current.length - 1];
-    if (!last) return;
-    setHist((h) => h.slice(0, -1));
-    try {
-      if (last.kind === "tap") await undoTap(last.id);
-      else await restoreDeleted(last);
-    } catch {
-      remember(last);
     }
   }
 
@@ -227,26 +167,26 @@ function TimerInner({ code }: { code: string }) {
   return (
     <Screen className="h-dvh max-h-dvh max-w-none overflow-hidden">
       <TopBar
+        className="!mb-0"
         backHref={`/e/${code}`}
         title={
-          <RaceClock
-            startedAt={event?.startedAt ?? null}
-            now={serverNow}
-            className="text-3xl sm:text-4xl"
-          />
+          <div className="flex flex-col items-center leading-none">
+            <RaceClock
+              startedAt={event?.startedAt ?? null}
+              now={serverNow}
+              className="text-3xl sm:text-4xl"
+            />
+            {running ? (
+              <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
+                {rows.length} {rows.length === 1 ? "tap" : "taps"}
+                {queued ? <span className="text-bell"> · {queued} sending</span> : null}
+              </p>
+            ) : null}
+          </div>
         }
-        info="Tap every torso at the line. Delete drops an extra tap. Undo puts back the last tap or the last delete."
+        info="Tap every torso at the line. Swipe a row to drop an extra tap."
       />
-      <div className="flex min-h-0 flex-1 flex-col">
-        <p className="h-5 shrink-0 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
-          {running ? (
-            <>
-              {rows.length} {rows.length === 1 ? "tap" : "taps"}
-              {queued ? <span className="text-bell"> · {queued} sending</span> : null}
-            </>
-          ) : null}
-        </p>
-        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
           <ul className="flex flex-col gap-1.5">
             {rows.map((row) => (
               <li key={row.id}>
@@ -272,17 +212,8 @@ function TimerInner({ code }: { code: string }) {
               </li>
             ))}
           </ul>
-        </div>
       </div>
-      <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <button
-          type="button"
-          className="tap mb-2 h-12 w-full rounded-[12px] bg-panel2 text-base font-black uppercase tracking-[0.14em] ring-1 ring-line disabled:cursor-default disabled:text-dim/40 disabled:ring-line/50"
-          onClick={() => void undo()}
-          disabled={hist.length === 0}
-        >
-          Undo
-        </button>
+      <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
         {running ? (
           <button
             type="button"

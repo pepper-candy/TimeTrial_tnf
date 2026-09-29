@@ -269,7 +269,7 @@ function BibBox({ bib, onCommit }: { bib: string; onCommit: (next: string) => Pr
         className="h-12 w-full rounded-xl bg-panel px-1 text-center font-mono text-lg font-black tabular text-sand ring-1 ring-line"
       />
       <div className="h-4 text-center text-[10px] font-black leading-4 text-go" aria-live="polite">
-        {saved ? "✓ Saved" : ""}
+        {saved ? "Saved" : ""}
       </div>
     </div>
   );

@@ -454,7 +454,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
 
   async function savePin() {
     const value = nextPin.trim();
-    if (!/^\d{4,8}$/.test(value)) {
+    if (!/^\d{4}$/.test(value)) {
       setErr(true);
       return;
     }
@@ -544,10 +544,10 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
           <Field
             value={nextPin}
             onChange={(v) => {
-              setNextPin(v.replace(/\D/g, "").slice(0, 8));
+              setNextPin(v.replace(/\D/g, "").slice(0, 4));
               setErr(false);
             }}
-            placeholder="New PIN (4–8 digits)"
+            placeholder="New PIN (4 digits)"
             inputMode="numeric"
             autoFocus
             invalid={err}
@@ -627,7 +627,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
   );
 }
 
-/** Both labels stay in the layout, so swapping to "✓ Copied" cannot resize the control. */
+/** Both labels stay in the layout, so swapping to "Copied" cannot resize the control. */
 function CopyLabel({
   on,
   children,
@@ -640,7 +640,7 @@ function CopyLabel({
   return (
     <span className={`inline-grid font-black ${className}`}>
       <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "invisible" : ""}`}>{children}</span>
-      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "" : "invisible"}`}>✓ Copied</span>
+      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "" : "invisible"}`}>Copied</span>
     </span>
   );
 }

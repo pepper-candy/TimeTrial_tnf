@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { PaceChart } from "@/components/chart";
 import { RaceClock } from "@/components/clock";
@@ -12,6 +12,7 @@ import {
   boardRows,
   formatCum,
   formatLapSplit,
+  formatLapSplitBig,
   lapColumns,
   lapDownLabel,
   type BoardFilter,
@@ -20,7 +21,7 @@ import {
 } from "@/lib/board";
 import { CATEGORIES, normalizeCategory } from "@/lib/category";
 import { useFlip } from "@/lib/client/flip";
-import { fetchWithPin, hasHelperCreds, json, useEvent } from "@/lib/client/hooks";
+import { fetchWithPin, hasHelperCreds, useEvent } from "@/lib/client/hooks";
 import { getBoardTimesMode, setBoardTimesMode, type BoardTimesMode } from "@/lib/client/pin";
 import { formatClock, formatEst, formatPace, formatSpeed, bibColor, initials } from "@/lib/format";
 import { photoPath } from "@/lib/photo";
@@ -33,13 +34,22 @@ import type { EventState } from "@/lib/types";
 const INFO =
   "Live board — no PIN. Each box: small = lap split, big = running time. Orange cell = fastest lap of the race. Blue border = runner's best lap. ~ = estimated time. Yellow box = bell lap. Tap a runner for details.";
 
+function enterFullscreen() {
+  const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+  if (el.requestFullscreen) void el.requestFullscreen().catch(() => {});
+  else el.webkitRequestFullscreen?.();
+}
+
 export default function BoardPage() {
   const { code } = useParams<{ code: string }>();
-  const { event, setEvent, serverNow, races, stats } = useEvent(code, 1000);
+  const { event, serverNow, races, stats } = useEvent(code, 1000);
   const [filter, setFilter] = useState<BoardFilter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [big, setBig] = useState<BoardTimesMode>("cumulative");
   const [helper, setHelper] = useState(false);
+  const [full, setFull] = useState(false);
+  const [nameW, setNameW] = useState<number | null>(null);
+  const [totW, setTotW] = useState<number | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const touched = useRef(0);
   const lastN = useRef(-1);
@@ -51,6 +61,19 @@ export default function BoardPage() {
     }, 0);
     return () => window.clearTimeout(id);
   }, [code]);
+
+  useEffect(() => {
+    function sync() {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      setFull(document.fullscreenElement != null || doc.webkitFullscreenElement != null);
+    }
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+    };
+  }, []);
 
   const rows = useMemo(() => boardRows(races, filter), [races, filter]);
   const ids = useMemo(() => rows.map((r) => r.runner.id), [rows]);
@@ -90,6 +113,23 @@ export default function BoardPage() {
     return () => ro.disconnect();
   }, [leaderN, cols.length]);
 
+  const boardReady = Boolean(event && event.runners.length > 0);
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    function measure() {
+      const board = scroller.current;
+      if (!board) return;
+      const wide = window.matchMedia("(min-width: 640px)").matches;
+      setNameW(wide ? fitNameColumn(board) : null);
+      setTotW(fitTotalColumn(board));
+    }
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [boardReady, rows, event?.hideStudentIds]);
+
   if (!event || !highlights) {
     return (
       <Screen>
@@ -110,6 +150,7 @@ export default function BoardPage() {
 
   return (
     <div className="flex h-dvh flex-col bg-sbdeep">
+      {full ? null : (
       <TopBar
         backHref={`/e/${code}`}
         className="bg-sbdeep/95"
@@ -139,14 +180,33 @@ export default function BoardPage() {
                 big={big}
                 helper={helper}
                 onBig={pickBig}
-                onEvent={setEvent}
                 onClose={close}
               />
             )}
           </MenuButton>
         }
+        extra={
+          <button
+            type="button"
+            className="tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
+            aria-label="Full screen"
+            onClick={enterFullscreen}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+              <path
+                d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        }
         info={INFO}
       />
+      )}
 
       {event.runners.length === 0 ? (
         <EmptyState title="No runners yet" hint="Add runners in Admin." />
@@ -154,7 +214,13 @@ export default function BoardPage() {
         <div
           ref={scroller}
           className="sb min-h-0 flex-1 overflow-auto overscroll-contain"
-          style={{ "--rows": Math.max(1, rows.length) } as React.CSSProperties}
+          style={
+            {
+              "--rows": Math.max(1, rows.length),
+              ...(nameW != null ? { "--name-w": `${nameW}px` } : {}),
+              ...(totW != null ? { "--tot-w": `${totW}px` } : {}),
+            } as React.CSSProperties
+          }
           onPointerDown={() => {
             touched.current = Date.now();
           }}
@@ -221,7 +287,7 @@ function HeaderRow({ cols, nowCol }: { cols: LapColumn[]; nowCol: number }) {
         </div>
       ))}
       <div data-tot-head className="sb-tot flex items-center justify-end px-3 text-lg sm:text-xl lg:text-2xl">
-        Total
+        <span>Total</span>
       </div>
     </div>
   );
@@ -280,9 +346,11 @@ function BoardRow({
             {r.bib}
           </div>
           <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-bold text-sand lg:text-base">{r.name || "—"}</div>
+            <div className="sb-runner-name truncate text-sm font-bold text-sand lg:text-base">{r.name || "—"}</div>
             {showId && r.studentId ? (
-              <div className="hidden truncate font-mono text-xs tabular text-dim lg:block">{r.studentId}</div>
+              <div className="sb-runner-id hidden truncate font-mono text-xs tabular text-dim lg:block">
+                {r.studentId}
+              </div>
             ) : null}
           </div>
         </div>
@@ -345,6 +413,7 @@ function LapCell({
   const best = highlights.raceBest?.runnerId === id && highlights.raceBest.index === index;
   const pb = !best && highlights.personalBest.get(id) === index;
   const splitText = formatEst(formatLapSplit(split), splitEst);
+  const splitBigText = formatEst(formatLapSplitBig(split), splitEst);
   const cumText = formatEst(formatCum(c.elapsedMs), c.estimated);
   const splitBig = big === "split";
   const mark = best ? "sb-best" : pb ? "sb-pb" : "";
@@ -354,7 +423,7 @@ function LapCell({
         <span className="sb-mini">{splitBig ? cumText : splitText}</span>
       </div>
       <div className="sb-big">
-        <span>{splitBig ? splitText : cumText}</span>
+        <span>{splitBig ? splitBigText : cumText}</span>
       </div>
     </div>
   );
@@ -457,6 +526,56 @@ function PhoneName({ name }: { name: string }) {
   );
 }
 
+/** Names longer than this are treated as extreme and truncated. */
+const NAME_TEXT_CAP = 220;
+
+function fitNameColumn(board: HTMLElement): number | null {
+  const rows = board.querySelectorAll<HTMLElement>(".sb-row .sb-name");
+  let max = 0;
+  rows.forEach((row) => {
+    const name = row.querySelector<HTMLElement>(".sb-runner-name");
+    if (!name) return;
+    const cs = getComputedStyle(row);
+    const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const gap = parseFloat(cs.columnGap) || 0;
+    const photo = row.querySelector<HTMLElement>(".sb-photo")?.offsetWidth ?? 0;
+    const bib = row.querySelector<HTMLElement>(".sb-bib")?.offsetWidth ?? 0;
+    const idEl = row.querySelector<HTMLElement>(".sb-runner-id");
+    const id = idEl && getComputedStyle(idEl).display !== "none" ? textWidth(idEl) : 0;
+    const text = Math.min(NAME_TEXT_CAP, Math.max(textWidth(name), id));
+    const innerGap = 8;
+    max = Math.max(max, Math.ceil(pad + photo + gap + bib + innerGap + text + 8));
+  });
+  return max > 0 ? max : null;
+}
+
+function fitTotalColumn(board: HTMLElement): number | null {
+  let content = 0;
+  board.querySelectorAll<HTMLElement>(".sb-total, .sb-status").forEach((el) => {
+    content = Math.max(content, el.scrollWidth);
+  });
+  const label = board.querySelector<HTMLElement>("[data-tot-head] span");
+  if (label) content = Math.max(content, label.scrollWidth);
+  if (content <= 0) return null;
+  const sample = board.querySelector<HTMLElement>(".sb-row .sb-tot") ?? board.querySelector<HTMLElement>("[data-tot-head]");
+  const cs = sample ? getComputedStyle(sample) : null;
+  const padL = cs ? parseFloat(cs.paddingLeft) || 0 : 12;
+  const padR = cs ? parseFloat(cs.paddingRight) || 0 : 12;
+  return Math.ceil(content + padL + padR);
+}
+
+function textWidth(el: HTMLElement): number {
+  const cs = getComputedStyle(el);
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:fixed;left:-9999px;top:0;white-space:nowrap;visibility:hidden";
+  probe.style.font = cs.font;
+  probe.textContent = el.textContent;
+  document.body.appendChild(probe);
+  const width = probe.scrollWidth;
+  probe.remove();
+  return width;
+}
+
 function labelWidth(text: string): number {
   const span = document.createElement("span");
   span.className = "text-[11px] font-bold";
@@ -521,7 +640,6 @@ function BoardMenu({
   big,
   helper,
   onBig,
-  onEvent,
   onClose,
 }: {
   code: string;
@@ -530,7 +648,6 @@ function BoardMenu({
   big: BoardTimesMode;
   helper: boolean;
   onBig: (m: BoardTimesMode) => void;
-  onEvent: (e: EventState) => void;
   onClose: () => void;
 }) {
   const { copied, copy } = useCopied();
@@ -545,14 +662,6 @@ function BoardMenu({
     a.download = `${event.code}-results.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  async function toggleIds() {
-    const data = await json<{ event: EventState }>(`/api/events/${code}`, {
-      method: "PATCH",
-      body: JSON.stringify({ hideStudentIds: !event.hideStudentIds }),
-    });
-    onEvent(data.event);
   }
 
   return (
@@ -573,7 +682,7 @@ function BoardMenu({
           tone="plain"
           size="md"
           onClick={() => {
-            void document.documentElement.requestFullscreen?.().catch(() => {});
+            enterFullscreen();
             onClose();
           }}
         >
@@ -596,13 +705,6 @@ function BoardMenu({
           </>
         ) : null}
       </div>
-      {helper ? (
-        <div className="flex gap-2">
-          <Chip active={event.hideStudentIds} onClick={() => void toggleIds()}>
-            Hide IDs
-          </Chip>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -651,7 +753,7 @@ function Detail({
   return (
     <Sheet title={rank > 0 ? `Rank ${rank}` : "Runner"} onClose={onClose}>
       <div className="flex items-center gap-3">
-        <Avatar runner={r} eventId={event.id} size={72} lightbox />
+        <Avatar runner={r} eventId={event.id} size={72} overlay={false} lightbox />
         <div className="min-w-0 flex-1">
           <div className="text-xl font-black leading-tight break-words">{r.name || "—"}</div>
           <div className="font-mono text-sm tabular text-dim">
@@ -687,7 +789,7 @@ function Detail({
         </div>
       ) : null}
       {stats && stats.kmSplits.length > 0 ? (
-        <div className="mt-5 flex gap-2 overflow-x-auto">
+        <div className="mt-5 flex gap-2 overflow-x-auto py-0.5 pl-0.5">
           {stats.kmSplits.map((k) => (
             <div key={k.km} className="shrink-0 rounded-xl bg-panel2 px-3 py-2 ring-1 ring-line">
               <div className="text-[11px] font-bold text-dim">{k.km}K</div>

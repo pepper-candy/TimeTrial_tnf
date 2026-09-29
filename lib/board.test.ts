@@ -5,6 +5,7 @@ import {
   cellKey,
   formatCum,
   formatLapSplit,
+  formatLapSplitBig,
   lapColumns,
   lapDownLabel,
 } from "./board";
@@ -170,6 +171,8 @@ describe("board number formats", () => {
   it("keeps cells short and tabular", () => {
     expect(formatLapSplit(58_340)).toBe("58.3");
     expect(formatLapSplit(62_450)).toBe("1:02.4");
+    expect(formatLapSplitBig(42_800)).toBe("42.8");
+    expect(formatLapSplitBig(85_600)).toBe("1:25");
     expect(formatCum(280_900)).toBe("4:40");
     expect(formatCum(3_725_000)).toBe("1:02:05");
     expect(lapDownLabel(1)).toBe("−1 lap");

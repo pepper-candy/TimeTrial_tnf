@@ -12,7 +12,7 @@ export function hashPin(pin: string): string {
 }
 
 export function isValidPin(pin: string): boolean {
-  return /^\d{4,8}$/.test(pin.trim());
+  return /^\d{4}$/.test(pin.trim());
 }
 
 export function verifyPin(pin: string, pinHash: string | null | undefined): boolean {

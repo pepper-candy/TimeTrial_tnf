@@ -30,11 +30,10 @@ describe("helper PIN", () => {
     expect(verifyPin("anything", undefined)).toBe(true);
   });
 
-  it("only accepts 4–8 digit PINs the number pad can type", () => {
+  it("only accepts a 4-digit PIN", () => {
     expect(isValidPin("1234")).toBe(true);
-    expect(isValidPin("12345678")).toBe(true);
     expect(isValidPin("123")).toBe(false);
-    expect(isValidPin("123456789")).toBe(false);
+    expect(isValidPin("12345")).toBe(false);
     expect(isValidPin("12a4")).toBe(false);
   });
 });

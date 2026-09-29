@@ -69,7 +69,7 @@ function StatsInner({ code }: { code: string }) {
       <TopBar
         backHref={`/e/${code}/board`}
         title="Results"
-        info="Summary is the short table and the coach paste. Detailed adds every kilometre (~ means estimated), fastest and slowest lap, half splits and consistency. The box under the table is exactly what Copy pastes."
+        info="Summary is the short table. Detailed adds every kilometre (~ means estimated), fastest and slowest lap, half splits and consistency. Copy pastes the coach text for the view you have selected."
       />
       <div className="grid grid-cols-2 gap-2 px-3 pb-3 sm:grid-cols-4">
         <Chip size="lg" active={style === "summary"} onClick={() => setStyle("summary")}>
@@ -91,12 +91,6 @@ function StatsInner({ code }: { code: string }) {
         ) : (
           <>
             <ResultsTable event={live} races={races} stats={stats} detailed={style === "detailed"} />
-            <p className="mt-4 mb-1.5 text-[11px] font-bold uppercase tracking-wider text-dim">
-              {style === "detailed" ? "Detailed paste" : "Summary paste"}
-            </p>
-            <pre className="max-h-48 overflow-auto rounded-2xl bg-panel2 p-3 font-mono text-[11px] leading-snug whitespace-pre-wrap text-dim ring-1 ring-line">
-              {preview}
-            </pre>
           </>
         )}
       </div>
@@ -104,12 +98,12 @@ function StatsInner({ code }: { code: string }) {
   );
 }
 
-/** Both labels occupy one cell, so "✓ Copied" cannot change the button width. */
+/** Both labels occupy one cell, so "Copied" cannot change the button width. */
 function CopyLabel({ on, children }: { on: boolean; children: React.ReactNode }) {
   return (
     <span className="inline-grid">
       <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "invisible" : ""}`}>{children}</span>
-      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "" : "invisible"}`}>✓ Copied</span>
+      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "" : "invisible"}`}>Copied</span>
     </span>
   );
 }

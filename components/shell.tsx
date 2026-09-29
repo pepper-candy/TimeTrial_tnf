@@ -24,7 +24,8 @@ const ICON_BTN =
 
 /**
  * Fixed 3-slot header. Left and right are both 48px, so the title is centred
- * on the screen. A second right-hand control hangs left from that slot.
+ * on the screen. Right-hand controls hang left from that slot: menu, then
+ * extra, then info.
  * The bar is h-16 in normal flow, plus a 20px margin, so the first control
  * starts a header-height plus that gap below the top of the screen.
  */
@@ -32,12 +33,14 @@ export function TopBar({
   backHref,
   title,
   menu,
+  extra,
   info,
   className = "",
 }: {
   backHref?: string;
   title?: React.ReactNode;
   menu?: React.ReactNode;
+  extra?: React.ReactNode;
   info?: string;
   className?: string;
 }) {
@@ -66,6 +69,7 @@ export function TopBar({
       <div className="relative h-12 w-12 justify-self-end">
         <div className="absolute right-0 top-0 z-10 flex items-center gap-2">
           {menu}
+          {extra}
           {info ? <InfoTip text={info} /> : null}
         </div>
       </div>

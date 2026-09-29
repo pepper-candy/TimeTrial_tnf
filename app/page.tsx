@@ -97,7 +97,7 @@ export default function HomePage() {
 
         <div className="mt-9 flex flex-col gap-3">
           <label
-            className={`home-code-field w-full rounded-[10px] ring-2 focus-within:outline-none ${
+            className={`home-code-field w-full rounded-[10px] bg-[#1a1d24] ring-2 focus-within:outline-none ${
               missing ? "ring-stop" : "ring-line focus-within:ring-accent"
             }`}
           >

@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { RaceClock } from "@/components/clock";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
@@ -11,11 +12,6 @@ import { json, useEvent } from "@/lib/client/hooks";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { liveMarks, runnerByBib } from "@/lib/race";
 import type { EventState } from "@/lib/types";
-
-type Hist =
-  | { kind: "mark"; id: string }
-  | { kind: "delete"; id: string }
-  | { kind: "drop"; bib: string };
 
 type Pending = { id: string; bib: string };
 
@@ -29,13 +25,11 @@ export default function MarkerPage() {
 }
 
 function MarkerInner({ code }: { code: string }) {
-  const { event, setEvent } = useEvent(code, 800);
+  const { event, setEvent, serverNow } = useEvent(code, 800);
   const [typed, setTyped] = useState("");
   const [pending, setPending] = useState<Pending[]>([]);
   const [gone, setGone] = useState<string[]>([]);
-  const [hist, setHist] = useState<Hist[]>([]);
   const latest = useRef<EventState | null>(null);
-  const histRef = useRef<Hist[]>([]);
   const typedRef = useRef("");
   const chain = useRef(Promise.resolve());
   const dropped = useRef(new Set<string>());
@@ -44,9 +38,6 @@ function MarkerInner({ code }: { code: string }) {
   useEffect(() => {
     latest.current = event;
   }, [event]);
-  useEffect(() => {
-    histRef.current = hist;
-  }, [hist]);
 
   function later(task: () => Promise<void>) {
     chain.current = chain.current.then(task, task);
@@ -70,10 +61,6 @@ function MarkerInner({ code }: { code: string }) {
     }
   }
 
-  function remember(entry: Hist) {
-    setHist((h) => [...h, entry].slice(-40));
-  }
-
   function mark(padded: string) {
     const localId = crypto.randomUUID();
     setPending((p) => [...p, { id: localId, bib: padded }]);
@@ -91,9 +78,7 @@ function MarkerInner({ code }: { code: string }) {
         if (dropped.current.has(localId)) {
           dropped.current.delete(localId);
           if (added) await post({ action: "delete", id: added.id });
-          return;
         }
-        if (added) remember({ kind: "mark", id: added.id });
       } catch {
         setPending((p) => p.filter((x) => x.id !== localId));
       }
@@ -114,48 +99,14 @@ function MarkerInner({ code }: { code: string }) {
     if (row.local) {
       dropped.current.add(row.id);
       setPending((p) => p.filter((x) => x.id !== row.id));
-      remember({ kind: "drop", bib: row.bib });
       return;
     }
     setGone((g) => (g.includes(row.id) ? g : [...g, row.id]));
-    remember({ kind: "delete", id: row.id });
     later(async () => {
       try {
         await post({ action: "delete", id: row.id });
       } catch {
         setGone((g) => g.filter((x) => x !== row.id));
-        setHist((h) => h.filter((entry) => !(entry.kind === "delete" && entry.id === row.id)));
-      }
-    });
-  }
-
-  function undo() {
-    const last = histRef.current[histRef.current.length - 1];
-    if (!last) return;
-    setHist((h) => h.slice(0, -1));
-    if (last.kind === "drop") {
-      mark(last.bib);
-      return;
-    }
-    if (last.kind === "mark") {
-      setGone((g) => (g.includes(last.id) ? g : [...g, last.id]));
-      later(async () => {
-        try {
-          await post({ action: "delete", id: last.id });
-        } catch {
-          setGone((g) => g.filter((x) => x !== last.id));
-          remember(last);
-        }
-      });
-      return;
-    }
-    setGone((g) => g.filter((x) => x !== last.id));
-    later(async () => {
-      try {
-        await post({ action: "mark-restore", id: last.id });
-      } catch {
-        setGone((g) => [...g, last.id]);
-        remember(last);
       }
     });
   }
@@ -189,16 +140,23 @@ function MarkerInner({ code }: { code: string }) {
   return (
     <Screen className="h-dvh max-h-dvh max-w-none overflow-hidden">
       <TopBar
+        className="!mb-0"
         backHref={`/e/${code}`}
         title={
-          <div className="text-center leading-none">
-            <div className="font-mono text-3xl font-black tabular">{server.length + pending.length}</div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-dim">Bibs</div>
+          <div className="flex flex-col items-center leading-none">
+            <RaceClock
+              startedAt={event.startedAt}
+              now={serverNow}
+              className="text-3xl sm:text-4xl"
+            />
+            <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
+              {rows.length} {rows.length === 1 ? "bib" : "bibs"}
+            </p>
           </div>
         }
-        info="Type the bib in crossing order. It saves when every digit is filled. Delete drops a bib. Undo puts back the last bib or the last delete."
+        info="Type the bib in crossing order. It saves when every digit is filled. Swipe a row to drop a bib."
       />
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
         <ul className="flex flex-col gap-1.5">
           {rows.map((row) => {
             const runner = runnerByBib(event.runners, row.bib);
@@ -238,7 +196,7 @@ function MarkerInner({ code }: { code: string }) {
           })}
         </ul>
       </div>
-      <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div
           className="mb-2 flex h-12 items-center justify-center rounded-[12px] bg-panel font-mono text-4xl font-black tabular tracking-[0.08em] ring-1 ring-line"
           aria-label="Bib being typed"
@@ -251,14 +209,6 @@ function MarkerInner({ code }: { code: string }) {
             ))}
           </span>
         </div>
-        <button
-          type="button"
-          className="tap mb-2 h-12 w-full rounded-[12px] bg-panel2 text-base font-black uppercase tracking-[0.14em] ring-1 ring-line disabled:cursor-default disabled:text-dim/40 disabled:ring-line/50"
-          onClick={() => undo()}
-          disabled={hist.length === 0}
-        >
-          Undo
-        </button>
         <div className="grid grid-cols-3 gap-2">
           {PAD_KEYS.map((key) => (
             <button

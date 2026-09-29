@@ -38,7 +38,7 @@ export default function CreatePage() {
 
   const kmOpts = kmCrossings(course).filter((x) => x.km * 1000 < course.totalDistanceM - 0.5);
   const resultKm = kmPick ?? defaultResultKmSplits(course);
-  const pinOk = /^\d{4,8}$/.test(pin.trim());
+  const pinOk = /^\d{4}$/.test(pin.trim());
 
   function pickPreset(id: string, meters?: number) {
     setPreset(id);
@@ -117,14 +117,25 @@ export default function CreatePage() {
           <Stat value={course.firstPartialM || "0"} label="Start m" />
         </div>
 
-        <Field
-          value={pin}
-          onChange={(v) => setPin(v.replace(/\D/g, "").slice(0, 8))}
-          placeholder="Helper PIN (4–8 digits)"
-          inputMode="numeric"
-          size="lg"
-          className="text-center font-mono font-black tabular tracking-[0.3em] placeholder:font-sans placeholder:text-base placeholder:font-semibold placeholder:tracking-normal"
-        />
+        <label className="home-code-field w-full rounded-2xl bg-panel2 ring-1 ring-line focus-within:ring-accent focus-within:outline-none">
+          <span className="home-code-prefix">HELPER PIN:</span>
+          <span className="home-code-slot">
+            <input
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              placeholder=" "
+              aria-label="Helper PIN, 4 digits"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              className="home-code focus:outline-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && pinOk) void create();
+              }}
+            />
+            <span aria-hidden className="home-caret" />
+          </span>
+        </label>
 
         <Chip active={advanced} onClick={() => setAdvanced((v) => !v)} className="self-start">
           More
