@@ -38,6 +38,7 @@ export type EditKind =
   | "tap-delete"
   | "tap-restore"
   | "tap-insert"
+  | "tap-time"
   | "mark-delete"
   | "mark-restore"
   | "mark-insert"
@@ -56,6 +57,8 @@ export type EditLogEntry = {
   bib?: string;
   prevBib?: string;
   t?: number;
+  /** Previous tap timestamp, kept so a time edit can be undone. */
+  prevT?: number;
   fromIndex?: number;
   toIndex?: number;
 };

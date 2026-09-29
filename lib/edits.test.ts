@@ -145,6 +145,96 @@ describe("helper forgiveness", () => {
     expect(liveMarks(event.marks)).toHaveLength(3);
   });
 
+  it("inserts a bib at a live index and shifts later bibs", () => {
+    let event = ev({
+      taps: [
+        { id: "a", t: 100 },
+        { id: "b", t: 200 },
+        { id: "c", t: 300 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+      ],
+    });
+    event = applyEdit(event, { action: "insert", index: 1, bib: "07", actor: "admin" }, 5);
+    expect(liveMarks(event.marks).map((m) => m.bib)).toEqual(["1", "7", "2"]);
+    expect(event.edits.at(-1)?.kind).toBe("mark-insert");
+    const races = buildRunnerRaces(event);
+    expect(races.find((r) => r.runner.bib === "2")?.crossings[0].t).toBe(300);
+  });
+
+  it("inserts a tap at a crossing index and shifts later taps", () => {
+    let event = ev({
+      taps: [
+        { id: "a", t: 1_000_000 },
+        { id: "b", t: 1_004_000 },
+        { id: "c", t: 1_008_000 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+        { id: "m3", bib: "1" },
+      ],
+    });
+    event = applyEdit(event, { action: "tap-insert-at", index: 1, actor: "admin" }, 8);
+    const live = liveTaps(event.taps);
+    expect(live.map((t) => t.id)).toEqual(["a", live[1].id, "b", "c"]);
+    expect(live[1].estimated).toBe(true);
+    expect(live[1].t).toBe(1_002_000);
+    expect(event.taps.find((t) => t.id === "b")?.t).toBe(1_004_000);
+    expect(event.edits.at(-1)).toMatchObject({ kind: "tap-insert", toIndex: 1, actor: "admin" });
+    const races = buildRunnerRaces(event);
+    expect(races.find((r) => r.runner.bib === "2")?.crossings[0]).toMatchObject({
+      t: 1_002_000,
+      estimated: true,
+    });
+    expect(races.find((r) => r.runner.bib === "1")?.crossings[1].t).toBe(1_004_000);
+  });
+
+  it("inserts between taps that are only 1ms apart without swapping them", () => {
+    let event = ev({
+      taps: [
+        { id: "a", t: 5_000 },
+        { id: "b", t: 5_001 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+      ],
+    });
+    event = applyEdit(event, { action: "tap-insert-at", index: 1, actor: "admin" }, 1);
+    const live = liveTaps(event.taps);
+    expect(live.map((t) => t.id).filter((id) => id === "a" || id === "b")).toEqual(["a", "b"]);
+    expect(live.findIndex((t) => t.estimated)).toBe(1);
+    expect(live[0].id).toBe("a");
+    expect(live[2].id).toBe("b");
+  });
+
+  it("rewrites a tap time, logs the previous time, and re-sorts the pair", () => {
+    let event = ev({
+      taps: [
+        { id: "a", t: 100, estimated: true },
+        { id: "b", t: 300 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+      ],
+    });
+    event = applyEdit(event, { action: "tap-set-time", id: "a", t: 400, actor: "admin" }, 2);
+    expect(liveTaps(event.taps).map((t) => t.id)).toEqual(["b", "a"]);
+    expect(event.taps.find((t) => t.id === "a")).toMatchObject({ t: 400, estimated: false });
+    expect(event.edits.at(-1)).toMatchObject({
+      kind: "tap-time",
+      tapId: "a",
+      t: 400,
+      prevT: 100,
+    });
+    event = applyEdit(event, { action: "tap-set-time", id: "a", t: 100, actor: "admin" }, 3);
+    expect(liveTaps(event.taps).map((t) => t.id)).toEqual(["a", "b"]);
+  });
+
   it("inserts an estimated crossing for a bib so tap and mark share an index", () => {
     let event = ev({
       taps: [

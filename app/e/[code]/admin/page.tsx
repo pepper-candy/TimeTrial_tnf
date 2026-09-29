@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
@@ -8,12 +9,12 @@ import { Qr } from "@/components/qr";
 import { BigBtn, Chip, Field, MenuButton, Screen, TopBar, useCopied } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
-import { MismatchPanel } from "@/components/mismatch-panel";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { forgetAdmin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
 import { CATEGORIES } from "@/lib/category";
 import { kmCrossings } from "@/lib/course";
+import { recordCounts } from "@/lib/records";
 import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
@@ -29,7 +30,7 @@ export default function AdminPage() {
 
 function AdminInner({ code }: { code: string }) {
   const router = useRouter();
-  const { event, setEvent, races, flags } = useEvent(code, 2000);
+  const { event, setEvent, races } = useEvent(code, 2000);
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "" });
   const [fixId, setFixId] = useState<string | null>(null);
   const [storage, setStorage] = useState<{ used: number; cap: number } | null>(null);
@@ -195,21 +196,13 @@ function AdminInner({ code }: { code: string }) {
             )}
           </MenuButton>
         }
-        info="Timer taps. Marker enters bibs in order. The server pairs them. Alerts below show count lag, too-fast laps and extra taps or bibs. Tap Fix on a runner to shift, delete or add an estimated (~) crossing."
+        info="Timer taps. Marker enters bibs in order. The server pairs tap n with bib n. Modify records to delete, edit, or insert a tap or bib. Fix on a runner still shifts that runner's bibs."
       />
 
       <div className="flex-1 space-y-4 px-4 pb-28">
         <AccessCard code={code} event={event} origin={origin} />
 
-        {event.status !== "setup" ? (
-          <MismatchPanel
-            code={code}
-            event={event}
-            flags={flags}
-            onEvent={setEvent}
-            onFixRunner={setFixId}
-          />
-        ) : null}
+        {event.status !== "setup" ? <ModifyRecordsLink code={code} event={event} /> : null}
 
         <section>
           <div className="mb-2 flex items-baseline justify-between">
@@ -326,6 +319,27 @@ function AdminInner({ code }: { code: string }) {
         })()
       ) : null}
     </Screen>
+  );
+}
+
+function ModifyRecordsLink({ code, event }: { code: string; event: EventState }) {
+  const counts = recordCounts(event.taps, event.marks);
+  return (
+    <Link
+      href={`/e/${code}/admin/records`}
+      aria-label={`Modify records, ${counts.taps} taps, ${counts.bibs} bibs${
+        counts.differ ? ", counts differ" : ""
+      }`}
+      className="launch launch-solid tap relative flex min-h-36 w-full flex-col items-center justify-center gap-1 rounded-[10px] bg-accent px-4 text-ink"
+    >
+      {counts.differ ? (
+        <span className="absolute right-4 top-4 h-3.5 w-3.5 rounded-full bg-bell ring-2 ring-ink" />
+      ) : null}
+      <span className="text-3xl font-black uppercase tracking-[0.08em] sm:text-4xl">Modify records</span>
+      <span className="font-mono text-sm font-bold tabular text-ink/80">
+        {counts.taps} taps · {counts.bibs} bibs
+      </span>
+    </Link>
   );
 }
 
