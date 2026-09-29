@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { TrashIcon } from "@/components/trash-icon";
 import { formatClock, formatEst } from "@/lib/format";
 import { liveMarks, splitEstimated, type Crossing, type RunnerRace } from "@/lib/race";
 import { RECORD_TAG_LABEL, recordRowTags, recordRows, type RecordTag } from "@/lib/records";
@@ -212,10 +213,11 @@ function CrossingRow({
         </button>
         <button
           type="button"
-          className="tap h-14 w-full rounded-xl bg-stop/20 text-[13px] font-black text-stop ring-1 ring-stop"
+          className="tap grid h-14 w-full place-items-center rounded-xl bg-stop/20 text-stop ring-1 ring-stop"
           onClick={onDelete}
+          aria-label="Delete crossing"
         >
-          Del
+          <TrashIcon size={26} />
         </button>
       </div>
     </div>

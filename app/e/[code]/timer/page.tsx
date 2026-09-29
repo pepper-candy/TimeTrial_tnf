@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
+import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { json, useEvent } from "@/lib/client/hooks";
@@ -265,11 +266,11 @@ function TimerInner({ code }: { code: string }) {
                 </span>
                 <button
                   type="button"
-                  className="tap grid h-11 w-11 place-items-center rounded-lg text-dim active:bg-sand active:text-ink"
+                  className="tap grid h-11 w-11 place-items-center rounded-lg text-stop active:bg-stop/20"
                   aria-label={`Delete tap ${row.n}`}
                   onClick={() => void deleteTap(row.id)}
                 >
-                  <TrashIcon />
+                  <TrashIcon size={20} />
                 </button>
               </li>
             ))}
@@ -312,22 +313,3 @@ function TimerInner({ code }: { code: string }) {
   );
 }
 
-function TrashIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 7h16" />
-      <path d="M9 7V5h6v2" />
-      <path d="M8 7l1 13h6l1-13" />
-    </svg>
-  );
-}

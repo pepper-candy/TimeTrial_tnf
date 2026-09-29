@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
@@ -227,11 +228,11 @@ function MarkerInner({ code }: { code: string }) {
                 </span>
                 <button
                   type="button"
-                  className="tap grid h-11 w-11 place-items-center rounded-lg text-dim active:bg-sand active:text-ink"
+                  className="tap grid h-11 w-11 place-items-center rounded-lg text-stop active:bg-stop/20"
                   aria-label={`Delete bib ${shown}`}
                   onClick={() => deleteRow(row)}
                 >
-                  <TrashIcon />
+                  <TrashIcon size={20} />
                 </button>
               </li>
             );
@@ -297,22 +298,3 @@ const PAD_KEYS: { id: string; face: string; label: string }[] = [
   { id: "clear", face: "Clear", label: "Clear" },
 ];
 
-function TrashIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 7h16" />
-      <path d="M9 7V5h6v2" />
-      <path d="M8 7l1 13h6l1-13" />
-    </svg>
-  );
-}

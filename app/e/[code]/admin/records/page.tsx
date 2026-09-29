@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
 import { Chip, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
@@ -480,8 +481,8 @@ function RecordLine({
       </div>
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <div className="grid grid-cols-3 gap-1">
-          <RowBtn label="Delete tap" disabled={!row.tap} onClick={onDeleteTap}>
-            Del
+          <RowBtn label="Delete tap" danger disabled={!row.tap} onClick={onDeleteTap}>
+            <TrashIcon size={16} />
           </RowBtn>
           <RowBtn label="Edit tap time" disabled={!row.tap} on={editing === "time"} onClick={onEditTime}>
             Time
@@ -491,8 +492,8 @@ function RecordLine({
           </RowBtn>
         </div>
         <div className="grid grid-cols-3 gap-1">
-          <RowBtn label="Delete bib" disabled={!row.mark} onClick={onDeleteBib}>
-            Del
+          <RowBtn label="Delete bib" danger disabled={!row.mark} onClick={onDeleteBib}>
+            <TrashIcon size={16} />
           </RowBtn>
           <RowBtn label="Edit bib" disabled={!row.mark} on={editing === "bib-edit"} onClick={onEditBib}>
             Bib
@@ -510,24 +511,29 @@ function RowBtn({
   label,
   disabled,
   on,
+  danger,
   onClick,
   children,
 }: {
   label: string;
   disabled?: boolean;
   on?: boolean;
+  danger?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const tone = on
+    ? "bg-sand text-ink ring-sand"
+    : danger
+      ? "bg-panel text-stop ring-line"
+      : "bg-panel text-sand ring-line";
   return (
     <button
       type="button"
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className={`tap h-8 whitespace-nowrap rounded-lg px-0.5 text-[10px] font-black uppercase tracking-wide ring-1 disabled:text-dim/30 ${
-        on ? "bg-sand text-ink ring-sand" : "bg-panel text-sand ring-line"
-      }`}
+      className={`tap grid h-8 place-items-center whitespace-nowrap rounded-lg px-0.5 text-[10px] font-black uppercase tracking-wide ring-1 disabled:text-dim/30 ${tone}`}
     >
       {children}
     </button>

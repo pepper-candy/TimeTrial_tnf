@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
+import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
 import { Qr } from "@/components/qr";
 import { BigBtn, Chip, Field, MenuButton, Screen, TopBar, useCopied } from "@/components/shell";
@@ -593,8 +594,17 @@ function StorageBar({ used, cap }: { used: number; cap: number }) {
 function DeleteButton({ onDelete }: { onDelete: () => void }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <BigBtn tone={confirm ? "danger" : "plain"} className="w-full" onClick={() => (confirm ? onDelete() : setConfirm(true))}>
-      {confirm ? "Tap again to delete" : "Delete event"}
+    <BigBtn
+      tone="plain"
+      className={`w-full ${confirm ? "shadow-[inset_0_0_0_2px_#ff3b5c]" : ""}`}
+      onClick={() => (confirm ? onDelete() : setConfirm(true))}
+    >
+      <span className="inline-flex items-center gap-2">
+        <TrashIcon size={22} className="text-stop" />
+        <span className={confirm ? "text-stop" : undefined}>
+          {confirm ? "Tap again to delete" : "Delete event"}
+        </span>
+      </span>
     </BigBtn>
   );
 }
@@ -707,14 +717,14 @@ function RunnerRow({
           ) : null}
           <button
             type="button"
-            className={`tap h-12 w-12 shrink-0 rounded-xl font-black ring-1 ${
-              confirmDel ? "bg-stop text-sand ring-stop" : "bg-panel2 text-stop ring-line"
+            className={`tap grid h-12 w-12 shrink-0 place-items-center rounded-xl text-stop ring-1 ${
+              confirmDel ? "bg-stop/25 ring-stop" : "bg-panel2 ring-line"
             }`}
             onClick={() => (confirmDel ? onDelete() : setConfirmDel(true))}
             onBlur={() => setConfirmDel(false)}
             aria-label={confirmDel ? "Confirm remove runner" : "Remove runner"}
           >
-            ×
+            <TrashIcon size={22} />
           </button>
         </div>
       </div>
