@@ -222,7 +222,7 @@ function RecentSequence({
   const drag = useRef<{ from: number; x: number; dragging: boolean } | null>(null);
 
   return (
-    <div className="mx-3 mt-1 flex gap-2 overflow-x-auto pb-1">
+    <div className="mx-3 flex gap-2 overflow-x-auto pb-1">
       {recent.map((p) => {
         const runner: Runner | undefined = runnerByBib(event.runners, p.mark.bib);
         const active = selected === p.index;

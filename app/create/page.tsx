@@ -85,7 +85,7 @@ export default function CreatePage() {
         title="New event"
         info="5000 m on a 400 m track starts at the 200 m mark: the first finish-line crossing is the 200 m split, then 12 full laps. The helper PIN unlocks Timer, Marker and Admin; Admin can show it again later. Board is a public link."
       />
-      <div className="flex flex-1 flex-col gap-4 px-4 pb-28">
+      <div className="flex flex-1 flex-col gap-5 px-4 pb-28">
         <Field value={name} onChange={setName} placeholder="Event name" />
 
         <div className="grid grid-cols-4 gap-2">

@@ -62,7 +62,7 @@ export default function RolePage() {
         }
         info="Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN."
       />
-      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 p-4 pb-8">
+      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 px-4 pb-8">
         {ROLES.map((r) => {
           const hot = r.href === "admin" ? admin : false;
           return (

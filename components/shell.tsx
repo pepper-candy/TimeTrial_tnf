@@ -25,6 +25,8 @@ const ICON_BTN =
 /**
  * Fixed 3-slot header. Left and right are both 48px, so the title is centred
  * on the screen. A second right-hand control hangs left from that slot.
+ * The bar is h-16 in normal flow, plus a 20px margin, so the first control
+ * starts a header-height plus that gap below the top of the screen.
  */
 export function TopBar({
   backHref,
@@ -49,7 +51,7 @@ export function TopBar({
     );
   return (
     <header
-      className={`sticky top-0 z-30 grid h-16 shrink-0 grid-cols-[48px_minmax(0,1fr)_48px] items-center bg-void/90 px-3 backdrop-blur ${className}`}
+      className={`sticky top-0 z-30 mb-5 grid h-16 shrink-0 grid-cols-[48px_minmax(0,1fr)_48px] items-center bg-void/90 px-3 backdrop-blur ${className}`}
     >
       <div className="justify-self-start">
         {backHref ? (
