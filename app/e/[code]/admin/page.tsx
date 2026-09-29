@@ -632,7 +632,6 @@ function RunnerRow({
   onDelete: () => void;
   onFix?: () => void;
 }) {
-  const cam = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const [bib, setBib] = useState(runner.bib);
   const [name, setName] = useState(runner.name);
@@ -642,14 +641,34 @@ function RunnerRow({
   return (
     <div className="rounded-2xl bg-panel p-2 ring-1 ring-line">
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          className="tap shrink-0"
-          onClick={() => !runner.photoVer && cam.current?.click()}
-          aria-label="Photo"
-        >
-          <Avatar runner={runner} eventId={eventId} size={48} lightbox={Boolean(runner.photoVer)} />
-        </button>
+        <div className="relative shrink-0">
+          {runner.photoVer ? (
+            <Avatar
+              runner={runner}
+              eventId={eventId}
+              size={48}
+              lightbox
+              onReplace={() => file.current?.click()}
+            />
+          ) : (
+            <button
+              type="button"
+              className="tap block"
+              onClick={() => file.current?.click()}
+              aria-label="Add photo"
+            >
+              <Avatar runner={runner} eventId={eventId} size={48} lightbox={false} />
+            </button>
+          )}
+          {runner.photoVer ? null : (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute right-0 top-0 z-10 grid h-[15px] w-[15px] place-items-center bg-accent text-[12px] font-black leading-none text-ink"
+            >
+              +
+            </span>
+          )}
+        </div>
         <input
           value={bib}
           onChange={(e) => setBib(e.target.value)}
@@ -680,7 +699,7 @@ function RunnerRow({
           {onFix ? (
             <button
               type="button"
-              className="tap h-12 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
+              className="tap h-12 shrink-0 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
               onClick={onFix}
             >
               Fix
@@ -688,39 +707,27 @@ function RunnerRow({
           ) : null}
           <button
             type="button"
-            className="tap h-12 w-12 rounded-xl bg-panel2 text-lg font-black text-dim ring-1 ring-line"
-            onClick={() => file.current?.click()}
-            aria-label="Upload photo"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            className={`tap h-12 rounded-xl px-3 font-black ring-1 ${
+            className={`tap h-12 w-12 shrink-0 rounded-xl font-black ring-1 ${
               confirmDel ? "bg-stop text-sand ring-stop" : "bg-panel2 text-stop ring-line"
             }`}
             onClick={() => (confirmDel ? onDelete() : setConfirmDel(true))}
             onBlur={() => setConfirmDel(false)}
-            aria-label="Remove runner"
+            aria-label={confirmDel ? "Confirm remove runner" : "Remove runner"}
           >
-            {confirmDel ? "Remove" : "×"}
+            ×
           </button>
         </div>
       </div>
-      <input
-        ref={cam}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(e) => e.target.files?.[0] && onPhoto(e.target.files[0])}
-      />
       <input
         ref={file}
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={(e) => e.target.files?.[0] && onPhoto(e.target.files[0])}
+        onChange={(e) => {
+          const picked = e.target.files?.[0];
+          e.target.value = "";
+          if (picked) onPhoto(picked);
+        }}
       />
     </div>
   );
