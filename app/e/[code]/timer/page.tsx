@@ -115,12 +115,16 @@ function TimerInner({ code }: { code: string }) {
     return () => window.clearInterval(id);
   }, []);
 
+  function remember(entry: Hist) {
+    setHist((h) => [...h, entry].slice(-40));
+  }
+
   function tap(e: React.PointerEvent) {
     e.preventDefault();
     const t = Math.round(origin.current + performance.now() + offsetRef.current);
     const item: Queued = { id: crypto.randomUUID(), t, sent: false };
     pending.current.push(item);
-    setHist((h) => [...h, { kind: "tap", id: item.id }].slice(-40));
+    remember({ kind: "tap", id: item.id });
     persist();
     setFlash(true);
     window.setTimeout(() => setFlash(false), 70);
@@ -160,7 +164,7 @@ function TimerInner({ code }: { code: string }) {
     if (local) {
       pending.current = pending.current.filter((q) => q.id !== id);
       persist();
-      setHist((h) => [...h, { kind: "delete", id, local }].slice(-40));
+      remember({ kind: "delete", id, local });
       return;
     }
     setGone((g) => (g.includes(id) ? g : [...g, id]));
@@ -172,7 +176,7 @@ function TimerInner({ code }: { code: string }) {
       pending.current = pending.current.filter((q) => q.id !== id);
       persist();
       setEvent(data.event);
-      setHist((h) => [...h, { kind: "delete", id, local: null }].slice(-40));
+      remember({ kind: "delete", id, local: null });
     } catch {
       setGone((g) => g.filter((x) => x !== id));
     }
@@ -201,7 +205,7 @@ function TimerInner({ code }: { code: string }) {
       if (last.kind === "tap") await undoTap(last.id);
       else await restoreDeleted(last);
     } catch {
-      setHist((h) => [...h, last].slice(-40));
+      remember(last);
     }
   }
 
