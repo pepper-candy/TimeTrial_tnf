@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { BrandMark } from "@/components/brand-mark";
 import { Chip, GoldBtn, Screen } from "@/components/shell";
+import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
 import { normalizeCode } from "@/lib/ids";
@@ -43,14 +45,12 @@ export default function HomePage() {
   return (
     <Screen className="px-5 pb-10 pt-14">
       <div className="lane-stripe rounded-full" />
-      <p className="mt-8 text-center text-xs font-bold uppercase tracking-[0.35em] text-gold">
-        HKUST T&F
-      </p>
-      <h1 className="mt-3 text-center font-mono text-5xl font-black tabular tracking-tight sm:text-6xl">
-        TIME TRIAL
+      <BrandMark className="mx-auto mt-8 h-20 w-20" />
+      <h1 className="mt-5 text-center font-mono text-4xl font-black tabular tracking-tight sm:text-5xl">
+        {APP_NAME}
       </h1>
       <p className="mt-3 text-center text-sm font-semibold uppercase tracking-widest text-dim">
-        Timer · Marker · Board
+        {APP_TAGLINE} · Timer · Marker · Board
       </p>
       <input
         value={code}
