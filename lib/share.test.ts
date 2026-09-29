@@ -1,28 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { eventLinks, helperShareText } from "./share";
+import { eventLinks, helperLink } from "./share";
 
-describe("helper share message", () => {
-  it("lists Timer and Marker links and the PIN", () => {
-    const text = helperShareText({
-      origin: "https://tt.example.com/",
-      code: "AB12C",
-      name: "Friday 5K",
-      pin: "4821",
-    });
-    expect(text).toBe(
-      [
-        "*TNF Time Trial · Friday 5K*",
-        "Timer: https://tt.example.com/e/AB12C/timer",
-        "Marker: https://tt.example.com/e/AB12C/marker",
-        "PIN: 4821",
-        "Board: https://tt.example.com/e/AB12C/board",
-      ].join("\n"),
-    );
-  });
-
-  it("omits the PIN line when it is not stored", () => {
-    const text = helperShareText({ origin: "https://x.dev", code: "Q", name: "5K", pin: null });
-    expect(text).not.toContain("PIN");
+describe("helper link", () => {
+  it("is one URL and does not carry the PIN", () => {
+    const url = helperLink("https://tt.example.com/", "AB12C");
+    expect(url).toBe("https://tt.example.com/e/AB12C/help");
+    expect(url).not.toMatch(/\n|pin|token/i);
+    expect(eventLinks("https://tt.example.com/", "AB12C").helper).toBe(url);
     expect(eventLinks("https://x.dev", "Q").admin).toBe("https://x.dev/e/Q/admin");
+    expect(eventLinks("https://x.dev", "Q").board).toBe("https://x.dev/e/Q/board");
   });
 });

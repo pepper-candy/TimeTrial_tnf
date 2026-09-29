@@ -14,7 +14,7 @@ import { forgetAdmin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
 import { CATEGORIES } from "@/lib/category";
 import { kmCrossings } from "@/lib/course";
-import { eventLinks, helperShareText } from "@/lib/share";
+import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
 
@@ -374,7 +374,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
     setErr(false);
   }
 
-  const share = helperShareText({ origin, code: event.code, name: event.name, pin: pin ?? null });
+  const helperUrl = helperLink(origin, event.code);
 
   return (
     <section className="rounded-3xl bg-panel p-3 ring-1 ring-line">
@@ -475,7 +475,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
       <div className="mt-2 grid grid-cols-[minmax(0,1fr)_max-content_max-content] gap-2">
         <button
           type="button"
-          onClick={() => void copy("share", share)}
+          onClick={() => void copy("share", helperUrl)}
           className="tap flex h-14 min-w-0 items-center justify-center overflow-hidden rounded-2xl bg-accent px-3 text-lg font-black text-ink shadow-[inset_0_-4px_0_rgba(0,0,0,0.25)]"
         >
           <CopyLabel on={copied === "share"}>Share helper</CopyLabel>
@@ -509,7 +509,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
               Board
             </Chip>
           </div>
-          <Qr value={qr === "helper" ? links.home : links.board} />
+          <Qr value={qr === "helper" ? helperUrl : links.board} />
         </div>
       ) : null}
 
