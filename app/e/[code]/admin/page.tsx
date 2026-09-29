@@ -336,7 +336,7 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
   const [nextPin, setNextPin] = useState("");
   const [err, setErr] = useState(false);
   const [qr, setQr] = useState<"off" | "helper" | "board">("off");
-  const { copied, copy } = useCopied();
+  const { copied, copy } = useCopied(1500);
   const links = eventLinks(origin, event.code);
 
   const load = useCallback(async () => {
@@ -382,19 +382,18 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
         <button
           type="button"
           onClick={() => void copy("code", event.code)}
-          className={`tap rounded-2xl px-3 py-3 text-left ring-1 ring-line ${
+          className={`tap min-w-0 rounded-2xl px-3 py-3 text-left ring-1 ring-line ${
             copied === "code" ? "bg-sand text-ink" : "bg-panel2 active:bg-sand active:text-ink"
           }`}
           aria-label="Copy event code"
         >
-          <div
-            className={`text-[11px] font-black uppercase tracking-[0.16em] ${
-              copied === "code" ? "text-ink/70" : "text-dim"
-            }`}
+          <CopyLabel
+            on={copied === "code"}
+            className={`text-[11px] uppercase tracking-[0.16em] ${copied === "code" ? "text-ink/70" : "text-dim"}`}
           >
-            {copied === "code" ? "Copied" : "Code"}
-          </div>
-          <div className="font-mono text-4xl font-black tabular tracking-[0.12em] sm:text-5xl">
+            Code
+          </CopyLabel>
+          <div className="flex h-12 items-center overflow-hidden whitespace-nowrap font-mono text-4xl font-black leading-none tabular tracking-[0.12em] sm:h-14 sm:text-5xl">
             {event.code}
           </div>
         </button>
@@ -408,20 +407,33 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
             setShown(true);
             void copy("pin", pin);
           }}
-          className={`tap rounded-2xl px-3 py-3 text-left ring-1 ring-line ${
+          className={`tap min-w-0 rounded-2xl px-3 py-3 text-left ring-1 ring-line ${
             copied === "pin" ? "bg-sand text-ink" : "bg-panel2 active:bg-sand active:text-ink"
           }`}
           aria-label={pin ? "Show and copy PIN" : "Set PIN"}
         >
+          <CopyLabel
+            on={copied === "pin"}
+            className={`text-[11px] uppercase tracking-[0.16em] ${copied === "pin" ? "text-ink/70" : "text-dim"}`}
+          >
+            {pin === null ? "PIN" : shown ? "PIN" : "PIN · tap"}
+          </CopyLabel>
           <div
-            className={`text-[11px] font-black uppercase tracking-[0.16em] ${
-              copied === "pin" ? "text-ink/70" : "text-dim"
+            className={`flex h-12 items-center overflow-hidden whitespace-nowrap font-mono font-black leading-none tabular sm:h-14 ${
+              (shown || copied === "pin") && pin && pin.length > 5
+                ? "text-[1.35rem] tracking-normal sm:text-4xl"
+                : "text-4xl tracking-[0.12em] sm:text-5xl"
             }`}
           >
-            {pin === null ? "PIN" : copied === "pin" ? "Copied" : shown ? "PIN" : "PIN · tap"}
-          </div>
-          <div className="font-mono text-4xl font-black tabular tracking-[0.12em] sm:text-5xl">
-            {pin === undefined ? "…" : pin === null ? <span className="text-xl text-bell">Set</span> : shown || copied === "pin" ? pin : "••••"}
+            {pin === undefined ? (
+              "…"
+            ) : pin === null ? (
+              <span className="text-xl text-bell">Set</span>
+            ) : shown || copied === "pin" ? (
+              pin
+            ) : (
+              "••••"
+            )}
           </div>
         </button>
       </div>
@@ -460,26 +472,26 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
         </div>
       ) : null}
 
-      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] gap-2">
+      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_max-content_max-content] gap-2">
         <button
           type="button"
           onClick={() => void copy("share", share)}
-          className="tap h-14 rounded-2xl bg-accent px-3 text-lg font-black text-ink shadow-[inset_0_-4px_0_rgba(0,0,0,0.25)]"
+          className="tap flex h-14 min-w-0 items-center justify-center overflow-hidden rounded-2xl bg-accent px-3 text-lg font-black text-ink shadow-[inset_0_-4px_0_rgba(0,0,0,0.25)]"
         >
-          {copied === "share" ? "Copied" : "Share helper"}
+          <CopyLabel on={copied === "share"}>Share helper</CopyLabel>
         </button>
         <button
           type="button"
           onClick={() => void copy("board", links.board)}
-          className="tap h-14 rounded-2xl bg-panel2 px-4 font-black ring-1 ring-line"
+          className="tap flex h-14 items-center justify-center rounded-2xl bg-panel2 px-4 font-black ring-1 ring-line"
         >
-          {copied === "board" ? "✓" : "Board link"}
+          <CopyLabel on={copied === "board"}>Board link</CopyLabel>
         </button>
         <button
           type="button"
           aria-pressed={qr !== "off"}
           onClick={() => setQr((v) => (v === "off" ? "helper" : "off"))}
-          className={`tap h-14 rounded-2xl px-4 font-black ring-1 ${
+          className={`tap flex h-14 w-14 items-center justify-center rounded-2xl font-black ring-1 ${
             qr !== "off" ? "bg-sand text-ink ring-sand" : "bg-panel2 ring-line"
           }`}
         >
@@ -489,11 +501,11 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
 
       {qr !== "off" ? (
         <div className="mt-3 flex flex-col items-center gap-2">
-          <div className="flex gap-2">
-            <Chip size="sm" active={qr === "helper"} onClick={() => setQr("helper")}>
+          <div className="grid w-44 grid-cols-2 gap-2">
+            <Chip size="sm" active={qr === "helper"} onClick={() => setQr("helper")} className="w-full">
               Helper
             </Chip>
-            <Chip size="sm" active={qr === "board"} onClick={() => setQr("board")}>
+            <Chip size="sm" active={qr === "board"} onClick={() => setQr("board")} className="w-full">
               Board
             </Chip>
           </div>
@@ -511,6 +523,24 @@ function AccessCard({ code, event, origin }: { code: string; event: EventState; 
         </button>
       ) : null}
     </section>
+  );
+}
+
+/** Both labels stay in the layout, so swapping to "✓ Copied" cannot resize the control. */
+function CopyLabel({
+  on,
+  children,
+  className = "",
+}: {
+  on: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={`inline-grid font-black ${className}`}>
+      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "invisible" : ""}`}>{children}</span>
+      <span className={`col-start-1 row-start-1 whitespace-nowrap ${on ? "" : "invisible"}`}>✓ Copied</span>
+    </span>
   );
 }
 
