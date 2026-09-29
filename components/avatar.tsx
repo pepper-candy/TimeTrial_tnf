@@ -13,6 +13,7 @@ export function Avatar({
   className = "",
   overlay = true,
   lightbox = false,
+  fill = false,
   onReplace,
 }: {
   runner: Pick<Runner, "id" | "name" | "bib" | "photoVer">;
@@ -21,6 +22,8 @@ export function Avatar({
   className?: string;
   overlay?: boolean;
   lightbox?: boolean;
+  /** Stretch to the parent instead of a fixed square. */
+  fill?: boolean;
   onReplace?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -35,9 +38,9 @@ export function Avatar({
     <>
       <div
         className={`relative shrink-0 overflow-hidden ring-1 ring-black/50 ${
-          canOpen ? "tap cursor-zoom-in" : ""
-        } ${className}`}
-        style={{ width: size, height: size, borderRadius: radius }}
+          fill ? "h-full w-full rounded-xl" : ""
+        } ${canOpen ? "tap cursor-zoom-in" : ""} ${className}`}
+        style={fill ? undefined : { width: size, height: size, borderRadius: radius }}
         onPointerDown={
           canOpen
             ? (e) => {

@@ -125,12 +125,12 @@ export function MenuButton({
         ref={btn}
         type="button"
         className={ICON_BTN}
-        aria-label="Menu"
+        aria-label={open ? "Close" : "Menu"}
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
       >
-        ⋯
+        {open ? "×" : "⋯"}
       </button>
       {open
         ? createPortal(
@@ -211,12 +211,6 @@ function AnchoredMenu({
         style={{ visibility: "hidden" }}
         className="fixed overflow-auto rounded-2xl bg-panel p-4 shadow-2xl ring-1 ring-line"
       >
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div className="text-sm font-black uppercase tracking-[0.16em] text-dim">{title}</div>
-          <button type="button" className={ICON_BTN} aria-label="Close" onClick={onClose}>
-            ×
-          </button>
-        </div>
         {children}
       </div>
     </div>

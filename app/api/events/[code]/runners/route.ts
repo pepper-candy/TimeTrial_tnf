@@ -42,7 +42,9 @@ export async function POST(req: Request, ctx: Ctx) {
     return NextResponse.json({ event: toPublic(event), rev: event.rev });
   }
 
+  const flags = { duplicate: false };
   const event = await updateEvent(code, (e) => {
+    flags.duplicate = false;
     if (body.action === "replace" && Array.isArray(body.runners)) {
       return { ...e, runners: body.runners.map(stripPhotoBytes) };
     }
@@ -75,7 +77,7 @@ export async function POST(req: Request, ctx: Ctx) {
           r.id === incoming.id
             ? {
                 ...r,
-                bib: bib || r.bib,
+                bib: r.bib,
                 name: incoming.name ?? r.name,
                 studentId: incoming.studentId ?? r.studentId,
                 category:
@@ -97,20 +99,15 @@ export async function POST(req: Request, ctx: Ctx) {
       category: normalizeCategory(incoming.category),
       photoVer: incoming.photoVer ?? null,
     };
-    const exists = e.runners.find((r) => normalizeBib(r.bib) === bib);
+    const exists = e.runners.some((r) => normalizeBib(r.bib) === bib);
     if (exists) {
-      return {
-        ...e,
-        runners: e.runners.map((r) =>
-          r.id === exists.id
-            ? { ...runner, id: exists.id, photoVer: runner.photoVer ?? exists.photoVer }
-            : r,
-        ),
-      };
+      flags.duplicate = true;
+      return e;
     }
     return { ...e, runners: [...e.runners, runner] };
   });
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (flags.duplicate) return NextResponse.json({ error: "bib taken" }, { status: 409 });
   return NextResponse.json({ event: toPublic(event), rev: event.rev });
 }
 

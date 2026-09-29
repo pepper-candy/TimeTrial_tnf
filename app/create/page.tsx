@@ -106,6 +106,7 @@ export default function CreatePage() {
               setAdvanced(true);
             }}
             size="lg"
+            className="col-span-4 w-full"
           >
             Custom
           </Chip>

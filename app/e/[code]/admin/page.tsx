@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Avatar } from "@/components/avatar";
 import { SwipeRow } from "@/components/swipe-row";
 import { TrashIcon } from "@/components/trash-icon";
 import { PinGate } from "@/components/pin-gate";
@@ -14,12 +13,24 @@ import { CrossingEditor } from "@/components/crossing-editor";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { forgetAdmin, getMasterKey, getStoredPin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
-import { CATEGORIES } from "@/lib/category";
 import { kmCrossings } from "@/lib/course";
+import { bibColor } from "@/lib/format";
+import { photoPath } from "@/lib/photo";
+import { normalizeBib } from "@/lib/race";
 import { recordCounts } from "@/lib/records";
 import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
+
+function displayGone(
+  runners: Runner[],
+  gone: { runner: Runner; index: number } | null,
+): { runner: Runner; index: number } | null {
+  if (!gone) return null;
+  const ordered = [...runners].reverse();
+  const still = ordered.findIndex((r) => r.id === gone.runner.id);
+  return { ...gone, index: still >= 0 ? still : Math.max(0, ordered.length - gone.index) };
+}
 
 function runnerSlots(
   runners: Runner[],
@@ -46,7 +57,10 @@ export default function AdminPage() {
 function AdminInner({ code }: { code: string }) {
   const router = useRouter();
   const { event, setEvent, races } = useEvent(code, 2000);
-  const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "" });
+  const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "Boys" });
+  const [draftPhoto, setDraftPhoto] = useState<File | null>(null);
+  const [draftPreview, setDraftPreview] = useState<string | null>(null);
+  const draftFile = useRef<HTMLInputElement>(null);
   const [fixId, setFixId] = useState<string | null>(null);
   const [gone, setGone] = useState<{ runner: Runner; index: number } | null>(null);
   const goneRef = useRef<{ runner: Runner; index: number } | null>(null);
@@ -137,12 +151,31 @@ function AdminInner({ code }: { code: string }) {
       body: JSON.stringify({ action: "upsert", runner }),
     });
     setEvent(data.event);
+    return data.event;
+  }
+
+  function clearDraftPhoto() {
+    setDraftPreview((url) => {
+      if (url) URL.revokeObjectURL(url);
+      return null;
+    });
+    setDraftPhoto(null);
   }
 
   async function addDraft() {
-    if (!draft.bib.trim()) return;
-    await saveRunner({ ...draft });
-    setDraft((d) => ({ bib: "", name: "", studentId: "", category: d.category }));
+    if (!draft.bib.trim() || !event) return;
+    if (event.runners.some((r) => normalizeBib(r.bib) === normalizeBib(draft.bib))) return;
+    const before = new Set(event.runners.map((r) => r.id));
+    const file = draftPhoto;
+    try {
+      const next = await saveRunner({ ...draft, category: draft.category === "Girls" ? "Girls" : "Boys" });
+      const created = next.runners.find((r) => !before.has(r.id));
+      if (file && created) await photo(created.id, file);
+      setDraft((d) => ({ bib: "", name: "", studentId: "", category: d.category === "Girls" ? "Girls" : "Boys" }));
+      clearDraftPhoto();
+    } catch {
+      /* bib already used, or the save failed */
+    }
   }
 
   async function patch(body: Record<string, unknown>) {
@@ -195,6 +228,9 @@ function AdminInner({ code }: { code: string }) {
     );
   }
 
+  const bibTaken =
+    draft.bib.trim() !== "" &&
+    event.runners.some((r) => normalizeBib(r.bib) === normalizeBib(draft.bib));
   const kmOpts = kmCrossings(event.course).filter(
     (x) => x.km * 1000 < event.course.totalDistanceM - 0.5,
   );
@@ -208,14 +244,6 @@ function AdminInner({ code }: { code: string }) {
           <MenuButton title="Settings">
             {(close) => (
               <div className="space-y-5">
-                <div className="flex flex-wrap gap-2">
-                  <Chip
-                    active={event.hideStudentIds}
-                    onClick={() => void patch({ hideStudentIds: !event.hideStudentIds })}
-                  >
-                    Hide IDs
-                  </Chip>
-                </div>
                 {kmOpts.length > 0 ? (
                   <div>
                     <div className="mb-2 text-[11px] font-black uppercase tracking-wider text-dim">
@@ -291,52 +319,107 @@ function AdminInner({ code }: { code: string }) {
           </div>
           <div className="space-y-2">
             <div className="rounded-2xl bg-panel p-2 ring-1 ring-accent/60">
-              <div className="flex items-center gap-2">
-                <input
-                  value={draft.bib}
-                  onChange={(e) => setDraft((d) => ({ ...d, bib: e.target.value }))}
-                  placeholder="Bib"
-                  aria-label="Bib"
-                  inputMode="numeric"
-                  className="h-12 w-16 rounded-xl bg-panel2 px-2 text-center font-mono text-2xl font-black tabular placeholder:text-base placeholder:text-dim"
-                />
-                <input
-                  value={draft.name}
-                  onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                  placeholder="Name"
-                  aria-label="Name"
-                  className="h-12 min-w-0 flex-1 rounded-xl bg-panel2 px-3 placeholder:text-dim"
-                />
-                <input
-                  value={draft.studentId}
-                  onChange={(e) => setDraft((d) => ({ ...d, studentId: e.target.value }))}
-                  placeholder="SID"
-                  aria-label="Student ID"
-                  className="h-12 w-20 rounded-xl bg-panel2 px-2 font-mono text-sm font-bold tabular placeholder:text-dim sm:w-28"
-                  onKeyDown={(e) => e.key === "Enter" && addDraft()}
-                />
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <CategoryChips
-                  value={draft.category}
-                  onChange={(category) => setDraft((d) => ({ ...d, category }))}
-                />
+              <div className="flex items-stretch gap-2">
                 <button
                   type="button"
-                  className="tap ml-auto h-12 rounded-xl bg-accent px-6 text-lg font-black text-ink disabled:opacity-40"
-                  onClick={addDraft}
-                  disabled={!draft.bib.trim()}
+                  className="tap relative grid w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-panel2 text-3xl font-black text-dim ring-1 ring-line"
+                  aria-label="Add photo"
+                  onClick={() => draftFile.current?.click()}
                 >
-                  Add
+                  {draftPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={draftPreview} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                  ) : (
+                    "+"
+                  )}
                 </button>
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex gap-2">
+                    <input
+                      value={draft.name}
+                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                      placeholder="Name"
+                      aria-label="Name"
+                      className="h-12 min-w-0 flex-1 rounded-xl bg-panel2 px-3 placeholder:text-dim"
+                    />
+                    <input
+                      value={draft.bib}
+                      onChange={(e) => setDraft((d) => ({ ...d, bib: e.target.value }))}
+                      placeholder="Bib"
+                      aria-label="Bib"
+                      inputMode="numeric"
+                      className={`h-12 w-20 shrink-0 rounded-xl bg-panel2 px-2 text-center font-mono text-2xl font-black tabular placeholder:text-base placeholder:text-dim ${
+                        bibTaken ? "ring-1 ring-stop" : ""
+                      }`}
+                      aria-invalid={bibTaken}
+                      title={bibTaken ? "Already used" : undefined}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={draft.studentId}
+                      onChange={(e) => setDraft((d) => ({ ...d, studentId: e.target.value.slice(0, 8) }))}
+                      placeholder="SID"
+                      aria-label="Student ID"
+                      inputMode="numeric"
+                      maxLength={8}
+                      className="h-10 w-28 shrink-0 rounded-xl bg-panel2 px-2 font-mono text-sm font-bold tabular placeholder:text-dim"
+                      onKeyDown={(e) => e.key === "Enter" && addDraft()}
+                    />
+                    <button
+                      type="button"
+                      aria-label={draft.category === "Girls" ? "Female" : "Male"}
+                      aria-pressed={draft.category === "Girls"}
+                      className={`tap grid h-10 shrink-0 place-items-center rounded-xl bg-transparent px-3 text-sm font-black ring-1 ${
+                        draft.category === "Girls"
+                          ? "text-[#ff4d8a] ring-[#ff4d8a]"
+                          : "text-sky ring-sky"
+                      }`}
+                      onClick={() =>
+                        setDraft((d) => ({ ...d, category: d.category === "Girls" ? "Boys" : "Girls" }))
+                      }
+                    >
+                      <span className="col-start-1 row-start-1">
+                        {draft.category === "Girls" ? "FEMALE" : "MALE"}
+                      </span>
+                      <span className="invisible col-start-1 row-start-1" aria-hidden>
+                        FEMALE
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="tap h-10 min-w-0 flex-1 rounded-xl bg-accent px-4 text-base font-black text-ink disabled:opacity-40"
+                      onClick={addDraft}
+                      disabled={!draft.bib.trim() || bibTaken}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+                <input
+                  ref={draftFile}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const picked = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!picked) return;
+                    setDraftPreview((url) => {
+                      if (url) URL.revokeObjectURL(url);
+                      return URL.createObjectURL(picked);
+                    });
+                    setDraftPhoto(picked);
+                  }}
+                />
               </div>
             </div>
-            {runnerSlots(event.runners, gone).map((slot) =>
+            {runnerSlots([...event.runners].reverse(), displayGone(event.runners, gone)).map((slot) =>
               slot.kind === "gone" ? (
                 <button
                   key="deleted-runner"
                   type="button"
-                  className="tap flex h-[7.5rem] w-full items-center justify-center rounded-2xl bg-panel text-sm font-black ring-1 ring-line"
+                  className="tap flex h-20 w-full items-center justify-center rounded-2xl bg-panel text-sm font-black ring-1 ring-line"
                   onClick={undoRunner}
                 >
                   <span className="text-dim">Deleted</span>
@@ -645,18 +728,6 @@ function CopyLabel({
   );
 }
 
-function CategoryChips({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="flex gap-2">
-      {CATEGORIES.map((c) => (
-        <Chip key={c} active={value === c} onClick={() => onChange(value === c ? "" : c)}>
-          {c}
-        </Chip>
-      ))}
-    </div>
-  );
-}
-
 function StorageBar({ used, cap }: { used: number; cap: number }) {
   const ratio = storageRatio(used, cap);
   return (
@@ -729,9 +800,10 @@ function RunnerRow({
   onFix?: () => void;
 }) {
   const file = useRef<HTMLInputElement>(null);
-  const [bib, setBib] = useState(runner.bib);
   const [name, setName] = useState(runner.name);
   const [studentId, setStudentId] = useState(runner.studentId);
+  const female = runner.category === "Girls";
+  const src = runner.photoVer ? photoPath(eventId, runner.id, runner.photoVer, "thumb") : null;
 
   return (
     <SwipeRow
@@ -739,73 +811,65 @@ function RunnerRow({
       onDelete={onDelete}
       className="rounded-2xl bg-panel ring-1 ring-line"
     >
-      <div className="p-2">
-        <div className="flex items-center gap-2">
-          <div className="relative shrink-0">
-            {runner.photoVer ? (
-              <Avatar
-                runner={runner}
-                eventId={eventId}
-                size={48}
-                lightbox
-                onReplace={() => file.current?.click()}
+      <div className="flex items-stretch gap-2 p-2">
+        <button
+          type="button"
+          className="tap relative grid w-16 shrink-0 place-items-center self-stretch overflow-hidden rounded-xl bg-panel2 ring-1 ring-line"
+          aria-label={`Replace photo for bib ${runner.bib}`}
+          onClick={() => file.current?.click()}
+        >
+          {src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <span className="absolute inset-0" style={{ background: bibColor(runner.bib || runner.name || "?") }} />
+          )}
+          <span className="absolute inset-0 bg-black/45" />
+          <span className="relative font-mono text-2xl font-black tabular text-white [text-shadow:0_1px_2px_#000]">
+            {runner.bib}
+          </span>
+        </button>
+        <div className="flex min-h-16 min-w-0 flex-1 items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onBlur={() => name !== runner.name && onChange({ name })}
+              placeholder="Name"
+              aria-label="Name"
+              className="h-6 min-w-0 bg-transparent py-0 text-lg font-black leading-none placeholder:text-dim"
+            />
+            <div className="mt-0.5 flex h-5 items-center gap-2">
+              <button
+                type="button"
+                className={`tap shrink-0 py-0 text-sm font-black leading-none ${female ? "text-[#ff4d8a]" : "text-sky"}`}
+                aria-label={female ? "Female" : "Male"}
+                onClick={() => onChange({ category: female ? "Boys" : "Girls" })}
+              >
+                {female ? "FEMALE" : "MALE"}
+              </button>
+              <span className="text-dim">·</span>
+              <input
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value.slice(0, 8))}
+                onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
+                placeholder="SID"
+                aria-label="Student ID"
+                inputMode="numeric"
+                maxLength={8}
+                className="h-5 w-28 shrink-0 bg-transparent py-0 font-mono text-sm font-bold leading-none tabular placeholder:text-dim"
               />
-            ) : (
-              <button
-                type="button"
-                className="tap block"
-                onClick={() => file.current?.click()}
-                aria-label="Add photo"
-              >
-                <Avatar runner={runner} eventId={eventId} size={48} lightbox={false} />
-              </button>
-            )}
-            {runner.photoVer ? null : (
-              <span
-                aria-hidden
-                className="pointer-events-none absolute right-0 top-0 z-10 grid h-[15px] w-[15px] place-items-center bg-accent text-[12px] font-black leading-none text-ink"
-              >
-                +
-              </span>
-            )}
+            </div>
           </div>
-          <input
-            value={bib}
-            onChange={(e) => setBib(e.target.value)}
-            onBlur={() => bib !== runner.bib && onChange({ bib })}
-            aria-label="Bib"
-            className="h-12 w-16 bg-transparent text-center font-mono text-2xl font-black tabular"
-          />
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => name !== runner.name && onChange({ name })}
-            placeholder="Name"
-            aria-label="Name"
-            className="h-12 min-w-0 flex-1 bg-transparent placeholder:text-dim"
-          />
-          <input
-            value={studentId}
-            onChange={(e) => setStudentId(e.target.value)}
-            onBlur={() => studentId !== runner.studentId && onChange({ studentId })}
-            placeholder="SID"
-            aria-label="Student ID"
-            className="hidden h-12 w-28 bg-transparent font-mono text-sm font-bold tabular placeholder:text-dim sm:block"
-          />
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <CategoryChips value={runner.category} onChange={(category) => onChange({ category })} />
-          <div className="ml-auto flex gap-2">
-            {onFix ? (
-              <button
-                type="button"
-                className="tap h-12 shrink-0 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
-                onClick={onFix}
-              >
-                Fix
-              </button>
-            ) : null}
-          </div>
+          {onFix ? (
+            <button
+              type="button"
+              className="tap h-10 shrink-0 rounded-xl bg-panel2 px-4 font-black text-accent ring-1 ring-line"
+              onClick={onFix}
+            >
+              Fix
+            </button>
+          ) : null}
         </div>
         <input
           ref={file}

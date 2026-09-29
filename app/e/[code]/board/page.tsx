@@ -128,7 +128,7 @@ export default function BoardPage() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [boardReady, rows, event?.hideStudentIds]);
+  }, [boardReady, rows]);
 
   if (!event || !highlights) {
     return (
@@ -141,7 +141,6 @@ export default function BoardPage() {
   const hasCats = event.runners.some((r) => normalizeCategory(r.category));
   const running = event.status === "running" && event.startedAt != null;
   const selected = races.find((r) => r.runner.id === open) ?? null;
-  const showId = !event.hideStudentIds;
 
   function pickBig(mode: BoardTimesMode) {
     setBig(mode);
@@ -241,7 +240,6 @@ export default function BoardPage() {
                 big={big}
                 now={serverNow}
                 running={running}
-                showId={showId}
                 stats={statsById.get(r.runner.id)}
                 onOpen={() => setOpen(r.runner.id)}
               />
@@ -258,7 +256,6 @@ export default function BoardPage() {
           race={selected}
           stats={statsById.get(selected.runner.id)}
           rank={rows.findIndex((r) => r.runner.id === selected.runner.id) + 1}
-          showId={showId}
           onClose={() => setOpen(null)}
         />
       ) : null}
@@ -303,7 +300,6 @@ function BoardRow({
   big,
   now,
   running,
-  showId,
   stats,
   onOpen,
 }: {
@@ -316,7 +312,6 @@ function BoardRow({
   big: BoardTimesMode;
   now: number;
   running: boolean;
-  showId: boolean;
   stats?: RunnerStats;
   onOpen: () => void;
 }) {
@@ -347,7 +342,7 @@ function BoardRow({
           </div>
           <div className="min-w-0 leading-tight">
             <div className="sb-runner-name truncate text-sm font-bold text-sand lg:text-base">{r.name || "—"}</div>
-            {showId && r.studentId ? (
+            {r.studentId ? (
               <div className="sb-runner-id hidden truncate font-mono text-xs tabular text-dim lg:block">
                 {r.studentId}
               </div>
@@ -733,14 +728,12 @@ function Detail({
   race,
   stats,
   rank,
-  showId,
   onClose,
 }: {
   event: EventState;
   race: RunnerRace;
   stats?: RunnerStats;
   rank: number;
-  showId: boolean;
   onClose: () => void;
 }) {
   const r = race.runner;
@@ -757,7 +750,7 @@ function Detail({
         <div className="min-w-0 flex-1">
           <div className="text-xl font-black leading-tight break-words">{r.name || "—"}</div>
           <div className="font-mono text-sm tabular text-dim">
-            {[showId ? r.studentId : "", normalizeCategory(r.category)].filter(Boolean).join(" · ")}
+            {[r.studentId, normalizeCategory(r.category)].filter(Boolean).join(" · ")}
           </div>
         </div>
         <div className="font-mono text-5xl font-black tabular">{r.bib}</div>
