@@ -1,0 +1,217 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Chip, Field, GoldBtn, HelpTip, Screen, Stat, TopBar } from "@/components/shell";
+import { setStoredPin } from "@/lib/client/pin";
+import { json } from "@/lib/client/hooks";
+import { deriveCourse, DISTANCE_PRESETS, kmCrossings, lapsCount } from "@/lib/course";
+import { parsePace } from "@/lib/format";
+import { defaultResultKmSplits } from "@/lib/results";
+import type { EventState } from "@/lib/types";
+
+export default function CreatePage() {
+  const router = useRouter();
+  const [preset, setPreset] = useState("5000");
+  const [advanced, setAdvanced] = useState(false);
+  const [name, setName] = useState("");
+  const [distance, setDistance] = useState("5000");
+  const [lap, setLap] = useState("400");
+  const [first, setFirst] = useState("");
+  const [crossings, setCrossings] = useState("");
+  const [pace, setPace] = useState("");
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [kmPick, setKmPick] = useState<number[] | null>(null);
+
+  const course = useMemo(
+    () =>
+      deriveCourse({
+        totalDistanceM: Number(distance) || 5000,
+        lapLengthM: Number(lap) || 400,
+        firstPartialM: first === "" ? null : Number(first),
+        fixedCrossings: crossings === "" ? null : Number(crossings),
+        targetPaceSecPerKm: parsePace(pace),
+      }),
+    [distance, lap, first, crossings, pace],
+  );
+
+  const kmOpts = kmCrossings(course).filter((x) => x.km * 1000 < course.totalDistanceM - 0.5);
+  const resultKm = kmPick ?? defaultResultKmSplits(course);
+
+  function pickPreset(id: string, meters?: number) {
+    setPreset(id);
+    if (meters) {
+      setDistance(String(meters));
+      setLap("400");
+      setFirst("");
+      setCrossings("");
+      setKmPick(null);
+    }
+  }
+
+  async function create() {
+    if (pin.trim().length < 4) return;
+    setBusy(true);
+    try {
+      const data = await json<{ event: EventState }>("/api/events", {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim() || undefined,
+          pin: pin.trim(),
+          resultKmSplits: resultKm,
+          course: {
+            totalDistanceM: course.totalDistanceM,
+            lapLengthM: course.lapLengthM,
+            firstPartialM: course.firstPartialM,
+            fixedCrossings: crossings ? course.requiredCrossings : null,
+            targetPaceSecPerKm: course.targetPaceSecPerKm,
+          },
+        }),
+      });
+      setStoredPin(data.event.code, pin.trim());
+      router.push(`/e/${data.event.code}/admin`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <TopBar
+        backHref="/"
+        title="New event"
+        right={<HelpTip text="5000 m on a 400 m track starts at the 200 m mark. First finish-line crossing is the 200 m split, then 12 full laps. Helper PIN unlocks Timer, Marker, and Admin. Board is a public link." />}
+      />
+      <div className="flex flex-1 flex-col px-4 pb-8">
+        <div className="lane-stripe mb-5 rounded-full" />
+        <div className="flex flex-wrap gap-2">
+          {DISTANCE_PRESETS.map((p) => (
+            <Chip
+              key={p.id}
+              active={preset === p.id}
+              onClick={() => pickPreset(p.id, p.meters)}
+            >
+              {p.id}
+            </Chip>
+          ))}
+          <Chip
+            active={preset === "custom"}
+            onClick={() => {
+              setPreset("custom");
+              setAdvanced(true);
+            }}
+          >
+            Custom
+          </Chip>
+        </div>
+
+        <div className="mt-8 grid grid-cols-3 gap-3 rounded-2xl bg-panel p-4 ring-1 ring-line">
+          <Stat value={course.requiredCrossings} label="Crossings" />
+          <Stat value={formatLaps(lapsCount(course))} label="Laps" />
+          <Stat
+            value={course.firstPartialM || "0"}
+            label={course.firstPartialM ? "Start m" : "Finish start"}
+          />
+        </div>
+
+        <Field
+          value={pin}
+          onChange={setPin}
+          placeholder="Helper PIN (4–8 digits)"
+          inputMode="numeric"
+          className="mt-6 font-mono text-xl font-black tabular tracking-[0.2em]"
+        />
+
+        <button
+          type="button"
+          className="tap mt-6 self-start rounded-full bg-panel2 px-4 py-2 text-sm font-semibold ring-1 ring-line"
+          onClick={() => setAdvanced((v) => !v)}
+        >
+          {advanced ? "Simple" : "Advanced"}
+        </button>
+
+        {advanced ? (
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <Field
+              value={name}
+              onChange={setName}
+              placeholder="Event name"
+              className="col-span-2"
+            />
+            <Field
+              value={distance}
+              onChange={(v) => {
+                setDistance(v);
+                setPreset("custom");
+              }}
+              placeholder="Distance m"
+              inputMode="numeric"
+            />
+            <Field
+              value={lap}
+              onChange={(v) => {
+                setLap(v);
+                setPreset("custom");
+              }}
+              placeholder="Lap m"
+              inputMode="decimal"
+            />
+            <Field
+              value={first}
+              onChange={setFirst}
+              placeholder="First partial m"
+              inputMode="decimal"
+            />
+            <Field
+              value={crossings}
+              onChange={setCrossings}
+              placeholder="Fixed crossings"
+              inputMode="numeric"
+            />
+            <Field
+              value={pace}
+              onChange={setPace}
+              placeholder="Target pace m:ss"
+              className="col-span-2"
+            />
+            {kmOpts.length > 0 ? (
+              <div className="col-span-2">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-dim">
+                  Result km splits
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {kmOpts.map((k) => (
+                    <Chip
+                      key={k.km}
+                      active={resultKm.includes(k.km)}
+                      onClick={() => {
+                        setKmPick((prev) => {
+                          const cur = prev ?? defaultResultKmSplits(course);
+                          return cur.includes(k.km)
+                            ? cur.filter((x) => x !== k.km)
+                            : [...cur, k.km].sort((a, b) => a - b);
+                        });
+                      }}
+                    >
+                      {k.km}K
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="flex-1" />
+        <GoldBtn className="mt-8" onClick={create} disabled={busy || pin.trim().length < 4}>
+          Create
+        </GoldBtn>
+      </div>
+    </Screen>
+  );
+}
+
+function formatLaps(n: number) {
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
