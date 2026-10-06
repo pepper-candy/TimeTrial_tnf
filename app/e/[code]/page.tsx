@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { BigBtn, Screen, TopBar } from "@/components/shell";
+import { BigBtn, ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import { useEvent } from "@/lib/client/hooks";
 import { isAdminDevice } from "@/lib/client/pin";
@@ -59,6 +59,11 @@ export default function RolePage() {
               <p className="truncate text-xs font-bold text-dim">{event.name}</p>
             ) : null}
           </div>
+        }
+        extra={
+          <Link href={`/e/${code}/bell`} className={ICON_BTN} aria-label="Bell">
+            🔔
+          </Link>
         }
         info="Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN."
       />
