@@ -19,7 +19,7 @@ export function Screen({
   );
 }
 
-const ICON_BTN =
+export const ICON_BTN =
   "tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-xl font-black ring-1 ring-line active:bg-sand active:text-ink";
 
 /**
