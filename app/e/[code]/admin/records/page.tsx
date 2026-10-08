@@ -7,8 +7,10 @@ import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
+import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
+import { padKeyFromEvent } from "@/lib/pad-keys";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { runnerByBib } from "@/lib/race";
 import {
@@ -153,6 +155,19 @@ function RecordsInner({ code }: { code: string }) {
       await post("marks", { action: "reassign", index, bib: res.submit });
     });
   }
+
+  useHardwareKeys((e) => {
+    if (!editorRef.current) return false;
+    const k = padKeyFromEvent(e);
+    if (!k || k === "enter") return false;
+    if (e.repeat && k !== "back") return false;
+    if (k === "clear" && !typedRef.current) {
+      closeEditor();
+      return true;
+    }
+    press(k);
+    return true;
+  });
 
   if (!event) {
     return (

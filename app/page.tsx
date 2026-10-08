@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { json } from "@/lib/client/hooks";
 import { normalizeCode } from "@/lib/ids";
@@ -68,6 +69,25 @@ export default function HomePage() {
       setBusy(null);
     }
   }
+
+  useHardwareKeys((e) => {
+    if (e.key === "Enter") {
+      void join();
+      return true;
+    }
+    if (e.key === "Backspace") {
+      if (e.repeat) return true;
+      setCode((c) => c.slice(0, -1));
+      setMissing(false);
+      return true;
+    }
+    if (e.key.length !== 1 || e.repeat) return false;
+    const ch = e.key.toUpperCase();
+    if (!/[A-Z0-9]/.test(ch)) return false;
+    setCode((c) => (c + ch).replace(/\s/g, "").slice(0, 8));
+    setMissing(false);
+    return true;
+  });
 
   return (
     <main className="home-bg relative min-h-dvh overflow-hidden">

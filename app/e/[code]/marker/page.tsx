@@ -8,8 +8,10 @@ import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
+import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
+import { padKeyFromEvent } from "@/lib/pad-keys";
 import { liveMarks, normalizeBib, runnerByBib } from "@/lib/race";
 import type { EventState } from "@/lib/types";
 
@@ -97,6 +99,14 @@ function MarkerInner({ code }: { code: string }) {
     buzz();
     if (next.submit) mark(next.submit);
   }
+
+  useHardwareKeys((e) => {
+    const k = padKeyFromEvent(e);
+    if (!k || k === "enter") return false;
+    if (e.repeat && k !== "back") return false;
+    press(k);
+    return true;
+  });
 
   function clearTyped() {
     press("clear");

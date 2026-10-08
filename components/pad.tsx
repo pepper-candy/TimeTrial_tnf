@@ -1,5 +1,9 @@
 "use client";
 
+import { useRef } from "react";
+import { useHardwareKeys } from "@/lib/client/hardware-keys";
+import { padKeyFromEvent } from "@/lib/pad-keys";
+
 export function NumberPad({
   value,
   onChange,
@@ -11,11 +15,29 @@ export function NumberPad({
   onEnter: () => void;
   enterLabel?: string;
 }) {
-  function key(k: string) {
-    if (k === "⌫") onChange(value.slice(0, -1));
-    else if (k === "⏎") onEnter();
-    else if (value.length < 8) onChange(value + k);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const changeRef = useRef(onChange);
+  changeRef.current = onChange;
+  const enterRef = useRef(onEnter);
+  enterRef.current = onEnter;
+
+  function apply(k: string) {
+    const cur = valueRef.current;
+    if (k === "⌫" || k === "back") changeRef.current(cur.slice(0, -1));
+    else if (k === "clear") changeRef.current("");
+    else if (k === "⏎" || k === "enter") enterRef.current();
+    else if (/^\d$/.test(k) && cur.length < 8) changeRef.current(cur + k);
   }
+
+  useHardwareKeys((e) => {
+    const k = padKeyFromEvent(e);
+    if (!k) return false;
+    if (e.repeat && k !== "back") return false;
+    apply(k);
+    return true;
+  });
+
   const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "⏎"];
   return (
     <div className="grid grid-cols-3 gap-2">
@@ -28,7 +50,7 @@ export function NumberPad({
           }`}
           onPointerDown={(e) => {
             e.preventDefault();
-            key(k);
+            apply(k);
           }}
         >
           {k === "⏎" ? enterLabel : k}

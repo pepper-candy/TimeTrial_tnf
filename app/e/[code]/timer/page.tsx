@@ -6,6 +6,7 @@ import { RaceClock } from "@/components/clock";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
 import { Screen, TopBar } from "@/components/shell";
+import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
 import { liveTaps } from "@/lib/race";
@@ -106,8 +107,7 @@ function TimerInner({ code }: { code: string }) {
     return () => window.clearInterval(id);
   }, []);
 
-  function tap(e: React.PointerEvent) {
-    e.preventDefault();
+  function fireTap() {
     const t = Math.round(origin.current + performance.now() + offsetRef.current);
     const item: Queued = { id: crypto.randomUUID(), t, sent: false };
     pending.current.push(item);
@@ -120,6 +120,11 @@ function TimerInner({ code }: { code: string }) {
       /* ignore */
     }
     void flush();
+  }
+
+  function tap(e: React.PointerEvent) {
+    e.preventDefault();
+    fireTap();
   }
 
   async function start() {
@@ -161,6 +166,15 @@ function TimerInner({ code }: { code: string }) {
   const running = event?.status === "running" && event.startedAt != null;
   const adminReady = Boolean(event?.ready);
   const newest = rows[0]?.id ?? "";
+
+  useHardwareKeys((e) => {
+    if (e.repeat) return false;
+    if (e.key !== " " && e.key !== "Enter") return false;
+    if (running) fireTap();
+    else if (adminReady) void start();
+    else return false;
+    return true;
+  });
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
