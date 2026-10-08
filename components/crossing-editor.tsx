@@ -63,7 +63,7 @@ export function CrossingEditor({
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-black/70" onClick={onClose}>
       <div
-        className="max-h-[88dvh] w-full overflow-auto rounded-t-3xl bg-panel p-4 ring-1 ring-line"
+        className="max-h-[88dvh] w-full overflow-auto rounded-t-3xl bg-panel p-4 ring-1 ring-line [background-clip:padding-box]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3">

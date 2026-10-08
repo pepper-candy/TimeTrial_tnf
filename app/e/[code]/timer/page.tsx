@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
-import { Screen, TopBar } from "@/components/shell";
+import { BOTTOM_TRAY, Screen, TopBar } from "@/components/shell";
 import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
@@ -292,7 +292,7 @@ function TimerInner({ code }: { code: string }) {
         }
         info="Tap every torso at the line. After four seconds the pad shows Make Grouping; hold TAP to mark a pack break. Swipe a row to drop an extra tap."
       />
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-8">
           <ul className="flex flex-col gap-1.5">
             {rows.map((row, i) => {
               const sameAbove = i > 0 && rows[i - 1].pack === row.pack;
@@ -337,7 +337,8 @@ function TimerInner({ code }: { code: string }) {
             })}
           </ul>
       </div>
-      <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
+      <div className={BOTTOM_TRAY}>
+        <div className="pointer-events-auto">
         {running ? (
           <button
             type="button"
@@ -383,6 +384,7 @@ function TimerInner({ code }: { code: string }) {
             <span className="text-base font-bold">Waiting Event to be Ready</span>
           </button>
         )}
+        </div>
       </div>
     </Screen>
   );

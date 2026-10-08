@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
-import { Screen, TopBar } from "@/components/shell";
+import { BOTTOM_TRAY, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
@@ -251,7 +251,8 @@ function RecordsInner({ code }: { code: string }) {
         }}
       </Windowed>
       {editor ? (
-        <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className={BOTTOM_TRAY}>
+          <div className="pointer-events-auto">
             <div className="mb-2 flex items-center gap-2">
               <div
                 className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-[12px] bg-panel font-mono text-3xl font-black tabular tracking-[0.08em] ring-1 ring-line"
@@ -291,6 +292,7 @@ function RecordsInner({ code }: { code: string }) {
                 </button>
               ))}
             </div>
+          </div>
         </div>
       ) : null}
     </Screen>

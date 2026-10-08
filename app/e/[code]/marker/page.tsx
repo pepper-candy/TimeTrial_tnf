@@ -6,7 +6,7 @@ import { Avatar } from "@/components/avatar";
 import { RaceClock } from "@/components/clock";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
-import { ICON_BTN, Screen, TopBar } from "@/components/shell";
+import { BOTTOM_TRAY, ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
@@ -461,7 +461,7 @@ function MarkerInner({ code }: { code: string }) {
         }
         info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold Miss to add every runner again. Hold 0 to start a new pack. Tap a miss or unknown bib to see up to three likely runners from expected arrival. Pick one, then Modify. Return restores the pad. The ? filter shows only misses and unknown bibs. Sync draws a cutoff so the next tap and bib pair together even if counts differed before."
       />
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-8">
         {missOnly && shownRows.length === 0 ? (
           <p className="px-6 py-16 text-center text-sm text-dim">No missing bibs.</p>
         ) : null}
@@ -529,7 +529,8 @@ function MarkerInner({ code }: { code: string }) {
           })}
         </ul>
       </div>
-      <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
+      <div className={BOTTOM_TRAY}>
+        <div className="pointer-events-auto">
         <button
           type="button"
           className="tap mb-2 grid h-12 w-full grid-cols-3 items-center rounded-[12px] bg-panel ring-1 ring-line"
@@ -669,6 +670,7 @@ function MarkerInner({ code }: { code: string }) {
               </button>
             </>
           )}
+        </div>
         </div>
       </div>
     </Screen>
