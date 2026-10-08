@@ -95,6 +95,7 @@ export function hydrateEvent(event: EventState): EventState {
   return {
     ...rest,
     endedAt: event.endedAt ?? null,
+    ready: Boolean(event.ready) || event.status !== "setup",
     demoSpeed: event.demoSpeed > 0 ? event.demoSpeed : 1,
     pinHash: event.pinHash ?? null,
     helperPin: event.helperPin ?? null,

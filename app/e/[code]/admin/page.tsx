@@ -186,11 +186,15 @@ function AdminInner({ code }: { code: string }) {
     setEvent(data.event);
   }
 
-  async function start() {
-    const data = await json<{ event: EventState }>(`/api/events/${code}/start`, {
-      method: "POST",
-    });
-    setEvent(data.event);
+  async function markReady() {
+    if (!event || event.ready) return;
+    const prev = event;
+    setEvent({ ...event, ready: true });
+    try {
+      await patch({ ready: true });
+    } catch {
+      setEvent(prev);
+    }
   }
 
   async function photo(runnerId: string, file: File) {
@@ -446,8 +450,13 @@ function AdminInner({ code }: { code: string }) {
       <div className="fixed inset-x-0 bottom-0 z-20 bg-gradient-to-t from-void via-void/95 to-transparent pt-6">
         <div className="mx-auto flex w-full max-w-3xl gap-2 px-4 pb-4">
           {event.status === "setup" ? (
-            <BigBtn className="flex-1" onClick={start} disabled={event.runners.length === 0}>
-              Start race
+            <BigBtn
+              className={`flex-1 ${event.ready ? "disabled:opacity-100" : ""}`}
+              tone={event.ready ? "go" : "accent"}
+              onClick={event.ready ? undefined : markReady}
+              disabled={event.ready || event.runners.length === 0}
+            >
+              READY
             </BigBtn>
           ) : event.status === "running" ? (
             <>

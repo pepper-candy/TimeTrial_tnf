@@ -123,6 +123,7 @@ function TimerInner({ code }: { code: string }) {
   }
 
   async function start() {
+    if (!event?.ready) return;
     const data = await json<{ event: EventState }>(`/api/events/${code}/start`, {
       method: "POST",
     });
@@ -158,6 +159,7 @@ function TimerInner({ code }: { code: string }) {
     ? tapRows(event, [...serverTaps, ...extra]).filter((r) => !hidden.has(r.id))
     : [];
   const running = event?.status === "running" && event.startedAt != null;
+  const adminReady = Boolean(event?.ready);
   const newest = rows[0]?.id ?? "";
 
   useEffect(() => {
@@ -224,7 +226,7 @@ function TimerInner({ code }: { code: string }) {
           >
             TAP
           </button>
-        ) : (
+        ) : adminReady ? (
           <button
             type="button"
             className="tap flex h-[42dvh] w-full items-center justify-center rounded-[2rem] bg-go text-5xl font-black text-ink"
@@ -234,6 +236,15 @@ function TimerInner({ code }: { code: string }) {
             }}
           >
             START
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled
+            className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim"
+          >
+            <span className="text-5xl font-black">WAITING</span>
+            <span className="text-base font-bold">Waiting Event to be Ready</span>
           </button>
         )}
       </div>

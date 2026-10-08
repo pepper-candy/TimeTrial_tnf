@@ -30,6 +30,7 @@ function event(partial: Partial<EventState> = {}): EventState {
     name: "5000m TT",
     createdAt: Date.UTC(2026, 8, 28),
     status: "finished",
+    ready: true,
     startedAt: Date.UTC(2026, 8, 28, 2, 0, 0),
     endedAt: Date.UTC(2026, 8, 28, 3, 0, 0),
     course: defaultFiveK(),

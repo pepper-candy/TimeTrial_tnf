@@ -137,6 +137,7 @@ export function makeDemoEvent(
     name: "5000m TT",
     createdAt: Date.UTC(2026, 8, 28, 2, 0, 0),
     status: "running",
+    ready: true,
     startedAt,
     endedAt: null,
     course,

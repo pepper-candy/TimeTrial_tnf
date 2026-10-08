@@ -46,4 +46,10 @@ describe("category migration on load", () => {
     expect(ev.runners.map((r) => r.category)).toEqual(["", "", "Boys", "Girls"]);
     expect("categories" in ev).toBe(false);
   });
+
+  it("treats old setup events as not ready and live events as ready", () => {
+    const stored = { ...makeDemoEvent(), ready: undefined } as unknown as EventState;
+    expect(hydrateEvent({ ...stored, status: "setup", startedAt: null }).ready).toBe(false);
+    expect(hydrateEvent(stored).ready).toBe(true);
+  });
 });

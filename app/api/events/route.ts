@@ -28,6 +28,7 @@ export async function POST(req: Request) {
     name: body.name?.trim() || defaultName(course.totalDistanceM),
     createdAt: Date.now(),
     status: "setup",
+    ready: false,
     startedAt: null,
     endedAt: null,
     course,

@@ -40,6 +40,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     name?: string;
     course?: CourseInput;
     status?: "setup" | "running" | "finished";
+    ready?: boolean;
     demoAutoMark?: boolean;
     demoSpeed?: number;
     hideStudentIds?: boolean;
@@ -53,6 +54,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       next.status = body.status;
       if (body.status === "finished") next.endedAt = next.endedAt ?? Date.now();
     }
+    if (body.ready === true) next.ready = true;
     if (body.demoAutoMark != null) next.demoAutoMark = body.demoAutoMark;
     if (body.demoSpeed != null && body.demoSpeed > 0) next.demoSpeed = body.demoSpeed;
     if (body.hideStudentIds != null) next.hideStudentIds = body.hideStudentIds;

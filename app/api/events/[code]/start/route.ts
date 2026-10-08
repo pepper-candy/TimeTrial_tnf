@@ -10,9 +10,13 @@ export async function POST(req: Request, ctx: Ctx) {
   const { code } = await ctx.params;
   const gate = await requireHelper(req, code);
   if (isDenied(gate)) return gate;
+  if (!gate.event.ready) {
+    return NextResponse.json({ error: "not ready" }, { status: 409 });
+  }
   const startedAt = Date.now();
   const event = await updateEvent(code, (e) => ({
     ...e,
+    ready: true,
     status: "running",
     startedAt: e.startedAt ?? startedAt,
     endedAt: null,

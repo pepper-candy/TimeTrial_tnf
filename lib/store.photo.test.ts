@@ -16,6 +16,7 @@ function event(id: string, code: string): EventState {
     name: "Photo",
     createdAt: 0,
     status: "setup",
+    ready: false,
     startedAt: null,
     endedAt: null,
     course: defaultFiveK(),

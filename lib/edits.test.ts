@@ -17,6 +17,7 @@ function ev(partial: Partial<EventState> = {}): EventState {
     name: "Test",
     createdAt: 0,
     status: "running",
+    ready: true,
     startedAt: 1_000_000,
     endedAt: null,
     course: defaultFiveK(),

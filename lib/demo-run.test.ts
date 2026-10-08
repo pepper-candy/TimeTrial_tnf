@@ -12,6 +12,7 @@ function base(partial: Partial<EventState> = {}): EventState {
     name: "5000m TT",
     createdAt: 0,
     status: "running",
+    ready: true,
     startedAt: 1_000,
     endedAt: null,
     course: defaultFiveK(),

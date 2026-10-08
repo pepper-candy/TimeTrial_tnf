@@ -77,6 +77,8 @@ export type EventState = {
   name: string;
   createdAt: number;
   status: EventStatus;
+  /** Admin armed the gun; timer START stays locked until this is true. Irreversible. */
+  ready: boolean;
   startedAt: number | null;
   /** Wall clock when admin ended the race; freezes demo + race clock. */
   endedAt: number | null;

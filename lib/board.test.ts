@@ -38,6 +38,7 @@ function event(partial: Partial<EventState>): EventState {
     name: "5K",
     createdAt: 0,
     status: "running",
+    ready: true,
     startedAt: START,
     endedAt: null,
     course: defaultFiveK(),
