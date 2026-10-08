@@ -32,6 +32,7 @@ function MarkerInner({ code }: { code: string }) {
   const [pending, setPending] = useState<Pending[]>([]);
   const [gone, setGone] = useState<string[]>([]);
   const latest = useRef<EventState | null>(null);
+  const pendingRef = useRef<Pending[]>([]);
   const typedRef = useRef("");
   const chain = useRef(Promise.resolve());
   const dropped = useRef(new Set<string>());
@@ -43,6 +44,7 @@ function MarkerInner({ code }: { code: string }) {
   useEffect(() => {
     latest.current = event;
   }, [event]);
+  pendingRef.current = pending;
 
   function later(task: () => Promise<void>) {
     chain.current = chain.current.then(task, task);
@@ -112,10 +114,12 @@ function MarkerInner({ code }: { code: string }) {
     press("clear");
   }
 
-  function firstLapBibs() {
+  function unmarkedRosterBibs() {
     const ev = latest.current ?? event;
     if (!ev) return [];
-    const seen = new Set(liveMarks(ev.marks).map((m) => normalizeBib(m.bib)));
+    const seen = new Set<string>();
+    for (const m of liveMarks(ev.marks)) seen.add(normalizeBib(m.bib));
+    for (const p of pendingRef.current) seen.add(normalizeBib(p.bib));
     const out: string[] = [];
     for (const runner of ev.runners) {
       const bib = normalizeBib(runner.bib);
@@ -137,10 +141,11 @@ function MarkerInner({ code }: { code: string }) {
     typedRef.current = "";
     setTyped("");
     buzz();
-    const bibs = firstLapBibs();
+    const bibs = unmarkedRosterBibs();
     if (bibs.length === 0) return;
     const locals = bibs.map((bib) => ({ id: crypto.randomUUID(), bib }));
-    setPending((p) => [...p, ...locals]);
+    pendingRef.current = [...pendingRef.current, ...locals];
+    setPending(pendingRef.current);
     later(async () => {
       const still = locals.filter((x) => !dropped.current.has(x.id));
       for (const x of locals) dropped.current.delete(x.id);
@@ -254,7 +259,7 @@ function MarkerInner({ code }: { code: string }) {
             </p>
           </div>
         }
-        info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold Miss 2 seconds for All — first lap, whole field in roster order."
+        info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold 2 seconds to add every unmarked runner once, in roster order."
       />
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
         <ul className="flex flex-col gap-1.5">
@@ -349,15 +354,15 @@ function MarkerInner({ code }: { code: string }) {
             className={`tap flex h-16 flex-col items-center justify-center rounded-2xl leading-none ${
               allReady ? "bg-go text-ink" : "bg-stop text-white"
             }`}
-            aria-label={allReady ? "All runners first lap" : "Miss"}
+            aria-label={allReady ? "Add all unmarked runners" : "Miss"}
             onPointerDown={beginMissHold}
             onPointerUp={() => endMissHold(true)}
             onPointerCancel={() => endMissHold(false)}
             onContextMenu={(e) => e.preventDefault()}
           >
             <span className="text-xl font-black">Miss</span>
-            <span className={`text-[10px] font-bold uppercase tracking-[0.14em] ${allReady ? "text-ink/70" : "text-white/80"}`}>
-              All
+            <span className={`text-[9px] font-bold uppercase tracking-[0.08em] ${allReady ? "text-ink/70" : "text-white/80"}`}>
+              Add ALL (HOLD)
             </span>
           </button>
         </div>
