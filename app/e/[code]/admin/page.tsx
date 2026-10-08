@@ -10,6 +10,7 @@ import { Qr } from "@/components/qr";
 import { BigBtn, Chip, Field, MenuButton, Screen, TopBar, useCopied } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { CrossingEditor } from "@/components/crossing-editor";
+import { DnfMark } from "@/components/avatar";
 import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { forgetAdmin, getMasterKey, getStoredPin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
@@ -494,6 +495,16 @@ function AdminInner({ code }: { code: string }) {
                 });
                 setEvent(data.event);
               }}
+              onDnf={async (dnf) => {
+                const data = await json<{ event: EventState }>(`/api/events/${code}/runners`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    action: "upsert",
+                    runner: { id: race.runner.id, dnfAt: dnf ? Date.now() : null },
+                  }),
+                });
+                setEvent(data.event);
+              }}
             />
           );
         })()
@@ -838,6 +849,7 @@ function RunnerRow({
           <span className="relative font-mono text-2xl font-black tabular text-white [text-shadow:0_1px_2px_#000]">
             {runner.bib}
           </span>
+          {runner.dnfAt != null ? <DnfMark size={56} /> : null}
         </button>
         <div className="flex min-h-16 min-w-0 flex-1 items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-col">

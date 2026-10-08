@@ -201,7 +201,10 @@ function MarkerInner({ code }: { code: string }) {
   function markAll() {
     typedRef.current = "";
     setTyped("");
-    const bibs = (latest.current ?? event)?.runners.map((r) => r.bib).filter((bib) => bib.trim()) ?? [];
+    const bibs =
+      (latest.current ?? event)?.runners
+        .filter((r) => r.dnfAt == null && r.bib.trim())
+        .map((r) => r.bib) ?? [];
     if (bibs.length === 0) return;
     const locals = bibs.map((bib) => ({ id: crypto.randomUUID(), bib }));
     setPending((p) => [...p, ...locals]);

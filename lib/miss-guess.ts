@@ -46,6 +46,7 @@ export function guessMissRunners(event: EventState, markId: string, limit = 3): 
   if (at == null || limit <= 0) return [];
   const scored: { runner: Runner; err: number; i: number }[] = [];
   event.runners.forEach((runner, i) => {
+    if (runner.dnfAt != null && at >= runner.dnfAt) return;
     const expected = expectedArrival(event, runner.bib, markId);
     if (expected == null) return;
     scored.push({ runner, err: Math.abs(expected - at), i });

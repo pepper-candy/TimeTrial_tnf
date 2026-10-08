@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultFiveK } from "./course";
-import { applyEdit, estimateMissedTapTime, liveIndexOfTap } from "./edits";
+import { applyEdit, estimateMissedTapTime, liveIndexOfTap, runnerSplitMidpoint } from "./edits";
 import { formatEst } from "./format";
 import { buildRunnerRaces, liveMarks, liveTaps, unmatchedTaps } from "./race";
 import { computeRunnerStats, fastestSlowestLap, fullLapsFor } from "./stats";
@@ -251,6 +251,66 @@ describe("helper forgiveness", () => {
     });
     event = applyEdit(event, { action: "tap-set-time", id: "a", t: 100, actor: "admin" }, 3);
     expect(liveTaps(event.taps).map((t) => t.id)).toEqual(["a", "b"]);
+  });
+
+  it("inserts above a first split at half the elapsed time from gun", () => {
+    const start = 1_000_000;
+    let event = ev({
+      startedAt: start,
+      taps: [
+        { id: "a", t: start + 60_000 },
+        { id: "b", t: start + 61_000 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+      ],
+    });
+    expect(runnerSplitMidpoint(event, "1", "a", "above")).toBe(start + 30_000);
+    event = applyEdit(event, { action: "pair-insert-at", bib: "1", tapId: "a", where: "above", actor: "admin" }, start + 90_000);
+    const est = liveTaps(event.taps).find((t) => t.estimated)!;
+    expect(est.t).toBe(start + 30_000);
+    expect(liveMarks(event.marks)[liveIndexOfTap(liveTaps(event.taps), est.id)].bib).toBe("1");
+  });
+
+  it("inserts below using the midpoint of this split and the next", () => {
+    const start = 1_000_000;
+    const event = ev({
+      startedAt: start,
+      taps: [
+        { id: "a", t: start + 60_000 },
+        { id: "b", t: start + 120_000 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "1" },
+      ],
+    });
+    expect(runnerSplitMidpoint(event, "1", "a", "below", start + 200_000)).toBe(start + 90_000);
+    expect(runnerSplitMidpoint(event, "1", "b", "below", start + 180_000)).toBe(start + 150_000);
+  });
+
+  it("inserts an estimated pair at an index using the neighbour average", () => {
+    let event = ev({
+      taps: [
+        { id: "a", t: 1_000_000 },
+        { id: "b", t: 1_004_000 },
+        { id: "c", t: 1_008_000 },
+      ],
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "2" },
+        { id: "m3", bib: "1" },
+      ],
+    });
+    event = applyEdit(event, { action: "pair-insert-at", index: 1, bib: "1", actor: "admin" }, 9);
+    const taps = liveTaps(event.taps);
+    const marks = liveMarks(event.marks);
+    expect(taps).toHaveLength(4);
+    expect(marks.map((m) => m.bib)).toEqual(["1", "1", "2", "1"]);
+    expect(taps[1].estimated).toBe(true);
+    expect(taps[1].t).toBe(1_002_000);
+    expect(marks[1].bib).toBe("1");
   });
 
   it("inserts an estimated crossing for a bib so tap and mark share an index", () => {

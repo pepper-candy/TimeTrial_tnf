@@ -69,6 +69,28 @@ describe("guessMissRunners", () => {
     expect(guessMissRunners(event, "m1")).toHaveLength(1);
   });
 
+  it("drops DNF runners after they dropped, but keeps them if the miss was earlier", () => {
+    const start = 1_000_000;
+    const base = ev({
+      taps: [{ id: "t1", t: start + 120_000 }],
+      marks: [{ id: "m1", bib: "?" }],
+    });
+    const after = {
+      ...base,
+      runners: base.runners.map((r) =>
+        r.bib === "10" ? { ...r, dnfAt: start + 50_000 } : r,
+      ),
+    };
+    expect(guessMissRunners(after, "m1").map((r) => r.bib)).toEqual(["20", "30"]);
+    const before = {
+      ...base,
+      runners: base.runners.map((r) =>
+        r.bib === "10" ? { ...r, dnfAt: start + 200_000 } : r,
+      ),
+    };
+    expect(guessMissRunners(before, "m1").map((r) => r.bib)).toEqual(["10", "20", "30"]);
+  });
+
   it("still ranks when the mark is a pending id with no pair", () => {
     const event = ev({
       taps: [{ id: "t1", t: 1_048_000 }],

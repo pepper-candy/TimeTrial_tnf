@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { SwipeRow } from "@/components/swipe-row";
 import { formatClock, formatEst } from "@/lib/format";
-import { liveMarks, splitEstimated, type Crossing, type RunnerRace } from "@/lib/race";
+import { splitEstimated, type Crossing, type RunnerRace } from "@/lib/race";
 import { RECORD_TAG_LABEL, recordRowTags, recordRows, type RecordTag } from "@/lib/records";
 import type { EventState } from "@/lib/types";
 
@@ -26,15 +26,16 @@ export function CrossingEditor({
   race,
   onClose,
   onEdit,
+  onDnf,
 }: {
   event: EventState;
   race: RunnerRace;
   onClose: () => void;
   onEdit: (body: Record<string, unknown>) => Promise<void>;
+  onDnf: (dnf: boolean) => Promise<void>;
 }) {
-  const r = race.runner;
+  const r = event.runners.find((x) => x.id === race.runner.id) ?? race.runner;
   const [gone, setGone] = useState<{ slot: number; tapId?: string; markId?: string } | null>(null);
-  const lastIndex = Math.max(0, liveMarks(event.marks).length - 1);
   const tagLists = recordRowTags(event, recordRows(event));
 
   async function del(slot: number, index: number, tapId?: string, markId?: string) {
@@ -71,6 +72,17 @@ export function CrossingEditor({
             <div className="text-lg font-black">{r.name || "—"}</div>
             <div className="font-mono text-sm font-black tabular text-accent">{r.bib}</div>
           </div>
+          <button
+            type="button"
+            aria-pressed={r.dnfAt != null}
+            aria-label={r.dnfAt != null ? "Clear DNF" : "Mark DNF"}
+            className={`tap h-12 shrink-0 rounded-xl px-4 text-sm font-black ring-1 ${
+              r.dnfAt != null ? "bg-stop text-white ring-stop" : "bg-panel2 text-sand ring-line"
+            }`}
+            onClick={() => void onDnf(r.dnfAt == null)}
+          >
+            DNF
+          </button>
         </div>
         <div className="mt-4 space-y-2">
           {rows.length === 0 ? (
@@ -96,8 +108,6 @@ export function CrossingEditor({
                   splitMs={race.splitMs[row.lap]}
                   estSplit={splitEstimated(race.crossings, row.lap)}
                   tags={tagLists[row.crossing.index] ?? []}
-                  upDisabled={row.crossing.index <= 0}
-                  downDisabled={row.crossing.index >= lastIndex}
                   onCommit={(bib) =>
                     onEdit({
                       action: "reassign",
@@ -106,19 +116,21 @@ export function CrossingEditor({
                       actor: "admin",
                     })
                   }
-                  onUp={() =>
+                  onInsertAbove={() =>
                     void onEdit({
-                      action: "move",
-                      index: row.crossing.index,
-                      to: row.crossing.index - 1,
+                      action: "pair-insert-at",
+                      tapId: row.crossing.tapId,
+                      bib: r.bib,
+                      where: "above",
                       actor: "admin",
                     })
                   }
-                  onDown={() =>
+                  onInsertBelow={() =>
                     void onEdit({
-                      action: "move",
-                      index: row.crossing.index,
-                      to: row.crossing.index + 1,
+                      action: "pair-insert-at",
+                      tapId: row.crossing.tapId,
+                      bib: r.bib,
+                      where: "below",
                       actor: "admin",
                     })
                   }
@@ -157,11 +169,9 @@ function CrossingRow({
   splitMs,
   estSplit,
   tags,
-  upDisabled,
-  downDisabled,
   onCommit,
-  onUp,
-  onDown,
+  onInsertAbove,
+  onInsertBelow,
   onDelete,
 }: {
   crossing: Crossing;
@@ -169,11 +179,9 @@ function CrossingRow({
   splitMs: number | undefined;
   estSplit: boolean;
   tags: RecordTag[];
-  upDisabled: boolean;
-  downDisabled: boolean;
   onCommit: (bib: string) => Promise<void>;
-  onUp: () => void;
-  onDown: () => void;
+  onInsertAbove: () => void;
+  onInsertBelow: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -210,11 +218,11 @@ function CrossingRow({
           ))}
         </div>
         <div className="mt-2 grid grid-cols-2 gap-2">
-          <button type="button" className={MOVE} disabled={upDisabled} onClick={onUp} aria-label="Move earlier">
-            ↑ Earlier
+          <button type="button" className={MOVE} onClick={onInsertAbove} aria-label="Insert above">
+            ↑ Insert above
           </button>
-          <button type="button" className={MOVE} disabled={downDisabled} onClick={onDown} aria-label="Move later">
-            ↓ Later
+          <button type="button" className={MOVE} onClick={onInsertBelow} aria-label="Insert below">
+            ↓ Insert below
           </button>
         </div>
       </div>

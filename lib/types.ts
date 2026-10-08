@@ -15,6 +15,8 @@ export type Runner = {
   category: string;
   /** Short hash of the Redis photo object; never the bytes. */
   photoVer: string | null;
+  /** Wall time when admin marked DNF; null if still racing. */
+  dnfAt?: number | null;
 };
 
 export type Tap = {

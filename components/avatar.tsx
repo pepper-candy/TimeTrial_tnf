@@ -16,7 +16,7 @@ export function Avatar({
   fill = false,
   onReplace,
 }: {
-  runner: Pick<Runner, "id" | "name" | "bib" | "photoVer">;
+  runner: Pick<Runner, "id" | "name" | "bib" | "photoVer" | "dnfAt">;
   eventId?: string;
   size?: number;
   className?: string;
@@ -81,6 +81,7 @@ export function Avatar({
             {initials(runner.name) || bib.slice(0, 2) || "?"}
           </div>
         )}
+        {runner.dnfAt != null ? <DnfMark size={size} /> : null}
         {overlay && bib ? (
           <span
             className="absolute inset-x-0 bottom-0 bg-black/75 text-center font-mono font-black leading-none tabular text-accent"
@@ -99,5 +100,17 @@ export function Avatar({
         />
       ) : null}
     </>
+  );
+}
+
+export function DnfMark({ size = 48 }: { size?: number }) {
+  return (
+    <span
+      className="pointer-events-none absolute inset-0 z-20 grid place-items-center bg-stop/55 leading-none"
+      aria-hidden
+      style={{ fontSize: Math.max(18, size * 0.42) }}
+    >
+      ❌
+    </span>
   );
 }

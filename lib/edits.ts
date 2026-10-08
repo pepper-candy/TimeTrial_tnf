@@ -7,6 +7,7 @@ import {
   liveTaps,
   normalizeBib,
   reassignMark,
+  zipPairs,
 } from "./race";
 import type {
   EditActor,
@@ -98,6 +99,32 @@ export function insertTapAtLiveIndex(taps: Tap[], liveIndex: number, explicitT?:
     return { ...tap, t: next.t };
   });
   return appendTap(rewritten, byId.get(id)!);
+}
+
+/** Midpoint of this runner’s previous/next split (start = 0 elapsed, end = now). */
+export function runnerSplitMidpoint(
+  event: EventState,
+  bib: string,
+  tapId: string,
+  where: "above" | "below",
+  now = Date.now(),
+): number | null {
+  const n = normalizeBib(bib);
+  const mine: { id: string; t: number }[] = [];
+  for (const pair of zipPairs(event.taps, event.marks, event.syncs)) {
+    if (!pair.tap || !pair.mark || normalizeBib(pair.mark.bib) !== n) continue;
+    mine.push({ id: pair.tap.id, t: pair.tap.t });
+  }
+  const i = mine.findIndex((x) => x.id === tapId);
+  if (i < 0) return null;
+  const cur = mine[i].t;
+  if (where === "above") {
+    const prev = i > 0 ? mine[i - 1].t : (event.startedAt ?? 0);
+    return Math.round((prev + cur) / 2);
+  }
+  const next = i < mine.length - 1 ? mine[i + 1].t : now;
+  if (next <= cur) return cur + 800;
+  return Math.round((cur + next) / 2);
 }
 
 /** Midpoint of the two latest live taps, or 800ms before a single tap. */
@@ -218,6 +245,7 @@ export type EditInput = {
   j?: number;
   to?: number;
   t?: number;
+  where?: "above" | "below";
   estimated?: boolean;
   beforeId?: string;
   taps?: Tap[];
@@ -368,6 +396,40 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       ...event,
       taps,
       edits: log(event, actor, "tap-insert", { tapId: added.id, t: added.t, toIndex: body.index }, at),
+    };
+  }
+
+  if (action === "pair-insert-at") {
+    if (!body.bib) return event;
+    let t = typeof body.t === "number" ? body.t : null;
+    if (
+      t == null &&
+      body.tapId &&
+      (body.where === "above" || body.where === "below")
+    ) {
+      t = runnerSplitMidpoint(event, body.bib, body.tapId, body.where, at);
+    }
+    if (t != null) {
+      return applyEdit(event, { actor, action: "tap-insert-estimated", t, bib: body.bib }, at);
+    }
+    if (body.index == null || !Number.isFinite(body.index)) return event;
+    const before = new Set(event.taps.map((x) => x.id));
+    const taps = insertTapAtLiveIndex(event.taps, body.index);
+    const added = liveTaps(taps).find((x) => !before.has(x.id));
+    if (!added) return event;
+    const marks = insertMarkAtLiveIndex(event.marks, body.index, body.bib);
+    const mark = liveMarks(marks)[Math.max(0, Math.min(Math.floor(body.index), liveMarks(marks).length - 1))];
+    return {
+      ...event,
+      taps,
+      marks,
+      edits: log(
+        event,
+        actor,
+        "pair-insert",
+        { tapId: added.id, markId: mark?.id, t: added.t, bib: mark?.bib, toIndex: body.index },
+        at,
+      ),
     };
   }
 

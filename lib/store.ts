@@ -107,6 +107,7 @@ export function hydrateEvent(event: EventState): EventState {
     runners: event.runners.map((r) => ({
       ...r,
       category: normalizeCategory(r.category),
+      dnfAt: typeof r.dnfAt === "number" ? r.dnfAt : null,
     })),
     taps: (event.taps ?? []).map((t) => ({
       ...t,

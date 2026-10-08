@@ -299,7 +299,7 @@ body {
   position: absolute;
   top: 2px;
   left: 2px;
-  z-index: 3;
+  z-index: 40;
   display: grid;
   place-items: center;
   min-width: 16px;
@@ -391,6 +391,10 @@ body {
 
 .sb-row.sb-belling > .sb-tot {
   background: #3d2f06;
+}
+
+.sb-row.sb-dnf > .sb-tot {
+  background: #3b1212;
 }
 
 .sb-now {
