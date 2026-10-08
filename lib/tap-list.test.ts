@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStopwatch, tapRows } from "./tap-list";
+import { formatStopwatch, packIndex, tapRows } from "./tap-list";
 import type { Tap } from "./types";
 
 function tap(id: string, t: number, estimated = false): Tap {
@@ -34,5 +34,16 @@ describe("tapRows", () => {
       { ...tap("b", 2000), deletedAt: 9 },
     ]);
     expect(rows.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("splits packs at idle breaks", () => {
+    expect(packIndex(10, [{ t: 15 }])).toBe(0);
+    expect(packIndex(20, [{ t: 15 }])).toBe(1);
+    const rows = tapRows({ startedAt: 0, idles: [{ id: "i", t: 2500 }] }, [
+      tap("a", 1000),
+      tap("b", 2000),
+      tap("c", 8000),
+    ]);
+    expect(rows.map((r) => r.pack)).toEqual([1, 0, 0]);
   });
 });

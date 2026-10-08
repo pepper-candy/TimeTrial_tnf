@@ -1,17 +1,35 @@
 import { liveTaps } from "./race";
 import type { EventState, Tap } from "./types";
 
+export const IDLE_GAP_MS = 5000;
+
 export type TapRow = {
   id: string;
+  /** Wall clock of the tap. */
+  t: number;
   /** 1-based chronological index. Newest row is first. */
   n: number;
   splitMs: number;
   elapsedMs: number;
   estimated: boolean;
+  /** Pack index; increments after each Idle break. */
+  pack: number;
 };
 
+/** Taps with t after an idle belong to the next pack. */
+export function packIndex(tapT: number, idles: { t: number }[] | undefined): number {
+  let g = 0;
+  for (const idle of idles ?? []) {
+    if (tapT > idle.t) g++;
+  }
+  return g;
+}
+
 /** Lap rows for the timer, newest first. Split is the gap since the previous tap. */
-export function tapRows(event: Pick<EventState, "startedAt">, taps: Tap[]): TapRow[] {
+export function tapRows(
+  event: Pick<EventState, "startedAt"> & { idles?: EventState["idles"] },
+  taps: Tap[],
+): TapRow[] {
   const live = liveTaps(taps);
   let prev = 0;
   const rows: TapRow[] = [];
@@ -20,10 +38,12 @@ export function tapRows(event: Pick<EventState, "startedAt">, taps: Tap[]): TapR
       event.startedAt == null ? 0 : Math.max(0, live[i].t - event.startedAt);
     rows.push({
       id: live[i].id,
+      t: live[i].t,
       n: i + 1,
       splitMs: i === 0 ? elapsedMs : Math.max(0, elapsedMs - prev),
       elapsedMs,
       estimated: Boolean(live[i].estimated),
+      pack: packIndex(live[i].t, event.idles),
     });
     prev = elapsedMs;
   }
