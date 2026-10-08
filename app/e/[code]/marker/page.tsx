@@ -12,7 +12,7 @@ import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { padKeyFromEvent } from "@/lib/pad-keys";
-import { liveMarks, normalizeBib, runnerByBib } from "@/lib/race";
+import { liveMarks, runnerByBib } from "@/lib/race";
 import type { EventState } from "@/lib/types";
 
 type Pending = { id: string; bib: string };
@@ -32,7 +32,6 @@ function MarkerInner({ code }: { code: string }) {
   const [pending, setPending] = useState<Pending[]>([]);
   const [gone, setGone] = useState<string[]>([]);
   const latest = useRef<EventState | null>(null);
-  const pendingRef = useRef<Pending[]>([]);
   const typedRef = useRef("");
   const chain = useRef(Promise.resolve());
   const dropped = useRef(new Set<string>());
@@ -44,7 +43,6 @@ function MarkerInner({ code }: { code: string }) {
   useEffect(() => {
     latest.current = event;
   }, [event]);
-  pendingRef.current = pending;
 
   function later(task: () => Promise<void>) {
     chain.current = chain.current.then(task, task);
@@ -114,22 +112,6 @@ function MarkerInner({ code }: { code: string }) {
     press("clear");
   }
 
-  function unmarkedRosterBibs() {
-    const ev = latest.current ?? event;
-    if (!ev) return [];
-    const seen = new Set<string>();
-    for (const m of liveMarks(ev.marks)) seen.add(normalizeBib(m.bib));
-    for (const p of pendingRef.current) seen.add(normalizeBib(p.bib));
-    const out: string[] = [];
-    for (const runner of ev.runners) {
-      const bib = normalizeBib(runner.bib);
-      if (!bib || seen.has(bib)) continue;
-      seen.add(bib);
-      out.push(runner.bib);
-    }
-    return out;
-  }
-
   function markMiss() {
     typedRef.current = "";
     setTyped("");
@@ -141,11 +123,10 @@ function MarkerInner({ code }: { code: string }) {
     typedRef.current = "";
     setTyped("");
     buzz();
-    const bibs = unmarkedRosterBibs();
+    const bibs = (latest.current ?? event)?.runners.map((r) => r.bib).filter((bib) => bib.trim()) ?? [];
     if (bibs.length === 0) return;
     const locals = bibs.map((bib) => ({ id: crypto.randomUUID(), bib }));
-    pendingRef.current = [...pendingRef.current, ...locals];
-    setPending(pendingRef.current);
+    setPending((p) => [...p, ...locals]);
     later(async () => {
       const still = locals.filter((x) => !dropped.current.has(x.id));
       for (const x of locals) dropped.current.delete(x.id);
@@ -259,7 +240,7 @@ function MarkerInner({ code }: { code: string }) {
             </p>
           </div>
         }
-        info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold 2 seconds to add every unmarked runner once, in roster order."
+        info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold 2 seconds to add every runner again, in roster order."
       />
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
         <ul className="flex flex-col gap-1.5">
@@ -302,36 +283,24 @@ function MarkerInner({ code }: { code: string }) {
         </ul>
       </div>
       <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <div className="mb-2 grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            className="tap col-span-2 flex h-12 items-center justify-center rounded-[12px] bg-panel font-mono text-4xl font-black tabular tracking-[0.08em] ring-1 ring-line"
-            aria-label="Bib being typed. Tap to clear."
-            onPointerDown={(e) => {
-              e.preventDefault();
-              clearTyped();
-            }}
-          >
-            <span>
-              {prompt.split("").map((ch, i) => (
-                <span key={i} className={ch === "_" ? "text-dim/40" : "text-sand"}>
-                  {ch}
-                </span>
-              ))}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="tap flex h-12 items-center justify-center rounded-[12px] bg-panel text-lg font-black text-sand ring-1 ring-line"
-            aria-label="Clear"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              clearTyped();
-            }}
-          >
-            Clear
-          </button>
-        </div>
+        <button
+          type="button"
+          className="tap mb-2 grid h-12 w-full grid-cols-3 items-center rounded-[12px] bg-panel ring-1 ring-line"
+          aria-label="Bib being typed. Tap to clear."
+          onPointerDown={(e) => {
+            e.preventDefault();
+            clearTyped();
+          }}
+        >
+          <span className="col-span-2 text-center font-mono text-4xl font-black tabular tracking-[0.08em]">
+            {prompt.split("").map((ch, i) => (
+              <span key={i} className={ch === "_" ? "text-dim/40" : "text-sand"}>
+                {ch}
+              </span>
+            ))}
+          </span>
+          <span className={`text-lg font-black ${typed ? "text-sand" : "text-dim/40"}`}>Clear</span>
+        </button>
         <div className="grid grid-cols-3 gap-2">
           {PAD_KEYS.map((key) => (
             <button
@@ -354,7 +323,7 @@ function MarkerInner({ code }: { code: string }) {
             className={`tap flex h-16 flex-col items-center justify-center rounded-2xl leading-none ${
               allReady ? "bg-go text-ink" : "bg-stop text-white"
             }`}
-            aria-label={allReady ? "Add all unmarked runners" : "Miss"}
+            aria-label={allReady ? "Add all runners" : "Miss"}
             onPointerDown={beginMissHold}
             onPointerUp={() => endMissHold(true)}
             onPointerCancel={() => endMissHold(false)}
