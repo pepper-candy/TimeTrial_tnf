@@ -9,7 +9,7 @@ import { Screen, TopBar } from "@/components/shell";
 import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
-import { liveTaps } from "@/lib/race";
+import { liveMarks, liveTaps } from "@/lib/race";
 import { formatStopwatch, tapRows } from "@/lib/tap-list";
 import type { EventState, Tap } from "@/lib/types";
 
@@ -192,12 +192,10 @@ function TimerInner({ code }: { code: string }) {
               now={serverNow}
               className="text-3xl sm:text-4xl"
             />
-            {running ? (
-              <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
-                {rows.length} {rows.length === 1 ? "tap" : "taps"}
-                {queued ? <span className="text-bell"> · {queued} sending</span> : null}
-              </p>
-            ) : null}
+            <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
+              {rows.length} taps · {event ? liveMarks(event.marks).length : 0} bibs
+              {queued ? <span className="text-bell"> · {queued} sending</span> : null}
+            </p>
           </div>
         }
         info="Tap every torso at the line. Swipe a row to drop an extra tap."

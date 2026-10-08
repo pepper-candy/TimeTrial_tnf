@@ -12,7 +12,7 @@ import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { padKeyFromEvent } from "@/lib/pad-keys";
-import { liveMarks, runnerByBib } from "@/lib/race";
+import { liveMarks, liveTaps, runnerByBib } from "@/lib/race";
 import type { EventState } from "@/lib/types";
 
 type Pending = { id: string; bib: string };
@@ -236,7 +236,7 @@ function MarkerInner({ code }: { code: string }) {
               className="text-3xl sm:text-4xl"
             />
             <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
-              {rows.length} {rows.length === 1 ? "bib" : "bibs"}
+              {liveTaps(event.taps).length} taps · {rows.length} bibs
             </p>
           </div>
         }
