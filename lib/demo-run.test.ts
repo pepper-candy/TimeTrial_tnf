@@ -21,6 +21,7 @@ function base(partial: Partial<EventState> = {}): EventState {
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: true,
     demoAutoMark: true,

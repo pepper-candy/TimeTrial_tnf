@@ -27,6 +27,7 @@ function event(id: string, code: string): EventState {
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: false,
     demoAutoMark: false,

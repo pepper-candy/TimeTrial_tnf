@@ -268,6 +268,46 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
     return { ...event, groups: [...groups, { id: newId(), afterId: last.id }] };
   }
 
+  if (action === "sync") {
+    const nT0 = liveTaps(event.taps).length;
+    const nM0 = liveMarks(event.marks).length;
+    if (nT0 === 0 && nM0 === 0) return event;
+    const syncs = event.syncs ?? [];
+    const last = syncs[syncs.length - 1];
+    if (last && last.taps === nT0 && last.marks === nM0) return event;
+    const target = Math.max(nT0, nM0);
+    let taps = event.taps;
+    let marks = event.marks;
+    const padTapIds: string[] = [];
+    const padMarkIds: string[] = [];
+    const baseT = liveTaps(taps)[liveTaps(taps).length - 1]?.t ?? at;
+    while (liveTaps(taps).length < target) {
+      const id = newId();
+      taps = appendTap(taps, { id, t: baseT, estimated: true });
+      padTapIds.push(id);
+    }
+    while (liveMarks(marks).length < target) {
+      marks = appendMark(marks, "?");
+      padMarkIds.push(marks[marks.length - 1].id);
+    }
+    return {
+      ...event,
+      taps,
+      marks,
+      syncs: [
+        ...syncs,
+        {
+          id: newId(),
+          at,
+          taps: liveTaps(taps).length,
+          marks: liveMarks(marks).length,
+          padTapIds,
+          padMarkIds,
+        },
+      ],
+    };
+  }
+
   if (action === "tap-undo" || action === "undo") {
     const live = liveTaps(event.taps);
     const target = body.id ? live.find((t) => t.id === body.id) : live[live.length - 1];
@@ -436,9 +476,11 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
   }
 
   if (action === "mark-reassign" || action === "reassign") {
-    if (!body.bib || body.index == null) return event;
+    if (!body.bib) return event;
     const live = liveMarks(event.marks);
-    const prev = live[body.index];
+    const prev =
+      (body.markId ? live.find((m) => m.id === body.markId) : undefined) ??
+      (body.index != null ? live[body.index] : undefined);
     if (!prev) return event;
     const marks = reassignMark(event.marks, event.marks.findIndex((m) => m.id === prev.id), body.bib);
     const next = liveMarks(marks)[body.index];

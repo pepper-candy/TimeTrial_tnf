@@ -33,16 +33,18 @@ export function recordRows(
   event: Pick<EventState, "startedAt" | "taps" | "marks"> & {
     idles?: EventState["idles"];
     groups?: EventState["groups"];
+    syncs?: EventState["syncs"];
   },
 ): RecordRow[] {
-  const pairs = zipPairs(event.taps, event.marks);
+  const pairs = zipPairs(event.taps, event.marks, event.syncs);
   const liveIds = liveMarks(event.marks).map((m) => m.id);
   const rows: RecordRow[] = [];
   let prevElapsed = 0;
   for (const pair of pairs) {
     const tap = pair.tap;
     const tapPack = tap ? packIndex(tap.t, event.idles) : null;
-    const bibPack = pair.mark ? markPack(pair.index, liveIds, event.groups) : null;
+    const markI = pair.mark ? liveIds.indexOf(pair.mark.id) : -1;
+    const bibPack = pair.mark && markI >= 0 ? markPack(markI, liveIds, event.groups) : null;
     if (!tap) {
       rows.push({
         ...pair,

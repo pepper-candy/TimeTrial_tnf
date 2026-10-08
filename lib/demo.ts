@@ -146,6 +146,7 @@ export function makeDemoEvent(
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: true,
     demoAutoMark: true,

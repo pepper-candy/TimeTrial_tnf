@@ -29,6 +29,8 @@ import type { EventState } from "@/lib/types";
 const ROW_BODY = 134;
 const ROW_GAP = 18;
 const ROW_H = ROW_BODY + ROW_GAP;
+/** Last bar in a pack stops at the card, not in the empty slot under CHANGE. */
+const PACK_END = `${ROW_GAP + 4}px`;
 
 type Editor =
   | { mode: "time"; index: number; tapId: string }
@@ -203,7 +205,7 @@ function RecordsInner({ code }: { code: string }) {
             <FlagIcon />
           </button>
         }
-        info="Row n is timer tap n beside marker bib n. A short tag marks a suspicious row. The flag shows only tagged rows. Delete, edit, or insert either side."
+        info="Row n is timer tap n beside marker bib n. A blue line is a Marker sync cutoff: pairing restarts after it. A short tag marks a suspicious row. The flag shows only tagged rows. Delete, edit, or insert either side."
       />
       <p
         className={`h-5 shrink-0 text-center text-[11px] font-bold uppercase tracking-[0.16em] ${
@@ -249,7 +251,7 @@ function RecordsInner({ code }: { code: string }) {
         }}
       </Windowed>
       {editor ? (
-        <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
             <div className="mb-2 flex items-center gap-2">
               <div
                 className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-[12px] bg-panel font-mono text-3xl font-black tabular tracking-[0.08em] ring-1 ring-line"
@@ -396,7 +398,7 @@ function RecordLine({
           className="absolute left-0 w-[9px] rounded-full bg-go"
           style={{
             top: tapJoinAbove ? "-0.35rem" : "0.25rem",
-            bottom: tapJoinBelow ? "-0.35rem" : "0.25rem",
+            bottom: tapJoinBelow ? "-0.35rem" : PACK_END,
           }}
         />
       ) : null}
@@ -406,8 +408,15 @@ function RecordLine({
           className="absolute right-0 w-[9px] rounded-full bg-go"
           style={{
             top: bibJoinAbove ? "-0.35rem" : "0.25rem",
-            bottom: bibJoinBelow ? "-0.35rem" : "0.25rem",
+            bottom: bibJoinBelow ? "-0.35rem" : PACK_END,
           }}
+        />
+      ) : null}
+      {row.cutAfter ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-4 z-10 h-[3px] rounded-full bg-sky"
+          style={{ bottom: 6 }}
         />
       ) : null}
     <div className="flex flex-col gap-1 rounded-2xl ring-1 ring-line" style={{ height: ROW_BODY }}>

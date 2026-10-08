@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStopwatch, markPack, packIndex, tapRows } from "./tap-list";
+import { formatStopwatch, indexAfterSyncs, markPack, packIndex, tapRows } from "./tap-list";
 import type { Tap } from "./types";
 
 function tap(id: string, t: number, estimated = false): Tap {
@@ -45,6 +45,21 @@ describe("tapRows", () => {
       tap("c", 8000),
     ]);
     expect(rows.map((r) => r.pack)).toEqual([1, 0, 0]);
+  });
+
+  it("jumps the next tap number to max+1 after a padded sync", () => {
+    const cut = { id: "s", at: 1, taps: 27, marks: 27, padTapIds: [], padMarkIds: ["q", "r"] };
+    expect(indexAfterSyncs(24, "marks", [cut])).toBe(25);
+    expect(indexAfterSyncs(27, "marks", [cut])).toBe(28);
+    expect(indexAfterSyncs(26, "taps", [cut])).toBe(27);
+    expect(indexAfterSyncs(27, "taps", [cut])).toBe(28);
+    const rows = tapRows(
+      { startedAt: 0, syncs: [{ id: "s", at: 1, taps: 2, marks: 2, padTapIds: [] }] },
+      [tap("a", 1000), tap("b", 2000), tap("c", 3000)],
+    );
+    expect(rows.map((r) => r.id)).toEqual(["c", "b", "a"]);
+    expect(rows.find((r) => r.id === "c")?.n).toBe(3);
+    expect(rows.find((r) => r.id === "b")?.cutBefore).toBe(true);
   });
 });
 

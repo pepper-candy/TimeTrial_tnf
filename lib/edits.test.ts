@@ -26,6 +26,7 @@ function ev(partial: Partial<EventState> = {}): EventState {
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: false,
     demoAutoMark: false,
@@ -167,6 +168,20 @@ describe("helper forgiveness", () => {
     expect(races.find((r) => r.runner.bib === "2")?.crossings[0].t).toBe(300);
   });
 
+  it("reassigns a miss in place by markId without inserting", () => {
+    let event = ev({
+      marks: [
+        { id: "m1", bib: "1" },
+        { id: "m2", bib: "?" },
+        { id: "m3", bib: "2" },
+      ],
+    });
+    event = applyEdit(event, { action: "reassign", markId: "m2", bib: "10", actor: "marker" }, 6);
+    expect(liveMarks(event.marks).map((m) => m.bib)).toEqual(["1", "10", "2"]);
+    expect(liveMarks(event.marks).map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+    expect(event.edits.at(-1)?.kind).toBe("mark-reassign");
+  });
+
   it("inserts a tap at a crossing index and shifts later taps", () => {
     let event = ev({
       taps: [
@@ -285,5 +300,26 @@ describe("helper forgiveness", () => {
     event = applyEdit(event, { action: "append", bib: "2", actor: "marker" });
     event = applyEdit(event, { action: "group", actor: "marker" });
     expect(event.groups).toHaveLength(2);
+  });
+
+  it("does not sync when there are no taps or bibs", () => {
+    const event = applyEdit(ev(), { action: "sync", actor: "marker" });
+    expect(event.syncs).toEqual([]);
+  });
+
+  it("pads taps and bibs to max so the next write is a fresh shared slot", () => {
+    let event = ev({
+      taps: Array.from({ length: 27 }, (_, i) => ({ id: `t${i}`, t: i + 1 })),
+      marks: Array.from({ length: 25 }, (_, i) => ({ id: `m${i}`, bib: String(i + 1) })),
+    });
+    event = applyEdit(event, { action: "sync", actor: "marker" });
+    expect(liveTaps(event.taps)).toHaveLength(27);
+    expect(liveMarks(event.marks)).toHaveLength(27);
+    expect(event.syncs[0]?.taps).toBe(27);
+    expect(event.syncs[0]?.marks).toBe(27);
+    expect(event.syncs[0]?.padTapIds).toHaveLength(0);
+    expect(event.syncs[0]?.padMarkIds).toHaveLength(2);
+    event = applyEdit(event, { action: "sync", actor: "marker" });
+    expect(event.syncs).toHaveLength(1);
   });
 });

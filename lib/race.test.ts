@@ -30,6 +30,7 @@ function event(partial: Partial<EventState> = {}): EventState {
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: false,
     demoAutoMark: false,
@@ -59,6 +60,24 @@ describe("pairing", () => {
     expect(pairs[1].mark?.bib).toBe("7");
     expect(pairs[2].mark).toBeNull();
     expect(unmatchedTaps(taps, marks)).toHaveLength(1);
+  });
+
+  it("restarts pairing after a sync cutoff", () => {
+    const taps = [
+      { id: "a", t: 1 },
+      { id: "b", t: 2 },
+      { id: "c", t: 3 },
+    ];
+    const marks = [
+      { id: "m1", bib: "1" },
+      { id: "m2", bib: "2" },
+    ];
+    const pairs = zipPairs(taps, marks, [{ id: "s", at: 1, taps: 2, marks: 1 }]);
+    expect(pairs.map((p) => [p.tap?.id, p.mark?.bib, Boolean(p.cutAfter)])).toEqual([
+      ["a", "1", false],
+      ["b", undefined, true],
+      ["c", "2", false],
+    ]);
   });
 
   it("is idempotent on tap ids", () => {

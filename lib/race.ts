@@ -1,5 +1,5 @@
 import { crossingDistance } from "./course";
-import type { EventState, Mark, Pair, Runner, Tap } from "./types";
+import type { EventState, Mark, Pair, Runner, SyncCut, Tap } from "./types";
 import { newId } from "./ids";
 
 export function isLive<T extends { deletedAt?: number | null }>(x: T): boolean {
@@ -14,17 +14,38 @@ export function liveMarks(marks: Mark[]): Mark[] {
   return marks.filter(isLive);
 }
 
-export function zipPairs(taps: Tap[], marks: Mark[]): Pair[] {
+export function zipPairs(taps: Tap[], marks: Mark[], syncs?: SyncCut[]): Pair[] {
   const liveT = liveTaps(taps);
   const liveM = liveMarks(marks);
-  const n = Math.max(liveT.length, liveM.length);
+  const bounds: { t: number; m: number }[] = [{ t: 0, m: 0 }];
+  for (const s of syncs ?? []) {
+    const t = Math.max(bounds[bounds.length - 1].t, Math.min(Math.max(0, s.taps), liveT.length));
+    const m = Math.max(bounds[bounds.length - 1].m, Math.min(Math.max(0, s.marks), liveM.length));
+    const prev = bounds[bounds.length - 1];
+    if (t === prev.t && m === prev.m) continue;
+    bounds.push({ t, m });
+  }
+  if (bounds[bounds.length - 1].t !== liveT.length || bounds[bounds.length - 1].m !== liveM.length) {
+    bounds.push({ t: liveT.length, m: liveM.length });
+  }
   const pairs: Pair[] = [];
-  for (let i = 0; i < n; i++) {
-    pairs.push({
-      index: i,
-      tap: liveT[i] ?? null,
-      mark: liveM[i] ?? null,
-    });
+  let index = 0;
+  for (let s = 0; s < bounds.length - 1; s++) {
+    const t0 = bounds[s].t;
+    const m0 = bounds[s].m;
+    const t1 = bounds[s + 1].t;
+    const m1 = bounds[s + 1].m;
+    const n = Math.max(t1 - t0, m1 - m0);
+    const lastSeg = s === bounds.length - 2;
+    for (let i = 0; i < n; i++) {
+      pairs.push({
+        index,
+        tap: liveT[t0 + i] ?? null,
+        mark: liveM[m0 + i] ?? null,
+        cutAfter: !lastSeg && i === n - 1,
+      });
+      index++;
+    }
   }
   return pairs;
 }
@@ -88,13 +109,12 @@ export function crossingsOf(
   event: EventState,
 ): Crossing[] {
   const start = event.startedAt ?? 0;
-  const taps = liveTaps(event.taps);
-  const marks = liveMarks(event.marks);
-  const n = Math.min(taps.length, marks.length);
   const out: Crossing[] = [];
-  for (let i = 0; i < n; i++) {
-    const tap = taps[i];
-    const mark = marks[i];
+  let i = 0;
+  for (const pair of zipPairs(event.taps, event.marks, event.syncs)) {
+    const tap = pair.tap;
+    const mark = pair.mark;
+    if (!tap || !mark) continue;
     const runner = runnerByBib(event.runners, mark.bib);
     const runnerCrossingsSoFar = out.filter((c) => c.bib === normalizeBib(mark.bib)).length;
     const distanceM = crossingDistance(event.course, runnerCrossingsSoFar + 1);
@@ -109,6 +129,7 @@ export function crossingsOf(
       tapId: tap.id,
       markId: mark.id,
     });
+    i++;
   }
   return out;
 }

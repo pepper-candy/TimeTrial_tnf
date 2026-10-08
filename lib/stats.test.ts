@@ -22,6 +22,7 @@ function ev(partial: Partial<EventState> = {}): EventState {
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: false,
     demoAutoMark: false,

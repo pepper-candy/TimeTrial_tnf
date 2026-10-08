@@ -11,7 +11,7 @@ import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
 import { liveMarks, liveTaps } from "@/lib/race";
 import { hapticHoldOk, hapticTap } from "@/lib/haptic";
-import { IDLE_GAP_MS, formatStopwatch, tapRows } from "@/lib/tap-list";
+import { IDLE_GAP_MS, formatStopwatch, sinceLastSync, tapRows } from "@/lib/tap-list";
 import type { EventState, Tap } from "@/lib/types";
 
 const QUEUE_KEY = (code: string) => `tt:tapq:${code}`;
@@ -193,6 +193,11 @@ function TimerInner({ code }: { code: string }) {
   const rows = event
     ? tapRows(event, [...serverTaps, ...extra]).filter((r) => !hidden.has(r.id))
     : [];
+  const afterCut = sinceLastSync(
+    event ? liveTaps(event.taps).length + extra.length : 0,
+    event ? liveMarks(event.marks).length : 0,
+    event?.syncs,
+  );
   const running = event?.status === "running" && event.startedAt != null;
   const adminReady = Boolean(event?.ready);
   const newest = rows[0]?.id ?? "";
@@ -280,7 +285,7 @@ function TimerInner({ code }: { code: string }) {
               className="text-3xl sm:text-4xl"
             />
             <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
-              {rows.length} taps · {event ? liveMarks(event.marks).length : 0} bibs
+              {afterCut.taps} taps · {afterCut.marks} bibs
               {queued ? <span className="text-bell"> · {queued} sending</span> : null}
             </p>
           </div>
@@ -293,7 +298,13 @@ function TimerInner({ code }: { code: string }) {
               const sameAbove = i > 0 && rows[i - 1].pack === row.pack;
               const sameBelow = i < rows.length - 1 && rows[i + 1].pack === row.pack;
               return (
-              <li key={row.id} className="relative pl-4">
+              <li key={row.id} className={`relative pl-4 ${row.cutBefore ? "pt-3" : ""}`}>
+                {row.cutBefore ? (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute left-[18px] right-[2px] top-[5px] z-10 h-[3px] rounded-full bg-sky"
+                  />
+                ) : null}
                 <span
                   aria-hidden
                   className="absolute left-0 w-[9px] rounded-full bg-go"

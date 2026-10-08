@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     marks: [],
     idles: [],
     groups: [],
+    syncs: [],
     edits: [],
     demo: false,
     demoAutoMark: false,

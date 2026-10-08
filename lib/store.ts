@@ -120,6 +120,7 @@ export function hydrateEvent(event: EventState): EventState {
     edits: event.edits ?? [],
     idles: event.idles ?? [],
     groups: event.groups ?? [],
+    syncs: event.syncs ?? [],
   };
 }
 

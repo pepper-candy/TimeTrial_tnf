@@ -202,10 +202,10 @@ export function SwipeRow({
       onPointerCancel={finish}
       onClickCapture={onClickCapture}
     >
-      <div className="pointer-events-none absolute inset-0 bg-stop" aria-hidden>
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-stop" aria-hidden>
         <div
           data-swipe-reveal=""
-          className="absolute inset-y-0 right-0 flex w-14 items-center justify-center text-sand"
+          className="absolute inset-0 flex items-center justify-center text-sand"
           style={{
             opacity: reveal,
             transform: `scale(${0.6 + reveal * 0.4})`,

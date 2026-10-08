@@ -44,6 +44,17 @@ export type GroupBreak = {
   afterId: string;
 };
 
+/** Marker Sync: live tap/bib counts at the cutoff. Pairing restarts after this. */
+export type SyncCut = {
+  id: string;
+  at: number;
+  taps: number;
+  marks: number;
+  /** Placeholder taps/bibs filled so both sides share the next empty slot. */
+  padTapIds?: string[];
+  padMarkIds?: string[];
+};
+
 export type EditActor = "timer" | "marker" | "admin";
 
 export type EditKind =
@@ -100,6 +111,7 @@ export type EventState = {
   marks: Mark[];
   idles: IdleBreak[];
   groups: GroupBreak[];
+  syncs: SyncCut[];
   /** Soft-edit history (who / when). Recoverable deletes live here. */
   edits: EditLogEntry[];
   demo: boolean;
@@ -130,4 +142,6 @@ export type Pair = {
   index: number;
   tap: Tap | null;
   mark: Mark | null;
+  /** Blue cutoff in records: this row is the last of a sync segment. */
+  cutAfter?: boolean;
 };
