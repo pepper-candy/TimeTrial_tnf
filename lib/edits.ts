@@ -212,6 +212,7 @@ export type EditInput = {
   tapId?: string;
   markId?: string;
   bib?: string;
+  bibs?: string[];
   index?: number;
   j?: number;
   to?: number;
@@ -341,6 +342,29 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       ...event,
       marks,
       edits: log(event, actor, "mark-insert", { markId: added?.id, bib: added?.bib, toIndex: liveMarks(marks).length - 1 }, at),
+    };
+  }
+
+  if (action === "append-many" && Array.isArray(body.bibs) && body.bibs.length > 0) {
+    let marks = event.marks;
+    const added: Mark[] = [];
+    for (const bib of body.bibs) {
+      if (typeof bib !== "string" || !bib.trim()) continue;
+      marks = appendMark(marks, bib);
+      added.push(marks[marks.length - 1]);
+    }
+    if (added.length === 0) return event;
+    const last = added[added.length - 1];
+    return {
+      ...event,
+      marks,
+      edits: log(
+        event,
+        actor,
+        "mark-insert",
+        { markId: last?.id, bib: last?.bib, toIndex: liveMarks(marks).length - 1 },
+        at,
+      ),
     };
   }
 

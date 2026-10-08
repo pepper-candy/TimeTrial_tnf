@@ -257,4 +257,10 @@ describe("helper forgiveness", () => {
     const race = buildRunnerRaces(event).find((r) => r.runner.bib === "1")!;
     expect(race.crossings.some((c) => c.estimated)).toBe(true);
   });
+
+  it("appends a pack of bibs in roster order", () => {
+    let event = ev({ marks: [{ id: "m1", bib: "1" }] });
+    event = applyEdit(event, { action: "append-many", bibs: ["2", "7"], actor: "marker" });
+    expect(liveMarks(event.marks).map((m) => m.bib)).toEqual(["1", "2", "7"]);
+  });
 });

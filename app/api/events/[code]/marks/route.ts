@@ -16,6 +16,7 @@ export async function POST(req: Request, ctx: Ctx) {
     action?: string;
     actor?: string;
     bib?: string;
+    bibs?: string[];
     index?: number;
     j?: number;
     to?: number;
