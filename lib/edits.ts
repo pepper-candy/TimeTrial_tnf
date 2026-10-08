@@ -545,7 +545,7 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       (body.index != null ? live[body.index] : undefined);
     if (!prev) return event;
     const marks = reassignMark(event.marks, event.marks.findIndex((m) => m.id === prev.id), body.bib);
-    const next = liveMarks(marks)[body.index];
+    const next = liveMarks(marks).find((m) => m.id === prev.id);
     return {
       ...event,
       marks,
