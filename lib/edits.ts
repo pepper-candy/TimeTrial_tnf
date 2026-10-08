@@ -1,4 +1,5 @@
 import { newId } from "./ids";
+import { IDLE_GAP_MS } from "./tap-list";
 import {
   appendMark,
   appendTap,
@@ -244,6 +245,27 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       });
     }
     return { ...event, taps };
+  }
+
+  if (action === "idle") {
+    const live = liveTaps(event.taps);
+    const last = live[live.length - 1];
+    if (!last) return event;
+    const idles = event.idles ?? [];
+    const lastIdle = idles.reduce((m, x) => (x.t > m ? x.t : m), 0);
+    if (last.t <= lastIdle) return event;
+    const t = typeof body.t === "number" ? Math.round(body.t) : at;
+    if (t - last.t < IDLE_GAP_MS) return event;
+    return { ...event, idles: [...idles, { id: newId(), t: Math.max(t, last.t + IDLE_GAP_MS) }] };
+  }
+
+  if (action === "group") {
+    const live = liveMarks(event.marks);
+    const last = live[live.length - 1];
+    if (!last) return event;
+    const groups = event.groups ?? [];
+    if (groups.some((g) => g.afterId === last.id)) return event;
+    return { ...event, groups: [...groups, { id: newId(), afterId: last.id }] };
   }
 
   if (action === "tap-undo" || action === "undo") {

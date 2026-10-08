@@ -118,6 +118,8 @@ export function hydrateEvent(event: EventState): EventState {
       deletedAt: m.deletedAt ?? null,
     })),
     edits: event.edits ?? [],
+    idles: event.idles ?? [],
+    groups: event.groups ?? [],
   };
 }
 

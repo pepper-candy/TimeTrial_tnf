@@ -1,4 +1,5 @@
 import { crossingDistance } from "./course";
+import { haptic } from "./haptic";
 import { normalizeCode } from "./ids";
 import type { RunnerRace } from "./race";
 import { isImpossibleSplit } from "./stats";
@@ -38,11 +39,7 @@ export function formatBellCountdown(msLeft: number): string {
 }
 
 export function vibrateBell() {
-  try {
-    navigator.vibrate?.(200);
-  } catch {
-    /* unsupported (iPhone) */
-  }
+  haptic(200);
 }
 
 function read(key: string): string {

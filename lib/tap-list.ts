@@ -1,7 +1,7 @@
 import { liveTaps } from "./race";
 import type { EventState, Tap } from "./types";
 
-export const IDLE_GAP_MS = 5000;
+export const IDLE_GAP_MS = 4000;
 
 export type TapRow = {
   id: string;
@@ -21,6 +21,20 @@ export function packIndex(tapT: number, idles: { t: number }[] | undefined): num
   let g = 0;
   for (const idle of idles ?? []) {
     if (tapT > idle.t) g++;
+  }
+  return g;
+}
+
+/** Marks after a Group break's `afterId` belong to the next pack. */
+export function markPack(
+  i: number,
+  liveIds: string[],
+  groups: { afterId: string }[] | undefined,
+): number {
+  let g = 0;
+  for (const br of groups ?? []) {
+    const at = liveIds.indexOf(br.afterId);
+    if (at >= 0 && i > at) g++;
   }
   return g;
 }

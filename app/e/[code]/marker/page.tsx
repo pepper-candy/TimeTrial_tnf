@@ -13,9 +13,13 @@ import { json, useEvent } from "@/lib/client/hooks";
 import { applyBibKey, bibDigitWidth, bibPrompt, padBib } from "@/lib/marker-bib";
 import { padKeyFromEvent } from "@/lib/pad-keys";
 import { liveMarks, liveTaps, runnerByBib } from "@/lib/race";
+import { hapticHoldOk, hapticTap } from "@/lib/haptic";
+import { markPack } from "@/lib/tap-list";
 import type { EventState } from "@/lib/types";
 
 type Pending = { id: string; bib: string };
+
+const GROUP_HOLD_MS = 500;
 
 export default function MarkerPage() {
   const { code } = useParams<{ code: string }>();
@@ -39,6 +43,11 @@ function MarkerInner({ code }: { code: string }) {
   const missHold = useRef<number | null>(null);
   const missArmed = useRef(false);
   const [allReady, setAllReady] = useState(false);
+  const [missOnly, setMissOnly] = useState(false);
+  const groupHold = useRef<number | null>(null);
+  const groupArmed = useRef(false);
+  const [groupReady, setGroupReady] = useState(false);
+  const canGroupRef = useRef(false);
 
   useEffect(() => {
     latest.current = event;
@@ -59,11 +68,7 @@ function MarkerInner({ code }: { code: string }) {
   }
 
   function buzz() {
-    try {
-      navigator.vibrate?.(12);
-    } catch {
-      /* ignore */
-    }
+    hapticTap();
   }
 
   function mark(padded: string) {
@@ -122,7 +127,6 @@ function MarkerInner({ code }: { code: string }) {
   function markAll() {
     typedRef.current = "";
     setTyped("");
-    buzz();
     const bibs = (latest.current ?? event)?.runners.map((r) => r.bib).filter((bib) => bib.trim()) ?? [];
     if (bibs.length === 0) return;
     const locals = bibs.map((bib) => ({ id: crypto.randomUUID(), bib }));
@@ -143,6 +147,50 @@ function MarkerInner({ code }: { code: string }) {
     });
   }
 
+  function markGroup() {
+    later(async () => {
+      try {
+        await post({ action: "group" });
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  function beginZeroHold(e: React.PointerEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    if (!canGroupRef.current) {
+      press("0");
+      return;
+    }
+    groupArmed.current = false;
+    setGroupReady(false);
+    if (groupHold.current) window.clearTimeout(groupHold.current);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    groupHold.current = window.setTimeout(() => {
+      groupArmed.current = true;
+      setGroupReady(true);
+    }, GROUP_HOLD_MS);
+  }
+
+  function endZeroHold(commit: boolean) {
+    const armed = groupArmed.current;
+    const holding = groupHold.current != null || armed;
+    if (groupHold.current) window.clearTimeout(groupHold.current);
+    groupHold.current = null;
+    groupArmed.current = false;
+    setGroupReady(false);
+    if (!commit || !holding) return;
+    if (armed) {
+      hapticHoldOk();
+      markGroup();
+    } else press("0");
+  }
+
   function beginMissHold(e: React.PointerEvent<HTMLButtonElement>) {
     e.preventDefault();
     missArmed.current = false;
@@ -156,11 +204,6 @@ function MarkerInner({ code }: { code: string }) {
     missHold.current = window.setTimeout(() => {
       missArmed.current = true;
       setAllReady(true);
-      try {
-        navigator.vibrate?.(30);
-      } catch {
-        /* ignore */
-      }
     }, 2000);
   }
 
@@ -171,8 +214,10 @@ function MarkerInner({ code }: { code: string }) {
     missArmed.current = false;
     setAllReady(false);
     if (!commit) return;
-    if (armed) markAll();
-    else markMiss();
+    if (armed) {
+      hapticHoldOk();
+      markAll();
+    } else markMiss();
   }
 
   function deleteRow(row: { id: string; bib: string; local: boolean }) {
@@ -194,13 +239,23 @@ function MarkerInner({ code }: { code: string }) {
   const width = bibDigitWidth((event?.runners ?? []).map((r) => r.bib));
   const hidden = new Set(gone);
   const server = event ? liveMarks(event.marks).filter((m) => !hidden.has(m.id)) : [];
+  const liveIds = [...server.map((m) => m.id), ...pending.map((m) => m.id)];
   const rows = [
     ...server.map((m) => ({ id: m.id, bib: m.bib, local: false })),
     ...pending.map((m) => ({ id: m.id, bib: m.bib, local: true })),
   ]
-    .map((m, i) => ({ ...m, n: i + 1 }))
+    .map((m, i) => ({ ...m, n: i + 1, pack: markPack(i, liveIds, event?.groups) }))
     .reverse();
   const newest = rows[0]?.id ?? "";
+  const shownRows = missOnly
+    ? rows.filter((r) => !runnerByBib(event?.runners ?? [], r.bib))
+    : rows;
+  const lastServer = server[server.length - 1];
+  const lastGrouped = Boolean(
+    lastServer && (event?.groups ?? []).some((g) => g.afterId === lastServer.id),
+  );
+  const canGroup = pending.length > 0 || Boolean(lastServer && !lastGrouped);
+  canGroupRef.current = canGroup;
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: 0 });
@@ -209,6 +264,7 @@ function MarkerInner({ code }: { code: string }) {
   useEffect(() => {
     return () => {
       if (missHold.current) window.clearTimeout(missHold.current);
+      if (groupHold.current) window.clearTimeout(groupHold.current);
     };
   }, []);
 
@@ -240,15 +296,41 @@ function MarkerInner({ code }: { code: string }) {
             </p>
           </div>
         }
-        info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold 2 seconds to add every runner again, in roster order."
+        extra={
+          <button
+            type="button"
+            aria-pressed={missOnly}
+            aria-label={missOnly ? "Show all bibs" : "Show missing bibs"}
+            className={`tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-xl font-black ring-1 ring-line ${
+              missOnly ? "bg-sand text-ink" : "bg-panel2 text-bell"
+            }`}
+            onClick={() => setMissOnly((on) => !on)}
+          >
+            ?
+          </button>
+        }
+        info="Type the bib in crossing order. It saves when every digit is filled. Tap the bib field or Clear to wipe digits. Miss if someone passed and you missed the bib. Hold Miss to add every runner again. Hold 0 to start a new pack. The ? filter shows only misses and unknown bibs."
       />
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
+        {missOnly && shownRows.length === 0 ? (
+          <p className="px-6 py-16 text-center text-sm text-dim">No missing bibs.</p>
+        ) : null}
         <ul className="flex flex-col gap-1.5">
-          {rows.map((row) => {
+          {shownRows.map((row, i) => {
             const runner = runnerByBib(event.runners, row.bib);
             const shown = padBib(row.bib, width);
+            const sameAbove = i > 0 && shownRows[i - 1].pack === row.pack;
+            const sameBelow = i < shownRows.length - 1 && shownRows[i + 1].pack === row.pack;
             return (
-              <li key={row.id}>
+              <li key={row.id} className="relative pl-4">
+                <span
+                  aria-hidden
+                  className="absolute left-0 w-[9px] rounded-full bg-go"
+                  style={{
+                    top: sameAbove ? "-0.5rem" : "0.15rem",
+                    bottom: sameBelow ? "-0.5rem" : "0.15rem",
+                  }}
+                />
                 <SwipeRow
                   label={`Delete bib ${shown}`}
                   onDelete={() => deleteRow(row)}
@@ -302,13 +384,11 @@ function MarkerInner({ code }: { code: string }) {
           <span className={`text-lg font-black ${typed ? "text-sand" : "text-dim/40"}`}>Clear</span>
         </button>
         <div className="grid grid-cols-3 gap-2">
-          {PAD_KEYS.map((key) => (
+          {PAD_KEYS.filter((key) => key.id !== "0").map((key) => (
             <button
               key={key.id}
               type="button"
-              className={`tap h-16 rounded-2xl bg-panel2 font-black tabular text-sand ring-1 ring-line active:bg-sand active:text-ink ${
-                key.id === "0" ? "col-span-2" : ""
-              } text-2xl`}
+              className="tap h-16 rounded-2xl bg-panel2 font-black tabular text-2xl text-sand ring-1 ring-line active:bg-sand active:text-ink"
               aria-label={key.label}
               onPointerDown={(e) => {
                 e.preventDefault();
@@ -318,6 +398,26 @@ function MarkerInner({ code }: { code: string }) {
               {key.face}
             </button>
           ))}
+          <button
+            type="button"
+            className={`tap col-span-2 flex h-16 flex-col items-center justify-center rounded-2xl leading-none ${
+              groupReady ? "bg-go text-ink" : "bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
+            }`}
+            aria-label="0. Hold to make grouping."
+            onPointerDown={beginZeroHold}
+            onPointerUp={() => endZeroHold(true)}
+            onPointerCancel={() => endZeroHold(false)}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <span className="text-2xl font-black tabular">0</span>
+            <span
+              className={`text-[9px] font-bold uppercase tracking-[0.08em] ${
+                groupReady ? "text-ink/70" : "text-sand/80"
+              }`}
+            >
+              Make Grouping (HOLD)
+            </span>
+          </button>
           <button
             type="button"
             className={`tap flex h-16 flex-col items-center justify-center rounded-2xl leading-none ${

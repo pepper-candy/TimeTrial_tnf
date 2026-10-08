@@ -144,6 +144,8 @@ export function makeDemoEvent(
     runners,
     taps: [],
     marks: [],
+    idles: [],
+    groups: [],
     edits: [],
     demo: true,
     demoAutoMark: true,

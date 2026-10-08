@@ -10,10 +10,12 @@ import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
 import { formatEst } from "@/lib/format";
 import { liveMarks, liveTaps } from "@/lib/race";
-import { formatStopwatch, tapRows } from "@/lib/tap-list";
+import { hapticHoldOk, hapticTap } from "@/lib/haptic";
+import { IDLE_GAP_MS, formatStopwatch, tapRows } from "@/lib/tap-list";
 import type { EventState, Tap } from "@/lib/types";
 
 const QUEUE_KEY = (code: string) => `tt:tapq:${code}`;
+const GROUP_HOLD_MS = 500;
 
 type Queued = Tap & { sent?: boolean };
 
@@ -38,6 +40,12 @@ function TimerInner({ code }: { code: string }) {
   const offsetRef = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const flushRef = useRef<() => Promise<void>>(async () => {});
+  const [tick, setTick] = useState(0);
+  const idleBusy = useRef(false);
+  const groupHold = useRef<number | null>(null);
+  const groupArmed = useRef(false);
+  const [groupReady, setGroupReady] = useState(false);
+  const canIdleRef = useRef(false);
 
   useEffect(() => {
     origin.current = Date.now() - performance.now();
@@ -114,17 +122,12 @@ function TimerInner({ code }: { code: string }) {
     persist();
     setFlash(true);
     window.setTimeout(() => setFlash(false), 70);
-    try {
-      navigator.vibrate?.(18);
-    } catch {
-      /* ignore */
-    }
+    hapticTap();
     void flush();
   }
 
-  function tap(e: React.PointerEvent) {
-    e.preventDefault();
-    fireTap();
+  function wallNow() {
+    return Math.round(origin.current + performance.now() + offsetRef.current);
   }
 
   async function start() {
@@ -133,6 +136,33 @@ function TimerInner({ code }: { code: string }) {
       method: "POST",
     });
     setEvent(data.event);
+  }
+
+  async function fireIdle() {
+    if (!event || idleBusy.current) return;
+    const times = [
+      ...liveTaps(event.taps).map((x) => x.t),
+      ...pending.current.filter((q) => !q.sent).map((q) => q.t),
+    ];
+    if (times.length === 0) return;
+    const lastTapT = Math.max(...times);
+    const lastIdleT = Math.max(0, ...(event.idles ?? []).map((x) => x.t));
+    const t = wallNow();
+    if (lastTapT <= lastIdleT || t - lastTapT < IDLE_GAP_MS) return;
+    idleBusy.current = true;
+    const idle = { id: crypto.randomUUID(), t };
+    setEvent({ ...event, idles: [...(event.idles ?? []), idle] });
+    try {
+      const data = await json<{ event: EventState }>(`/api/events/${code}/taps`, {
+        method: "POST",
+        body: JSON.stringify({ action: "idle", t, actor: "timer" }),
+      });
+      setEvent(data.event);
+    } catch {
+      setEvent(event);
+    } finally {
+      idleBusy.current = false;
+    }
   }
 
   async function deleteTap(id: string) {
@@ -166,6 +196,63 @@ function TimerInner({ code }: { code: string }) {
   const running = event?.status === "running" && event.startedAt != null;
   const adminReady = Boolean(event?.ready);
   const newest = rows[0]?.id ?? "";
+  const lastTapT = rows[0]?.t ?? null;
+  const lastIdleT = Math.max(0, ...(event?.idles ?? []).map((x) => x.t));
+  const waitingIdle = lastTapT != null && lastTapT > lastIdleT;
+  const remainMs = waitingIdle ? Math.max(0, IDLE_GAP_MS - (wallNow() - lastTapT)) : IDLE_GAP_MS;
+  const canIdle = waitingIdle && remainMs <= 0;
+  canIdleRef.current = canIdle;
+
+  function clearGroupHold() {
+    if (groupHold.current) window.clearTimeout(groupHold.current);
+    groupHold.current = null;
+    groupArmed.current = false;
+    setGroupReady(false);
+  }
+
+  function beginTap(e: React.PointerEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    if (!canIdleRef.current) {
+      fireTap();
+      return;
+    }
+    groupArmed.current = false;
+    setGroupReady(false);
+    if (groupHold.current) window.clearTimeout(groupHold.current);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    groupHold.current = window.setTimeout(() => {
+      groupArmed.current = true;
+      setGroupReady(true);
+    }, GROUP_HOLD_MS);
+  }
+
+  function endTap(commit: boolean) {
+    const armed = groupArmed.current;
+    const holding = groupHold.current != null || armed;
+    clearGroupHold();
+    if (!commit || !holding) return;
+    if (armed) {
+      hapticHoldOk();
+      void fireIdle();
+    } else fireTap();
+  }
+
+  useEffect(() => {
+    return () => {
+      if (groupHold.current) window.clearTimeout(groupHold.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!running || !waitingIdle || remainMs <= 0) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 250);
+    return () => window.clearInterval(id);
+  }, [running, waitingIdle, remainMs]);
+  void tick;
 
   useHardwareKeys((e) => {
     if (e.repeat) return false;
@@ -198,12 +285,23 @@ function TimerInner({ code }: { code: string }) {
             </p>
           </div>
         }
-        info="Tap every torso at the line. Swipe a row to drop an extra tap."
+        info="Tap every torso at the line. After four seconds the pad shows Make Grouping; hold TAP to mark a pack break. Swipe a row to drop an extra tap."
       />
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-0.5 pb-2">
           <ul className="flex flex-col gap-1.5">
-            {rows.map((row) => (
-              <li key={row.id}>
+            {rows.map((row, i) => {
+              const sameAbove = i > 0 && rows[i - 1].pack === row.pack;
+              const sameBelow = i < rows.length - 1 && rows[i + 1].pack === row.pack;
+              return (
+              <li key={row.id} className="relative pl-4">
+                <span
+                  aria-hidden
+                  className="absolute left-0 w-[9px] rounded-full bg-go"
+                  style={{
+                    top: sameAbove ? "-0.5rem" : "0.15rem",
+                    bottom: sameBelow ? "-0.5rem" : "0.15rem",
+                  }}
+                />
                 <SwipeRow
                   label={`Delete tap ${row.n}`}
                   onDelete={() => void deleteTap(row.id)}
@@ -224,19 +322,34 @@ function TimerInner({ code }: { code: string }) {
                   </div>
                 </SwipeRow>
               </li>
-            ))}
+              );
+            })}
           </ul>
       </div>
       <div className="shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]">
         {running ? (
           <button
             type="button"
-            className={`tap flex h-[42dvh] w-full items-center justify-center rounded-[2rem] text-7xl font-black tracking-tight ${
-              flash ? "bg-sand text-ink" : "bg-accent text-ink"
+            className={`tap flex h-[42dvh] w-full flex-col items-center justify-center gap-3 rounded-[2rem] ${
+              flash ? "bg-sand text-ink" : groupReady ? "bg-go text-ink" : "bg-accent text-ink"
             }`}
-            onPointerDown={tap}
+            onPointerDown={beginTap}
+            onPointerUp={() => endTap(true)}
+            onPointerCancel={() => endTap(false)}
+            onContextMenu={(e) => e.preventDefault()}
           >
-            TAP
+            <span className="text-7xl font-black tracking-tight">TAP</span>
+            <span
+              className={`font-black ${
+                waitingIdle && remainMs > 0 ? "text-2xl text-ink/70" : canIdle ? "text-xl text-ink" : "text-xl text-ink/40"
+              }`}
+            >
+              {waitingIdle && remainMs > 0
+                ? `Enable Grouping in ${Math.ceil(remainMs / 1000)}`
+                : canIdle
+                  ? "Make Grouping (HOLD)"
+                  : "Separated"}
+            </span>
           </button>
         ) : adminReady ? (
           <button
@@ -263,4 +376,3 @@ function TimerInner({ code }: { code: string }) {
     </Screen>
   );
 }
-

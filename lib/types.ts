@@ -32,6 +32,18 @@ export type Mark = {
   deletedAt?: number | null;
 };
 
+/** Timer pressed Idle after a pack; taps after this time start a new group. */
+export type IdleBreak = {
+  id: string;
+  t: number;
+};
+
+/** Marker long-pressed Group; marks after `afterId` start a new group. */
+export type GroupBreak = {
+  id: string;
+  afterId: string;
+};
+
 export type EditActor = "timer" | "marker" | "admin";
 
 export type EditKind =
@@ -86,6 +98,8 @@ export type EventState = {
   runners: Runner[];
   taps: Tap[];
   marks: Mark[];
+  idles: IdleBreak[];
+  groups: GroupBreak[];
   /** Soft-edit history (who / when). Recoverable deletes live here. */
   edits: EditLogEntry[];
   demo: boolean;

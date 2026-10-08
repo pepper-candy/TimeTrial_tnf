@@ -25,6 +25,8 @@ function event(id: string, code: string): EventState {
     ],
     taps: [],
     marks: [],
+    idles: [],
+    groups: [],
     edits: [],
     demo: false,
     demoAutoMark: false,

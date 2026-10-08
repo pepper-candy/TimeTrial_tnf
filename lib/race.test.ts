@@ -28,6 +28,8 @@ function event(partial: Partial<EventState> = {}): EventState {
     runners: [runner("1"), runner("2"), runner("7")],
     taps: [],
     marks: [],
+    idles: [],
+    groups: [],
     edits: [],
     demo: false,
     demoAutoMark: false,

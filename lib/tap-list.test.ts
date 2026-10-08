@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStopwatch, packIndex, tapRows } from "./tap-list";
+import { formatStopwatch, markPack, packIndex, tapRows } from "./tap-list";
 import type { Tap } from "./types";
 
 function tap(id: string, t: number, estimated = false): Tap {
@@ -45,5 +45,14 @@ describe("tapRows", () => {
       tap("c", 8000),
     ]);
     expect(rows.map((r) => r.pack)).toEqual([1, 0, 0]);
+  });
+});
+
+describe("markPack", () => {
+  it("increments after the grouped mark", () => {
+    const ids = ["a", "b", "c"];
+    expect(markPack(0, ids, [{ afterId: "b" }])).toBe(0);
+    expect(markPack(1, ids, [{ afterId: "b" }])).toBe(0);
+    expect(markPack(2, ids, [{ afterId: "b" }])).toBe(1);
   });
 });

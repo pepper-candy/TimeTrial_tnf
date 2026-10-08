@@ -1,5 +1,6 @@
 import { minPlausibleSplitMs, splitDistance } from "./course";
-import { normalizeBib, runnerByBib, zipPairs } from "./race";
+import { liveMarks, normalizeBib, runnerByBib, zipPairs } from "./race";
+import { markPack, packIndex } from "./tap-list";
 import type { EditLogEntry, EventState, Mark, Pair, Tap } from "./types";
 
 /** Quicker than this fraction of the runner's recent pace. */
@@ -23,19 +24,34 @@ export type RecordRow = Pair & {
   elapsedMs: number | null;
   splitMs: number | null;
   estimated: boolean;
+  tapPack: number | null;
+  bibPack: number | null;
 };
 
 /** One row per crossing index. The shorter side is an empty slot on the tail. */
 export function recordRows(
-  event: Pick<EventState, "startedAt" | "taps" | "marks">,
+  event: Pick<EventState, "startedAt" | "taps" | "marks"> & {
+    idles?: EventState["idles"];
+    groups?: EventState["groups"];
+  },
 ): RecordRow[] {
   const pairs = zipPairs(event.taps, event.marks);
+  const liveIds = liveMarks(event.marks).map((m) => m.id);
   const rows: RecordRow[] = [];
   let prevElapsed = 0;
   for (const pair of pairs) {
     const tap = pair.tap;
+    const tapPack = tap ? packIndex(tap.t, event.idles) : null;
+    const bibPack = pair.mark ? markPack(pair.index, liveIds, event.groups) : null;
     if (!tap) {
-      rows.push({ ...pair, elapsedMs: null, splitMs: null, estimated: false });
+      rows.push({
+        ...pair,
+        elapsedMs: null,
+        splitMs: null,
+        estimated: false,
+        tapPack,
+        bibPack,
+      });
       continue;
     }
     const elapsedMs =
@@ -47,6 +63,8 @@ export function recordRows(
       elapsedMs,
       splitMs,
       estimated: Boolean(tap.estimated),
+      tapPack,
+      bibPack,
     });
   }
   return rows;

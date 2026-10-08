@@ -223,6 +223,8 @@ function RecordsInner({ code }: { code: string }) {
           return (
             <RecordLine
               row={row}
+              prev={index > 0 ? visible[index - 1] : undefined}
+              next={index < visible.length - 1 ? visible[index + 1] : undefined}
               tags={tagLists[row.index] ?? []}
               eventId={event.id}
               runners={event.runners}
@@ -335,7 +337,7 @@ function Windowed({
             return (
               <div
                 key={index}
-                className="absolute inset-x-0 px-3"
+                className="absolute inset-x-0"
                 style={{ top: index * ROW_H, height: ROW_H }}
               >
                 {children(index)}
@@ -350,6 +352,8 @@ function Windowed({
 
 function RecordLine({
   row,
+  prev,
+  next,
   eventId,
   runners,
   width,
@@ -363,6 +367,8 @@ function RecordLine({
   onInsertBib,
 }: {
   row: RecordRow;
+  prev?: RecordRow;
+  next?: RecordRow;
   eventId: string;
   runners: EventState["runners"];
   width: number;
@@ -378,7 +384,32 @@ function RecordLine({
   const n = String(row.index + 1).padStart(2, "0");
   const runner = row.mark ? runnerByBib(runners, row.mark.bib) : undefined;
   const bib = row.mark ? padBib(row.mark.bib, width) : "";
+  const tapJoinAbove = row.tapPack != null && prev?.tapPack === row.tapPack;
+  const tapJoinBelow = row.tapPack != null && next?.tapPack === row.tapPack;
+  const bibJoinAbove = row.bibPack != null && prev?.bibPack === row.bibPack;
+  const bibJoinBelow = row.bibPack != null && next?.bibPack === row.bibPack;
   return (
+    <div className="relative h-full px-4">
+      {row.tapPack != null ? (
+        <span
+          aria-hidden
+          className="absolute left-0 w-[9px] rounded-full bg-go"
+          style={{
+            top: tapJoinAbove ? "-0.35rem" : "0.25rem",
+            bottom: tapJoinBelow ? "-0.35rem" : "0.25rem",
+          }}
+        />
+      ) : null}
+      {row.bibPack != null ? (
+        <span
+          aria-hidden
+          className="absolute right-0 w-[9px] rounded-full bg-go"
+          style={{
+            top: bibJoinAbove ? "-0.35rem" : "0.25rem",
+            bottom: bibJoinBelow ? "-0.35rem" : "0.25rem",
+          }}
+        />
+      ) : null}
     <div className="flex flex-col gap-1 rounded-2xl ring-1 ring-line" style={{ height: ROW_BODY }}>
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
         <SwipeRow
@@ -464,6 +495,7 @@ function RecordLine({
           </RowBtn>
         </div>
       </div>
+    </div>
     </div>
   );
 }

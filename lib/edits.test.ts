@@ -24,6 +24,8 @@ function ev(partial: Partial<EventState> = {}): EventState {
     runners: [runner("1"), runner("2")],
     taps: [],
     marks: [],
+    idles: [],
+    groups: [],
     edits: [],
     demo: false,
     demoAutoMark: false,
@@ -262,5 +264,26 @@ describe("helper forgiveness", () => {
     let event = ev({ marks: [{ id: "m1", bib: "1" }] });
     event = applyEdit(event, { action: "append-many", bibs: ["2", "7"], actor: "marker" });
     expect(liveMarks(event.marks).map((m) => m.bib)).toEqual(["1", "2", "7"]);
+  });
+
+  it("records an idle only after 4s past the last tap", () => {
+    let event = ev({ taps: [{ id: "a", t: 1_000_000 }] });
+    event = applyEdit(event, { action: "idle", t: 1_000_000 + 3_000, actor: "timer" });
+    expect(event.idles).toEqual([]);
+    event = applyEdit(event, { action: "idle", t: 1_000_000 + 4_000, actor: "timer" });
+    expect(event.idles).toHaveLength(1);
+    event = applyEdit(event, { action: "idle", t: 1_000_000 + 7_000, actor: "timer" });
+    expect(event.idles).toHaveLength(1);
+  });
+
+  it("records a bib group after the last mark", () => {
+    let event = ev({ marks: [{ id: "m1", bib: "1" }] });
+    event = applyEdit(event, { action: "group", actor: "marker" });
+    expect(event.groups).toEqual([{ id: expect.any(String), afterId: "m1" }]);
+    event = applyEdit(event, { action: "group", actor: "marker" });
+    expect(event.groups).toHaveLength(1);
+    event = applyEdit(event, { action: "append", bib: "2", actor: "marker" });
+    event = applyEdit(event, { action: "group", actor: "marker" });
+    expect(event.groups).toHaveLength(2);
   });
 });

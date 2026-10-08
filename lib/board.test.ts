@@ -45,6 +45,8 @@ function event(partial: Partial<EventState>): EventState {
     runners: [],
     taps: [],
     marks: [],
+    idles: [],
+    groups: [],
     edits: [],
     demo: false,
     demoAutoMark: false,
