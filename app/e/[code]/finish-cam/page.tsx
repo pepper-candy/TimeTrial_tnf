@@ -27,7 +27,8 @@ import {
   type ZoomCaps,
 } from "@/lib/client/finish-cam";
 import { downloadBlob } from "@/lib/client/analyse-finish";
-import { useEvent } from "@/lib/client/hooks";
+import { json, useEvent } from "@/lib/client/hooks";
+import type { EventState } from "@/lib/types";
 
 /**
  * Sprint-only Finish Cam helper.
@@ -311,11 +312,30 @@ function FinishCamInner({ code }: { code: string }) {
 
   const onAnalyseStarted = useCallback(() => {
     setAnalyseStarted(true);
+    // Freeze board race clock at Mark 2 (rec start + mark-out video offset).
+    const markOut = markOutRef.current ?? metaRef.current?.markOutMs ?? null;
+    const recAt = metaRef.current?.recServerAt ?? recServerAtRef.current;
+    if (markOut != null && recAt > 0) {
+      const endedAt = Math.round(recAt + markOut);
+      void json<{ event: EventState }>(`/api/events/${code}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "finished", endedAt }),
+      })
+        .then((data) => {
+          setEvent(data.event);
+          pushLog(`Race clock stopped at Mark 2 · endedAt ${endedAt}`);
+        })
+        .catch((e) => {
+          console.debug(
+            `end-at-mark2 failed: ${e instanceof Error ? e.message : e}`,
+          );
+        });
+    }
     void exitFullscreenUnlockOrientation().then(() => {
       setStageFullscreen(!!document.fullscreenElement);
       setLandscape(isLandscape());
     });
-  }, []);
+  }, [code, setEvent, pushLog]);
 
   if (error === "missing") {
     return (

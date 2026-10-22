@@ -256,16 +256,18 @@ export function FinishAnalysePanel({
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-panel text-[10px] font-bold uppercase tracking-wider text-dim">
             <tr>
-              <th className="w-8 px-1 py-2 sm:w-auto sm:px-2">
+              <th className="w-8 px-1 py-2 text-center sm:w-12 sm:px-2">
                 <span className="sm:hidden">L</span>
                 <span className="hidden sm:inline">Lane</span>
               </th>
               <th className="px-2 py-2">Athlete</th>
-              <th className="w-[4.5rem] px-1 py-2 sm:w-auto sm:px-2">
+              {/* min width keeps header + 2005.93 visible; % share grows with Athlete when space allows. */}
+              <th className="min-w-[6.5rem] w-[22%] whitespace-nowrap px-1 py-2 sm:min-w-[7.5rem] sm:px-2">
                 <span className="sm:hidden">Time</span>
                 <span className="hidden sm:inline">Time (s)</span>
               </th>
-              <th className="px-1 py-2 sm:px-2" />
+              {/* w-0 + nowrap: column width = Show+Accept only (auto table layout). */}
+              <th className="w-0 px-1 py-2 whitespace-nowrap sm:px-2" />
             </tr>
           </thead>
           <tbody>
@@ -277,20 +279,20 @@ export function FinishAnalysePanel({
                   className={`border-t border-line/60${showing ? " bg-accent/10" : ""}`}
                 >
                   <td
-                    className="w-8 cursor-pointer px-1 py-2 font-mono font-bold sm:w-auto sm:px-2"
+                    className="w-8 cursor-pointer px-1 py-2 text-center font-mono font-bold sm:w-12 sm:px-2"
                     onClick={() => showRow(r)}
                   >
                     {r.lane}
                   </td>
                   <td className="cursor-pointer px-2 py-2" onClick={() => showRow(r)}>
-                    <div className="font-semibold">{r.name || "—"}</div>
+                    <div className="truncate font-semibold">{r.name || "—"}</div>
                     <div className="text-[10px] text-dim">
                       {r.source === "yolo" ? "YOLO" : "—"}
                       {r.accepted ? " · saved" : ""}
                     </div>
                   </td>
                   <td
-                    className="w-[4.5rem] cursor-text px-1 py-2 sm:w-auto sm:px-2"
+                    className="min-w-[6.5rem] w-[22%] cursor-text whitespace-nowrap px-1 py-2 sm:min-w-[7.5rem] sm:px-2"
                     onClick={(e) => {
                       // Don't steal focus from nested controls; pad click → focus input.
                       if (e.target instanceof HTMLInputElement) return;
@@ -304,14 +306,14 @@ export function FinishAnalysePanel({
                       }}
                       type="text"
                       inputMode="decimal"
-                      className="w-14 rounded-lg bg-void px-1.5 py-1 font-mono text-sand ring-1 ring-line sm:w-24 sm:px-2"
+                      className="w-full min-w-[5.5rem] rounded-lg bg-void px-1.5 py-1 font-mono text-sand ring-1 ring-line sm:px-2"
                       value={r.editMs}
                       placeholder="—"
                       disabled={busy}
                       onChange={(e) => updateEdit(r.bib, e.target.value)}
                     />
                   </td>
-                  <td className="px-1 py-2 text-right sm:px-2">
+                  <td className="w-0 px-1 py-2 whitespace-nowrap sm:px-2">
                     <div className="inline-flex items-center gap-1 sm:gap-1.5">
                       <button
                         type="button"
