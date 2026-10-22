@@ -6,14 +6,19 @@ import { RaceClock } from "@/components/clock";
 import { PinGate } from "@/components/pin-gate";
 import { BOTTOM_TRAY, BigBtn, ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
-import { useBangMic } from "@/lib/client/bang-mic";
+import {
+  BANG_THRESHOLD_MAX,
+  BANG_THRESHOLD_MIN,
+  bangBarPct,
+  useBangMic,
+} from "@/lib/client/bang-mic";
 import { json, useEvent } from "@/lib/client/hooks";
 import { hapticHoldOk } from "@/lib/haptic";
 import type { EventState } from "@/lib/types";
 
 /**
  * Sprint-only start-line helper. Time Trial keeps `/timer` START unchanged.
- * Mic warm → Arm → bang/airhorn peak → existing POST /start (server `startedAt`).
+ * Mic warm → Arm → bang/airhorn onset → existing POST /start (server `startedAt`).
  */
 export default function StarterPage() {
   const { code } = useParams<{ code: string }>();
@@ -76,7 +81,23 @@ function StarterInner({ code }: { code: string }) {
     void fireStart();
   }, [running, adminReady, fireStart]);
 
-  const { status: mic, level, error: micErr, openMic, arm, disarm } = useBangMic(onBang);
+  const {
+    status: mic,
+    level,
+    levelMax1s,
+    threshold,
+    setThreshold,
+    calibrating,
+    autoCalibrate,
+    error: micErr,
+    openMic,
+    arm,
+    disarm,
+  } = useBangMic(onBang);
+  const fillPct = bangBarPct(level);
+  const markerPct = bangBarPct(threshold);
+  const max1sPct = bangBarPct(levelMax1s);
+  const levelTrail = useMicLevelTrail(fillPct);
 
   // Warm mic as soon as we know this is a sprint event (not on TT).
   useEffect(() => {
@@ -148,37 +169,96 @@ function StarterInner({ code }: { code: string }) {
           </div>
         }
         extra={
-          running ? (
+          running || mic === "armed" ? (
             <button
               type="button"
               className={ICON_BTN}
-              aria-label="Undo start"
+              aria-label={running ? "Undo start" : "Disarm"}
               disabled={undoing}
-              onClick={() => void undoStart()}
+              onClick={() => {
+                if (running) void undoStart();
+                else disarm();
+              }}
             >
               ↻
             </button>
           ) : null
         }
-        info="Arm when set… bang starts the race clock. Mic warms early; clap, airhorn, or gun peak tells the server to start. Race clock stays server time."
+        info="Arm when set… bang starts the race clock. Mic warms early; clap, airhorn, or gun onset tells the server to start. Level must clear the Sensitivity line. Race clock stays server time."
       />
 
       <div className="flex min-h-0 flex-1 flex-col justify-center gap-6 px-4 pb-4">
         <p className="text-center text-base font-bold text-dim">
           Arm when set… bang starts the race clock.
         </p>
-
         <div className="mx-auto w-full max-w-md">
-          <div className="h-3 overflow-hidden rounded-full bg-panel2 ring-1 ring-line">
+          <div className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider text-dim">
+            <span>Sensitivity</span>
+            <button
+              type="button"
+              className="tap rounded-md px-1.5 py-0.5 text-accent ring-1 ring-line disabled:opacity-40"
+              disabled={
+                calibrating ||
+                mic === "idle" ||
+                mic === "opening" ||
+                mic === "denied" ||
+                mic === "error"
+              }
+              onClick={() => void autoCalibrate()}
+            >
+              Auto
+            </button>
+          </div>
+          <label className="mt-1 block">
+            <span className="sr-only">Sensitivity</span>
+            <input
+              type="range"
+              className="w-full accent-accent"
+              min={BANG_THRESHOLD_MIN}
+              max={BANG_THRESHOLD_MAX}
+              step={0.01}
+              value={threshold}
+              disabled={calibrating}
+              onChange={(e) => setThreshold(Number(e.target.value))}
+            />
+          </label>
+          {/* One meter: live level + peak trail + 1s-max + Sensitivity. */}
+          <div className="relative mt-4 h-3 overflow-hidden rounded-full bg-panel2 ring-1 ring-line">
+            {/* Peak-hold ghost: stamps at high water, fades opacity over 1s after drop. */}
+            {levelTrail.opacity > 0 ? (
+              <div
+                className={`pointer-events-none absolute inset-y-0 left-0 rounded-full ${
+                  mic === "armed" ? "bg-bell" : "bg-go"
+                }`}
+                style={{
+                  width: `${levelTrail.pct}%`,
+                  opacity: levelTrail.opacity,
+                }}
+                aria-hidden
+              />
+            ) : null}
+            {/* No width transition: fill must match raw peak instantly so it
+                can touch the 1s-max marker when current sample == window max. */}
             <div
-              className={`h-full rounded-full transition-[width] duration-75 ${
+              className={`relative h-full rounded-full ${
                 mic === "armed" ? "bg-bell" : "bg-go"
               }`}
-              style={{ width: `${Math.min(100, level * 100)}%` }}
+              style={{ width: `${fillPct}%` }}
+            />
+            {/* Rolling 1s max noise — sand, dimmer than Sensitivity accent. */}
+            <div
+              className="pointer-events-none absolute inset-y-0 w-0.5 bg-sand/55"
+              style={{ left: `calc(${max1sPct}% - 1px)` }}
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute inset-y-0 w-0.5 bg-accent shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+              style={{ left: `calc(${markerPct}% - 1px)` }}
+              aria-hidden
             />
           </div>
           <p className="mt-2 text-center text-xs font-bold uppercase tracking-wider text-dim">
-            {micLabel(mic, micErr)}
+            {calibrating ? "Listening…" : micLabel(mic, micErr)}
           </p>
         </div>
 
@@ -251,6 +331,51 @@ function StarterInner({ code }: { code: string }) {
       </div>
     </Screen>
   );
+}
+
+/** Peak-hold ghost for the level bar: rises with live fill, fades opacity over 1s after drop. */
+const LEVEL_TRAIL_MS = 1000;
+
+function useMicLevelTrail(fillPct: number) {
+  const [trail, setTrail] = useState({ pct: 0, opacity: 0 });
+  const peakRef = useRef(0);
+  const bornRef = useRef(0);
+  const liveRef = useRef(fillPct);
+  liveRef.current = fillPct;
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const now = performance.now();
+      const live = liveRef.current;
+      if (live >= peakRef.current) {
+        peakRef.current = live;
+        bornRef.current = now;
+      }
+      let pct = peakRef.current;
+      let opacity = 0;
+      if (pct > live + 0.05) {
+        opacity = Math.max(0, 1 - (now - bornRef.current) / LEVEL_TRAIL_MS);
+        if (opacity <= 0) {
+          peakRef.current = live;
+          pct = live;
+          opacity = 0;
+        }
+      } else {
+        peakRef.current = live;
+        bornRef.current = now;
+        pct = live;
+      }
+      setTrail((prev) =>
+        prev.pct === pct && prev.opacity === opacity ? prev : { pct, opacity }
+      );
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  return trail;
 }
 
 function micLabel(

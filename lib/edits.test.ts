@@ -363,6 +363,59 @@ describe("helper forgiveness", () => {
     expect(event.groups).toHaveLength(2);
   });
 
+  it("sprint-finish upserts one lane only and ignores time-trial events", () => {
+    const sprintCourse = {
+      totalDistanceM: 100,
+      lapLengthM: 100,
+      firstPartialM: 0,
+      requiredCrossings: 1,
+      targetPaceSecPerKm: null,
+    };
+    let sprint = ev({
+      kind: "sprint",
+      course: sprintCourse,
+      runners: [runner("1"), runner("2"), runner("3")],
+      taps: [],
+      marks: [],
+    });
+    // TT event: no-op
+    const tt = applyEdit(ev({ kind: "time-trial" }), {
+      action: "sprint-finish",
+      bib: "1",
+      t: 1_012_000,
+      actor: "timer",
+    });
+    expect(tt.taps).toHaveLength(0);
+
+    sprint = applyEdit(sprint, {
+      action: "sprint-finish",
+      bib: "2",
+      t: 1_011_200,
+      actor: "timer",
+    });
+    sprint = applyEdit(sprint, {
+      action: "sprint-finish",
+      bib: "1",
+      t: 1_012_500,
+      actor: "timer",
+    });
+    const races = buildRunnerRaces(sprint);
+    expect(races.find((r) => r.runner.bib === "1")?.finishMs).toBe(12_500);
+    expect(races.find((r) => r.runner.bib === "2")?.finishMs).toBe(11_200);
+    expect(races.find((r) => r.runner.bib === "3")?.finishMs).toBeNull();
+
+    // Re-accept lane 2 only — lane 1 unchanged
+    sprint = applyEdit(sprint, {
+      action: "sprint-finish",
+      bib: "2",
+      t: 1_011_000,
+      actor: "timer",
+    });
+    const again = buildRunnerRaces(sprint);
+    expect(again.find((r) => r.runner.bib === "2")?.finishMs).toBe(11_000);
+    expect(again.find((r) => r.runner.bib === "1")?.finishMs).toBe(12_500);
+  });
+
   it("does not sync when there are no taps or bibs", () => {
     const event = applyEdit(ev(), { action: "sync", actor: "marker" });
     expect(event.syncs).toEqual([]);

@@ -5,7 +5,7 @@ export type FinishCamMeta = {
   recServerAt: number;
   markInMs: number | null;
   markOutMs: number | null;
-  /** YOLO window end = Mark2 + 1s pad. */
+  /** Clip end including +1s pad after Mark2 (download/full blob). YOLO uses markIn…markOut only. */
   analyseEndMs: number | null;
   durationMs: number;
   note: string;
@@ -32,19 +32,8 @@ export function isLandscape(): boolean {
   );
 }
 
-/**
- * Fullscreen a stage element (Finish Cam: TopBar + preview + Mark controls; log outside).
- * Best-effort orientation.lock.
- */
-export async function tryLockLandscape(stage?: HTMLElement | null): Promise<void> {
-  try {
-    const target = stage ?? document.documentElement;
-    if (!document.fullscreenElement && target.requestFullscreen) {
-      await target.requestFullscreen();
-    }
-  } catch {
-    /* ignore */
-  }
+/** Best-effort screen.orientation.lock("landscape"). Does not enter fullscreen. */
+export async function tryLockLandscape(): Promise<void> {
   try {
     const orient = screen.orientation as ScreenOrientation & {
       lock?: (o: string) => Promise<void>;
@@ -53,6 +42,38 @@ export async function tryLockLandscape(stage?: HTMLElement | null): Promise<void
   } catch {
     /* ignore — show rotate nudge instead */
   }
+}
+
+/** Best-effort exit fullscreen + unlock orientation (e.g. Analyse → return to portrait). */
+export async function exitFullscreenUnlockOrientation(): Promise<void> {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+  } catch {
+    /* ignore */
+  }
+  try {
+    screen.orientation?.unlock?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Toggle stage fullscreen (Finish Cam: TopBar + preview + Mark controls; log outside).
+ * Entering also best-effort locks landscape; exiting only leaves fullscreen.
+ */
+export async function toggleStageFullscreen(stage?: HTMLElement | null): Promise<void> {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    const target = stage ?? document.documentElement;
+    if (target.requestFullscreen) await target.requestFullscreen();
+  } catch {
+    /* ignore */
+  }
+  await tryLockLandscape();
 }
 
 export async function openFinishStream(deviceId?: string): Promise<{
@@ -188,3 +209,7 @@ export function stopStream(stream: MediaStream | null): void {
 /** TODO(sprint): weak bang-on-soundtrack peak vs Starter server startedAt (sound travel — verify only). */
 export const BANG_SOUNDTRACK_TODO =
   "TODO: weak bang-on-soundtrack vs Starter server time (sound travel)";
+
+/** YOLO / Analyse uses Mark1…Mark2 only; +1s pad remains on the saved blob for download. */
+export const YOLO_SLICE_NOTE =
+  "YOLO window = Mark1…Mark2 only (+1s pad kept on blob, not analysed)";
