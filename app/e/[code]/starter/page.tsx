@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
 import { PinGate } from "@/components/pin-gate";
-import { BOTTOM_TRAY, BigBtn, Screen, TopBar } from "@/components/shell";
+import { BOTTOM_TRAY, BigBtn, ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import { useBangMic } from "@/lib/client/bang-mic";
 import { json, useEvent } from "@/lib/client/hooks";
@@ -27,6 +27,7 @@ export default function StarterPage() {
 function StarterInner({ code }: { code: string }) {
   const { event, setEvent, serverNow, error } = useEvent(code, 1500);
   const [starting, setStarting] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [startErr, setStartErr] = useState<string | null>(null);
   const startingRef = useRef(false);
 
@@ -53,6 +54,22 @@ function StarterInner({ code }: { code: string }) {
       setStarting(false);
     }
   }, [adminReady, code, setEvent]);
+
+  const undoStart = useCallback(async () => {
+    if (undoing || !running) return;
+    setUndoing(true);
+    setStartErr(null);
+    try {
+      const data = await json<{ event: EventState }>(`/api/events/${code}/start`, {
+        method: "DELETE",
+      });
+      setEvent(data.event);
+    } catch {
+      setStartErr("Undo start failed");
+    } finally {
+      setUndoing(false);
+    }
+  }, [code, running, setEvent, undoing]);
 
   const onBang = useCallback(() => {
     if (running || !adminReady) return;
@@ -126,9 +143,22 @@ function StarterInner({ code }: { code: string }) {
             />
             <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
               Starter
-              {starting ? " · starting…" : null}
+              {starting ? " · starting…" : undoing ? " · reset…" : null}
             </p>
           </div>
+        }
+        extra={
+          running ? (
+            <button
+              type="button"
+              className={ICON_BTN}
+              aria-label="Undo start"
+              disabled={undoing}
+              onClick={() => void undoStart()}
+            >
+              ↻
+            </button>
+          ) : null
         }
         info="Arm when set… bang starts the race clock. Mic warms early; clap, airhorn, or gun peak tells the server to start. Race clock stays server time."
       />

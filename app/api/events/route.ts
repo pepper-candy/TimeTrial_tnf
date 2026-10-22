@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     resultKmSplits?: number[];
     hideStudentIds?: boolean;
     kind?: "sprint" | "time-trial";
+    sprintGender?: "male" | "female" | "mixed";
   };
   const pin = (body.pin ?? "").trim();
   if (!isValidPin(pin)) {
@@ -30,6 +31,14 @@ export async function POST(req: Request) {
     createdAt: Date.now(),
     status: "setup",
     kind: body.kind === "sprint" ? "sprint" : "time-trial",
+    ...(body.kind === "sprint"
+      ? {
+          sprintGender:
+            body.sprintGender === "female" || body.sprintGender === "mixed"
+              ? body.sprintGender
+              : ("male" as const),
+        }
+      : {}),
     ready: false,
     startedAt: null,
     endedAt: null,

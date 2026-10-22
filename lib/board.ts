@@ -3,7 +3,12 @@ import { crossingDistance, splitDistance } from "./course";
 import { compareRank, splitEstimated, type RunnerRace } from "./race";
 import { correctedIds } from "./records";
 import { isImpossibleSplit } from "./stats";
-import type { CourseConfig, EventState } from "./types";
+import type { CourseConfig, EventState, Runner } from "./types";
+
+/** Sprint lane is on the board only when Name or SID is set (gender alone is not enough). */
+export function isValidSprinter(runner: Pick<Runner, "name" | "studentId">): boolean {
+  return runner.name.trim() !== "" || runner.studentId.trim() !== "";
+}
 
 export type BoardFilter = "all" | Category;
 
@@ -78,6 +83,24 @@ export function boardHighlights(event: EventState, races: RunnerRace[]): BoardHi
 export function boardRows(races: RunnerRace[], filter: BoardFilter): RunnerRace[] {
   if (filter === "all") return races;
   return races.filter((r) => inCategory(r.runner.category, filter)).slice().sort(compareRank);
+}
+
+/**
+ * Sprint board rows: lane order (bib = lane), not race rank.
+ * Omits empty placeholders (no Name and no SID). Keeps unfinished valid lanes.
+ * Category filter only hides rows — never re-sorts by finish rank.
+ */
+export function sprintBoardRows(races: RunnerRace[], filter: BoardFilter = "all"): RunnerRace[] {
+  return races
+    .filter((r) => isValidSprinter(r.runner))
+    .filter((r) => filter === "all" || inCategory(r.runner.category, filter))
+    .slice()
+    .sort((a, b) => {
+      const la = Number(a.runner.bib);
+      const lb = Number(b.runner.bib);
+      if (Number.isFinite(la) && Number.isFinite(lb) && la !== lb) return la - lb;
+      return a.runner.bib.localeCompare(b.runner.bib, undefined, { numeric: true });
+    });
 }
 
 /** Lap split for the small top line: 58.3 or 1:02.4 */

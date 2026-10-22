@@ -21,6 +21,9 @@ const TT_INFO =
 const SPRINT_INFO =
   "Sprint events use short flat distances (60–400 m). Pick a preset or type meters. One finish crossing. The helper PIN unlocks Starter, Finish Cam and Admin.";
 
+/** Male → Mixed → Female → Mixed (both Mixed steps behave the same). */
+const GENDER_CYCLE = ["male", "mixed", "female", "mixed"] as const;
+
 export default function CreatePage() {
   const router = useRouter();
   const [sprintMode, setSprintMode] = useState(false);
@@ -35,6 +38,10 @@ export default function CreatePage() {
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [kmPick, setKmPick] = useState<number[] | null>(null);
+  const [genderStep, setGenderStep] = useState(0);
+  const genderMode = GENDER_CYCLE[genderStep];
+  const genderLabel =
+    genderMode === "female" ? "FEMALE" : genderMode === "male" ? "MALE" : "MIXED";
 
   const distanceM = Number(distance) || 0;
 
@@ -107,6 +114,7 @@ export default function CreatePage() {
           name: name.trim() || undefined,
           pin: pin.trim(),
           kind: sprintMode ? "sprint" : "time-trial",
+          ...(sprintMode ? { sprintGender: genderMode } : {}),
           resultKmSplits: sprintMode ? [] : resultKm,
           course: sprintMode
             ? {
@@ -176,30 +184,49 @@ export default function CreatePage() {
         </div>
 
         {sprintMode ? (
-          <label className="home-code-field w-full rounded-2xl bg-panel2 ring-1 ring-line focus-within:ring-accent focus-within:outline-none">
-            <span className="home-code-prefix">DISTANCE:</span>
-            <span className="home-code-slot">
-              <input
-                value={distance}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^\d.]/g, "");
-                  setDistance(v);
-                  const m = Number(v);
-                  const match = SPRINT_DISTANCE_PRESETS.find((p) => p.meters === m);
-                  setPreset(match ? match.id : "custom");
-                }}
-                placeholder=" "
-                aria-label="Distance in meters"
-                inputMode="decimal"
-                autoComplete="off"
-                className="home-code focus:outline-none"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && pinOk && distanceOk) void create();
-                }}
-              />
-              <span aria-hidden className="home-caret" />
-            </span>
-          </label>
+          <div className="flex items-stretch gap-2">
+            <button
+              type="button"
+              aria-label={`Gender mode ${genderLabel}`}
+              className={`tap grid h-16 shrink-0 min-w-[5.75rem] place-items-center rounded-2xl bg-panel2 px-3 text-sm font-black ring-1 ${
+                genderMode === "female"
+                  ? "text-[#ff4d8a] ring-[#ff4d8a]"
+                  : genderMode === "male"
+                    ? "text-sky ring-sky"
+                    : "text-sand ring-sand"
+              }`}
+              onClick={() => setGenderStep((s) => (s + 1) % GENDER_CYCLE.length)}
+            >
+              <span className="col-start-1 row-start-1">{genderLabel}</span>
+              <span className="invisible col-start-1 row-start-1" aria-hidden>
+                FEMALE
+              </span>
+            </button>
+            <label className="home-code-field min-w-0 flex-1 rounded-2xl bg-panel2 ring-1 ring-line focus-within:ring-accent focus-within:outline-none">
+              <span className="home-code-prefix">DISTANCE:</span>
+              <span className="home-code-slot">
+                <input
+                  value={distance}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d.]/g, "");
+                    setDistance(v);
+                    const m = Number(v);
+                    const match = SPRINT_DISTANCE_PRESETS.find((p) => p.meters === m);
+                    setPreset(match ? match.id : "custom");
+                  }}
+                  placeholder=" "
+                  aria-label="Distance in meters"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  className="home-code focus:outline-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && pinOk && distanceOk) void create();
+                  }}
+                />
+                <span aria-hidden className="home-caret" />
+              </span>
+            </label>
+          </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 rounded-2xl bg-panel p-4 ring-1 ring-line">
             <Stat value={course.requiredCrossings} label="Crossings" />

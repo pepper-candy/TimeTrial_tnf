@@ -15,6 +15,7 @@ import {
   formatLapSplitBig,
   lapColumns,
   lapDownLabel,
+  sprintBoardRows,
   type BoardFilter,
   type BoardHighlights,
   type LapColumn,
@@ -33,6 +34,9 @@ import type { EventState } from "@/lib/types";
 
 const INFO =
   "Live board — no PIN. Each box: small = lap split, big = running time. Orange cell = fastest lap of the race. Blue border = runner's best lap. ~ = estimated time. Yellow box = bell lap. Tap a runner for details.";
+
+const SPRINT_INFO =
+  "Sprint board — no PIN. One row per lane: lane · photo · name (SID under name) · finish time. Times show — until the runner finishes.";
 
 function enterFullscreen() {
   const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
@@ -75,11 +79,21 @@ export default function BoardPage() {
     };
   }, []);
 
-  const rows = useMemo(() => boardRows(races, filter), [races, filter]);
+  const isSprint = event?.kind === "sprint";
+  const rows = useMemo(
+    () => (isSprint ? sprintBoardRows(races, filter) : boardRows(races, filter)),
+    [races, filter, isSprint],
+  );
   const ids = useMemo(() => rows.map((r) => r.runner.id), [rows]);
   const bind = useFlip(ids, 420);
-  const highlights = useMemo(() => (event ? boardHighlights(event, races) : null), [event, races]);
-  const cols = useMemo(() => (event ? lapColumns(event.course) : []), [event]);
+  const highlights = useMemo(
+    () => (event && !isSprint ? boardHighlights(event, races) : null),
+    [event, races, isSprint],
+  );
+  const cols = useMemo(
+    () => (event && !isSprint ? lapColumns(event.course) : []),
+    [event, isSprint],
+  );
   const statsById = useMemo(() => {
     const m = new Map<string, RunnerStats>();
     races.forEach((r, i) => m.set(r.runner.id, stats[i]));
@@ -89,7 +103,7 @@ export default function BoardPage() {
   const leaderN = rows[0]?.crossings.length ?? 0;
   useEffect(() => {
     const el = scroller.current;
-    if (!el || cols.length === 0) return;
+    if (!el || cols.length === 0 || isSprint) return;
     function align(behavior: ScrollBehavior) {
       if (!el || Date.now() - touched.current < 8000) return;
       const col = el.querySelector<HTMLElement>(`[data-col="${Math.min(leaderN, cols.length - 1)}"]`);
@@ -111,12 +125,12 @@ export default function BoardPage() {
     const ro = new ResizeObserver(() => align("auto"));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [leaderN, cols.length]);
+  }, [leaderN, cols.length, isSprint]);
 
-  const boardReady = Boolean(event && event.runners.length > 0);
+  const boardReady = Boolean(event && event.runners.length > 0 && !isSprint);
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (!el) return;
+    if (!el || isSprint) return;
     function measure() {
       const board = scroller.current;
       if (!board) return;
@@ -128,9 +142,9 @@ export default function BoardPage() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [boardReady, rows]);
+  }, [boardReady, rows, isSprint]);
 
-  if (!event || !highlights) {
+  if (!event || (!isSprint && !highlights)) {
     return (
       <Screen>
         <LoadingState />
@@ -145,6 +159,105 @@ export default function BoardPage() {
   function pickBig(mode: BoardTimesMode) {
     setBig(mode);
     setBoardTimesMode(code, mode);
+  }
+
+  if (isSprint) {
+    return (
+      <div className="flex h-dvh flex-col bg-sbdeep">
+        {full ? null : (
+          <TopBar
+            backHref={`/e/${code}`}
+            className="bg-sbdeep/95"
+            title={
+              hasCats ? (
+                <div className="flex gap-1.5">
+                  <Chip size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
+                    All
+                  </Chip>
+                  {CATEGORIES.map((c) => (
+                    <Chip key={c} size="sm" active={filter === c} onClick={() => setFilter(c)}>
+                      {c}
+                    </Chip>
+                  ))}
+                </div>
+              ) : (
+                <h1 className="truncate text-base font-black uppercase tracking-[0.16em]">{event.name}</h1>
+              )
+            }
+            menu={
+              <MenuButton title="Board">
+                {(close) => (
+                  <BoardMenu
+                    code={code}
+                    event={event}
+                    races={races}
+                    big={big}
+                    helper={helper}
+                    sprint
+                    onBig={pickBig}
+                    onClose={close}
+                  />
+                )}
+              </MenuButton>
+            }
+            extra={
+              <button
+                type="button"
+                className="tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
+                aria-label="Full screen"
+                onClick={enterFullscreen}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                  <path
+                    d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            }
+            info={SPRINT_INFO}
+          />
+        )}
+
+        {event.runners.length === 0 ? (
+          <EmptyState title="No runners yet" hint="Add runners in Admin." />
+        ) : (
+          <div
+            className="sb sb-sprint min-h-0 flex-1 overflow-auto overscroll-contain"
+            style={{ "--rows": Math.max(1, rows.length) } as React.CSSProperties}
+          >
+            <div className="sb-sprint-head font-mono font-black uppercase tracking-[0.16em] text-white/80">
+              <div className="sb-sprint-lane">Lane</div>
+              <div className="sb-sprint-name">Name</div>
+              <div className="sb-sprint-time">Time</div>
+            </div>
+            {rows.map((r, i) => (
+              <SprintBoardRow
+                key={r.runner.id}
+                race={r}
+                eventId={event.id}
+                odd={i % 2 === 1}
+                onOpen={() => setOpen(r.runner.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        <Footer event={event} leader={null} now={serverNow} sprint />
+
+        {selected ? (
+          <SprintDetail
+            event={event}
+            race={selected}
+            onClose={() => setOpen(null)}
+          />
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -236,7 +349,7 @@ export default function BoardPage() {
                 odd={i % 2 === 1}
                 cols={cols}
                 event={event}
-                highlights={highlights}
+                highlights={highlights!}
                 big={big}
                 now={serverNow}
                 running={running}
@@ -265,6 +378,96 @@ export default function BoardPage() {
 
 function Screen({ children }: { children: React.ReactNode }) {
   return <div className="flex min-h-dvh flex-col bg-sbdeep">{children}</div>;
+}
+
+function SprintBoardRow({
+  race,
+  eventId,
+  odd,
+  onOpen,
+}: {
+  race: RunnerRace;
+  eventId: string;
+  odd: boolean;
+  onOpen: () => void;
+}) {
+  const r = race.runner;
+  const dnf = r.dnfAt != null;
+  const src = r.photoVer ? photoPath(eventId, r.id, r.photoVer, "thumb") : null;
+  let time: React.ReactNode = "—";
+  if (dnf) time = <span className="text-stop">DNF</span>;
+  else if (race.finished && race.finishMs != null) time = formatClock(race.finishMs, 1);
+  const tone = [odd ? "sb-odd" : "", dnf ? "sb-dnf" : race.finished ? "sb-fin" : ""].join(" ");
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => e.key === "Enter" && onOpen()}
+      className={`sb-sprint-row tap ${tone}`}
+    >
+      <div className="sb-sprint-lane font-mono font-black tabular text-white">{r.bib || "—"}</div>
+      <div className="sb-sprint-name min-w-0">
+        <div className="sb-photo relative shrink-0 overflow-hidden rounded-lg ring-1 ring-black/60">
+          {src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div
+              className="grid h-full w-full place-items-center text-sm font-black text-white"
+              style={{ background: bibColor(r.bib || r.name || "?") }}
+            >
+              {initials(r.name) || r.bib.slice(0, 2)}
+            </div>
+          )}
+          {dnf ? <DnfMark size={40} /> : null}
+        </div>
+        <div className="sb-sprint-who min-w-0">
+          <div className="truncate font-bold leading-tight text-sand">{r.name || "—"}</div>
+          {r.studentId ? (
+            <div className="sb-sprint-sid truncate font-mono tabular">{r.studentId}</div>
+          ) : null}
+        </div>
+      </div>
+      <div className="sb-sprint-time font-mono font-black tabular text-white">{time}</div>
+    </div>
+  );
+}
+
+function SprintDetail({
+  event,
+  race,
+  onClose,
+}: {
+  event: EventState;
+  race: RunnerRace;
+  onClose: () => void;
+}) {
+  const r = race.runner;
+  const time =
+    r.dnfAt != null
+      ? "DNF"
+      : race.finished && race.finishMs != null
+        ? formatClock(race.finishMs, 1)
+        : "—";
+  return (
+    <Sheet title={`Lane ${r.bib || "—"}`} onClose={onClose}>
+      <div className="flex items-center gap-3">
+        <Avatar runner={r} eventId={event.id} size={72} overlay={false} lightbox />
+        <div className="min-w-0 flex-1">
+          <div className="text-xl font-black leading-tight break-words">{r.name || "—"}</div>
+          <div className="font-mono text-sm tabular text-dim">
+            {[r.studentId, normalizeCategory(r.category)].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+        <div className="font-mono text-5xl font-black tabular">{r.bib}</div>
+      </div>
+      <div className="mt-5 grid grid-cols-2 gap-4">
+        <Stat value={time} label="Finish" />
+        <Stat value={`${event.course.totalDistanceM} m`} label="Distance" />
+      </div>
+    </Sheet>
+  );
 }
 
 function HeaderRow({ cols, nowCol }: { cols: LapColumn[]; nowCol: number }) {
@@ -584,17 +787,27 @@ function labelWidth(text: string): number {
   return width;
 }
 
-function Footer({ event, leader, now }: { event: EventState; leader: RunnerRace | null; now: number }) {
+function Footer({
+  event,
+  leader,
+  now,
+  sprint = false,
+}: {
+  event: EventState;
+  leader: RunnerRace | null;
+  now: number;
+  sprint?: boolean;
+}) {
   const laps = event.course.totalDistanceM / event.course.lapLengthM;
   const lapsText = Number.isInteger(laps) ? String(laps) : laps.toFixed(1);
-  const lead = leader && leader.crossings.length > 0 ? leader : null;
+  const lead = !sprint && leader && leader.crossings.length > 0 ? leader : null;
   return (
     <footer className="sb-foot grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 sm:px-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto] md:py-3">
       <div className="min-w-0">
         <div className="truncate text-lg font-black leading-tight sm:text-2xl lg:text-3xl">{event.name}</div>
         <div className="mt-0.5 flex items-center gap-3 font-mono text-sm font-black tabular text-dim sm:text-base lg:text-xl">
           <span className="whitespace-nowrap">{event.course.totalDistanceM} m</span>
-          <span className="whitespace-nowrap">{lapsText} laps</span>
+          {sprint ? null : <span className="whitespace-nowrap">{lapsText} laps</span>}
           {lead ? (
             <span className="flex min-w-0 items-center gap-1.5 md:hidden">
               <span className="rounded-md bg-accent px-1.5 text-ink">1</span>
@@ -605,7 +818,11 @@ function Footer({ event, leader, now }: { event: EventState; leader: RunnerRace 
         </div>
       </div>
       <div className="hidden min-w-0 items-center gap-3 md:flex">
-        {lead ? (
+        {sprint ? (
+          <span className="text-sm font-bold uppercase tracking-[0.2em] text-dim">
+            {event.status === "setup" ? "Waiting" : "Sprint"}
+          </span>
+        ) : lead ? (
           <>
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-accent font-mono text-2xl font-black text-ink lg:h-14 lg:w-14 lg:text-3xl">
               1
@@ -636,6 +853,7 @@ function BoardMenu({
   races,
   big,
   helper,
+  sprint = false,
   onBig,
   onClose,
 }: {
@@ -644,6 +862,7 @@ function BoardMenu({
   races: RunnerRace[];
   big: BoardTimesMode;
   helper: boolean;
+  sprint?: boolean;
   onBig: (m: BoardTimesMode) => void;
   onClose: () => void;
 }) {
@@ -663,17 +882,19 @@ function BoardMenu({
 
   return (
     <div className="space-y-4">
-      <div>
-        <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-dim">Big number</div>
-        <div className="flex gap-2">
-          <Chip active={big === "cumulative"} onClick={() => onBig("cumulative")}>
-            Run time
-          </Chip>
-          <Chip active={big === "split"} onClick={() => onBig("split")}>
-            Lap split
-          </Chip>
+      {sprint ? null : (
+        <div>
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-dim">Big number</div>
+          <div className="flex gap-2">
+            <Chip active={big === "cumulative"} onClick={() => onBig("cumulative")}>
+              Run time
+            </Chip>
+            <Chip active={big === "split"} onClick={() => onBig("split")}>
+              Lap split
+            </Chip>
+          </div>
         </div>
-      </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <BigBtn
           tone="plain"

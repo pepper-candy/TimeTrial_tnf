@@ -32,11 +32,16 @@ export function isLandscape(): boolean {
   );
 }
 
-/** Best-effort fullscreen + orientation.lock; phones often ignore lock without gesture. */
-export async function tryLockLandscape(): Promise<void> {
+/**
+ * Fullscreen a stage element (Finish Cam: TopBar + preview + Mark controls; log outside).
+ * Best-effort orientation.lock.
+ */
+export async function tryLockLandscape(stage?: HTMLElement | null): Promise<void> {
   try {
-    const el = document.documentElement;
-    if (el.requestFullscreen) await el.requestFullscreen();
+    const target = stage ?? document.documentElement;
+    if (!document.fullscreenElement && target.requestFullscreen) {
+      await target.requestFullscreen();
+    }
   } catch {
     /* ignore */
   }
@@ -74,26 +79,106 @@ export async function openFinishStream(deviceId?: string): Promise<{
   return { stream, track };
 }
 
-export type ZoomCaps = { min: number; max: number; step: number; value: number };
+export type ZoomCaps = {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  /** Hardware zoom via applyConstraints; otherwise digital crop into the recorded stream. */
+  mode: "hardware" | "digital";
+};
 
-export function readZoomCaps(track: MediaStreamTrack | null): ZoomCaps | null {
-  if (!track?.getCapabilities) return null;
-  const caps = track.getCapabilities() as MediaTrackCapabilities & {
-    zoom?: { min: number; max: number; step?: number };
-  };
-  if (!caps.zoom) return null;
-  const settings = (track.getSettings?.() ?? {}) as MediaTrackSettings & { zoom?: number };
-  return {
-    min: caps.zoom.min,
-    max: caps.zoom.max,
-    step: caps.zoom.step || 0.1,
-    value: settings.zoom ?? caps.zoom.min,
-  };
+const DIGITAL_ZOOM: ZoomCaps = { min: 1, max: 3, step: 0.1, value: 1, mode: "digital" };
+
+export function readZoomCaps(track: MediaStreamTrack | null): ZoomCaps {
+  if (track?.getCapabilities) {
+    const caps = track.getCapabilities() as MediaTrackCapabilities & {
+      zoom?: { min: number; max: number; step?: number };
+    };
+    if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+      const settings = (track.getSettings?.() ?? {}) as MediaTrackSettings & { zoom?: number };
+      return {
+        min: caps.zoom.min,
+        max: caps.zoom.max,
+        step: caps.zoom.step || 0.1,
+        value: settings.zoom ?? caps.zoom.min,
+        mode: "hardware",
+      };
+    }
+  }
+  return { ...DIGITAL_ZOOM };
 }
 
-export async function applyZoom(track: MediaStreamTrack | null, zoom: number): Promise<void> {
+export async function applyHardwareZoom(
+  track: MediaStreamTrack | null,
+  zoom: number,
+): Promise<void> {
   if (!track) return;
   await track.applyConstraints({ advanced: [{ zoom } as MediaTrackConstraintSet] });
+}
+
+/**
+ * Draws the live video into a canvas with centre-crop digital zoom and returns a
+ * stream suitable for MediaRecorder (so zoom is in the recording, not preview-only).
+ */
+export function startZoomPipeline(
+  video: HTMLVideoElement,
+  camera: MediaStream,
+  zoomRef: { current: number },
+): { canvas: HTMLCanvasElement; recordStream: MediaStream; stop: () => void } {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) throw new Error("Canvas unavailable");
+
+  const vw = video.videoWidth || 1280;
+  const vh = video.videoHeight || 720;
+  canvas.width = vw;
+  canvas.height = vh;
+
+  let raf = 0;
+  let alive = true;
+
+  function draw() {
+    if (!alive) return;
+    const z = Math.max(1, zoomRef.current || 1);
+    const sw = vw / z;
+    const sh = vh / z;
+    const sx = (vw - sw) / 2;
+    const sy = (vh - sh) / 2;
+    ctx!.drawImage(video, sx, sy, sw, sh, 0, 0, vw, vh);
+    raf = requestAnimationFrame(draw);
+  }
+
+  // Wait until dimensions exist, then start.
+  function kick() {
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (w && h) {
+      canvas.width = w;
+      canvas.height = h;
+      draw();
+      return;
+    }
+    raf = requestAnimationFrame(kick);
+  }
+  kick();
+
+  const fps = 30;
+  const canvasStream = canvas.captureStream(fps);
+  // Keep mic/audio from the camera stream on the recorded mix.
+  for (const t of camera.getAudioTracks()) {
+    canvasStream.addTrack(t);
+  }
+
+  return {
+    canvas,
+    recordStream: canvasStream,
+    stop: () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      canvasStream.getVideoTracks().forEach((t) => t.stop());
+    },
+  };
 }
 
 export function stopStream(stream: MediaStream | null): void {

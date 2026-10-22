@@ -8,12 +8,25 @@ import { EmptyState, LoadingState } from "@/components/states";
 import { useEvent } from "@/lib/client/hooks";
 import { isAdminDevice } from "@/lib/client/pin";
 
-const ROLES = [
+const TT_ROLES = [
   { href: "timer", label: "Timer", icon: "◉", hint: "Tap" },
   { href: "marker", label: "Marker", icon: "#", hint: "Bibs" },
   { href: "board", label: "Board", icon: "▦", hint: "Public" },
   { href: "admin", label: "Admin", icon: "⚙", hint: "Setup" },
 ] as const;
+
+/** Sprint helpers: Starter listens for the bang; Finish Cam records the line. */
+const SPRINT_ROLES = [
+  { href: "starter", label: "Starter", icon: "◎", hint: "Bang" },
+  { href: "finish-cam", label: "Finish Cam", icon: "▣", hint: "Camera" },
+  { href: "board", label: "Board", icon: "▦", hint: "Public" },
+  { href: "admin", label: "Admin", icon: "⚙", hint: "Setup" },
+] as const;
+
+const TT_INFO =
+  "Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN.";
+const SPRINT_INFO =
+  "Board is public — no PIN. Starter listens for the bang; Finish Cam records the finish. Both and Admin unlock with the helper PIN.";
 
 export default function RolePage() {
   const { code } = useParams<{ code: string }>();
@@ -48,6 +61,9 @@ export default function RolePage() {
     );
   }
 
+  const sprint = event.kind === "sprint";
+  const roles = sprint ? SPRINT_ROLES : TT_ROLES;
+
   return (
     <Screen>
       <TopBar
@@ -65,10 +81,10 @@ export default function RolePage() {
             🔔
           </Link>
         }
-        info="Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN."
+        info={sprint ? SPRINT_INFO : TT_INFO}
       />
       <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 px-4 pb-8">
-        {ROLES.map((r) => {
+        {roles.map((r) => {
           const hot = r.href === "admin" ? admin : false;
           return (
             <Link

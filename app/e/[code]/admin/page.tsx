@@ -15,6 +15,7 @@ import { fetchWithPin, json, useEvent } from "@/lib/client/hooks";
 import { forgetAdmin, getMasterKey, getStoredPin, rememberAdmin, setStoredPin } from "@/lib/client/pin";
 import { preparePhotos } from "@/lib/client/photo";
 import { kmCrossings } from "@/lib/course";
+import { isValidSprinter } from "@/lib/board";
 import { bibColor } from "@/lib/format";
 import { photoPath } from "@/lib/photo";
 import { normalizeBib } from "@/lib/race";
@@ -22,6 +23,18 @@ import { recordCounts } from "@/lib/records";
 import { eventLinks, helperLink } from "@/lib/share";
 import { formatStorage, storageRatio } from "@/lib/storage";
 import type { EventState, Runner } from "@/lib/types";
+
+const SPRINT_LANES = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+
+function sprintLaneRunners(runners: Runner[]): Runner[] {
+  const byBib = new Map(runners.map((r) => [normalizeBib(r.bib), r]));
+  return SPRINT_LANES.map((lane) => byBib.get(lane)).filter((r): r is Runner => Boolean(r));
+}
+
+/** Seed category from create-time sprintGender (mixed / missing → Boys). */
+function sprintSeedCategory(event: EventState): "Boys" | "Girls" {
+  return event.sprintGender === "female" ? "Girls" : "Boys";
+}
 
 function displayGone(
   runners: Runner[],
@@ -58,6 +71,7 @@ export default function AdminPage() {
 function AdminInner({ code }: { code: string }) {
   const router = useRouter();
   const { event, setEvent, races } = useEvent(code, 2000);
+  const isSprint = event?.kind === "sprint";
   const [draft, setDraft] = useState({ bib: "", name: "", studentId: "", category: "Boys" });
   const [draftPhoto, setDraftPhoto] = useState<File | null>(null);
   const [draftPreview, setDraftPreview] = useState<string | null>(null);
@@ -66,6 +80,7 @@ function AdminInner({ code }: { code: string }) {
   const [gone, setGone] = useState<{ runner: Runner; index: number } | null>(null);
   const goneRef = useRef<{ runner: Runner; index: number } | null>(null);
   const runnerChain = useRef(Promise.resolve());
+  const lanesEnsured = useRef(false);
   const [storage, setStorage] = useState<{ used: number; cap: number } | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
@@ -155,6 +170,34 @@ function AdminInner({ code }: { code: string }) {
     return data.event;
   }
 
+  /** Sprint: ensure bib lanes 1–9 exist as empty placeholders (board filters empties out). */
+  useEffect(() => {
+    if (!event || event.kind !== "sprint" || lanesEnsured.current) return;
+    const byBib = new Map(event.runners.map((r) => [normalizeBib(r.bib), r]));
+    const missing = SPRINT_LANES.filter((lane) => !byBib.has(lane));
+    if (missing.length === 0) {
+      lanesEnsured.current = true;
+      return;
+    }
+    lanesEnsured.current = true;
+    const category = sprintSeedCategory(event);
+    runnerChain.current = runnerChain.current
+      .then(async () => {
+        let latest = event;
+        for (const bib of missing) {
+          const data = await postRunners({
+            action: "upsert",
+            runner: { bib, name: "", studentId: "", category },
+          });
+          latest = data.event;
+        }
+        setEvent(latest);
+      })
+      .catch(() => {
+        lanesEnsured.current = false;
+      });
+  }, [event, postRunners, setEvent]);
+
   function clearDraftPhoto() {
     setDraftPreview((url) => {
       if (url) URL.revokeObjectURL(url);
@@ -236,10 +279,12 @@ function AdminInner({ code }: { code: string }) {
   const bibTaken =
     draft.bib.trim() !== "" &&
     event.runners.some((r) => normalizeBib(r.bib) === normalizeBib(draft.bib));
+  const validSprinters = event.runners.filter(isValidSprinter);
+  const readyDisabled =
+    event.ready || (isSprint ? validSprinters.length === 0 : event.runners.length === 0);
   const kmOpts = kmCrossings(event.course).filter(
     (x) => x.km * 1000 < event.course.totalDistanceM - 0.5,
   );
-
   return (
     <Screen>
       <TopBar
@@ -317,133 +362,151 @@ function AdminInner({ code }: { code: string }) {
 
         <section>
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-[11px] font-black uppercase tracking-[0.16em] text-dim">Runners</h2>
+            <h2 className="text-[11px] font-black uppercase tracking-[0.16em] text-dim">
+              {isSprint ? "Sprinters" : "Runners"}
+            </h2>
             <span className="font-mono text-2xl font-black tabular">
-              {event.runners.filter((r) => r.id !== gone?.runner.id).length}
+              {isSprint
+                ? validSprinters.length
+                : event.runners.filter((r) => r.id !== gone?.runner.id).length}
             </span>
           </div>
           <div className="space-y-2">
-            <div className="rounded-2xl bg-panel p-2 ring-1 ring-accent/60">
-              <div className="flex items-stretch gap-2">
-                <button
-                  type="button"
-                  className="tap relative grid w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-panel2 text-3xl font-black text-dim ring-1 ring-line"
-                  aria-label="Take photo"
-                  onClick={() => draftCamera.current?.click()}
-                >
-                  {draftPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={draftPreview} alt="" className="absolute inset-0 h-full w-full object-cover" />
-                  ) : (
-                    "+"
-                  )}
-                </button>
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <div className="flex gap-2">
-                    <input
-                      value={draft.name}
-                      onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                      placeholder="Name"
-                      aria-label="Name"
-                      className="h-12 min-w-0 flex-1 rounded-xl bg-panel2 px-3 placeholder:text-dim"
-                    />
-                    <input
-                      value={draft.bib}
-                      onChange={(e) => setDraft((d) => ({ ...d, bib: e.target.value }))}
-                      placeholder={event.kind === "sprint" ? "Lane" : "Bib"}
-                      aria-label={event.kind === "sprint" ? "Lane" : "Bib"}
-                      inputMode="numeric"
-                      className={`h-12 w-20 shrink-0 rounded-xl bg-panel2 px-2 text-center font-mono text-2xl font-black tabular placeholder:text-base placeholder:text-dim ${
-                        bibTaken ? "ring-1 ring-stop" : ""
-                      }`}
-                      aria-invalid={bibTaken}
-                      title={bibTaken ? "Already used" : undefined}
-                    />
+            {isSprint ? null : (
+              <div className="rounded-2xl bg-panel p-2 ring-1 ring-accent/60">
+                <div className="flex items-stretch gap-2">
+                  <button
+                    type="button"
+                    className="tap relative grid w-16 shrink-0 place-items-center overflow-hidden rounded-xl bg-panel2 text-3xl font-black text-dim ring-1 ring-line"
+                    aria-label="Take photo"
+                    onClick={() => draftCamera.current?.click()}
+                  >
+                    {draftPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={draftPreview} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                    ) : (
+                      "+"
+                    )}
+                  </button>
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <div className="flex gap-2">
+                      <input
+                        value={draft.name}
+                        onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                        placeholder="Name"
+                        aria-label="Name"
+                        className="h-12 min-w-0 flex-1 rounded-xl bg-panel2 px-3 placeholder:text-dim"
+                      />
+                      <input
+                        value={draft.bib}
+                        onChange={(e) => setDraft((d) => ({ ...d, bib: e.target.value }))}
+                        placeholder="Bib"
+                        aria-label="Bib"
+                        inputMode="numeric"
+                        className={`h-12 w-20 shrink-0 rounded-xl bg-panel2 px-2 text-center font-mono text-2xl font-black tabular placeholder:text-base placeholder:text-dim ${
+                          bibTaken ? "ring-1 ring-stop" : ""
+                        }`}
+                        aria-invalid={bibTaken}
+                        title={bibTaken ? "Already used" : undefined}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={draft.studentId}
+                        onChange={(e) => setDraft((d) => ({ ...d, studentId: e.target.value.slice(0, 8) }))}
+                        placeholder="SID"
+                        aria-label="Student ID"
+                        inputMode="numeric"
+                        maxLength={8}
+                        className="h-10 w-28 shrink-0 rounded-xl bg-panel2 px-2 font-mono text-sm font-bold tabular placeholder:text-dim"
+                        onKeyDown={(e) => e.key === "Enter" && addDraft()}
+                      />
+                      <button
+                        type="button"
+                        aria-label={draft.category === "Girls" ? "Female" : "Male"}
+                        aria-pressed={draft.category === "Girls"}
+                        className={`tap grid h-10 shrink-0 place-items-center rounded-xl bg-transparent px-3 text-sm font-black ring-1 ${
+                          draft.category === "Girls"
+                            ? "text-[#ff4d8a] ring-[#ff4d8a]"
+                            : "text-sky ring-sky"
+                        }`}
+                        onClick={() =>
+                          setDraft((d) => ({ ...d, category: d.category === "Girls" ? "Boys" : "Girls" }))
+                        }
+                      >
+                        <span className="col-start-1 row-start-1">
+                          {draft.category === "Girls" ? "FEMALE" : "MALE"}
+                        </span>
+                        <span className="invisible col-start-1 row-start-1" aria-hidden>
+                          FEMALE
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="tap h-10 min-w-0 flex-1 rounded-xl bg-accent px-4 text-base font-black text-ink disabled:opacity-40"
+                        onClick={addDraft}
+                        disabled={!draft.bib.trim() || bibTaken}
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={draft.studentId}
-                      onChange={(e) => setDraft((d) => ({ ...d, studentId: e.target.value.slice(0, 8) }))}
-                      placeholder="SID"
-                      aria-label="Student ID"
-                      inputMode="numeric"
-                      maxLength={8}
-                      className="h-10 w-28 shrink-0 rounded-xl bg-panel2 px-2 font-mono text-sm font-bold tabular placeholder:text-dim"
-                      onKeyDown={(e) => e.key === "Enter" && addDraft()}
-                    />
-                    <button
-                      type="button"
-                      aria-label={draft.category === "Girls" ? "Female" : "Male"}
-                      aria-pressed={draft.category === "Girls"}
-                      className={`tap grid h-10 shrink-0 place-items-center rounded-xl bg-transparent px-3 text-sm font-black ring-1 ${
-                        draft.category === "Girls"
-                          ? "text-[#ff4d8a] ring-[#ff4d8a]"
-                          : "text-sky ring-sky"
-                      }`}
-                      onClick={() =>
-                        setDraft((d) => ({ ...d, category: d.category === "Girls" ? "Boys" : "Girls" }))
-                      }
-                    >
-                      <span className="col-start-1 row-start-1">
-                        {draft.category === "Girls" ? "FEMALE" : "MALE"}
-                      </span>
-                      <span className="invisible col-start-1 row-start-1" aria-hidden>
-                        FEMALE
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="tap h-10 min-w-0 flex-1 rounded-xl bg-accent px-4 text-base font-black text-ink disabled:opacity-40"
-                      onClick={addDraft}
-                      disabled={!draft.bib.trim() || bibTaken}
-                    >
-                      Add
-                    </button>
-                  </div>
+                  <input
+                    ref={draftCamera}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const picked = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!picked) return;
+                      setDraftPreview((url) => {
+                        if (url) URL.revokeObjectURL(url);
+                        return URL.createObjectURL(picked);
+                      });
+                      setDraftPhoto(picked);
+                    }}
+                  />
                 </div>
-                <input
-                  ref={draftCamera}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const picked = e.target.files?.[0];
-                    e.target.value = "";
-                    if (!picked) return;
-                    setDraftPreview((url) => {
-                      if (url) URL.revokeObjectURL(url);
-                      return URL.createObjectURL(picked);
-                    });
-                    setDraftPhoto(picked);
-                  }}
-                />
               </div>
-            </div>
-            {runnerSlots([...event.runners].reverse(), displayGone(event.runners, gone)).map((slot) =>
-              slot.kind === "gone" ? (
-                <button
-                  key="deleted-runner"
-                  type="button"
-                  className="tap flex h-20 w-full items-center justify-center rounded-2xl bg-panel text-sm font-black ring-1 ring-line"
-                  onClick={undoRunner}
-                >
-                  <span className="text-dim">Deleted</span>
-                  <span className="px-1.5 text-dim">·</span>
-                  <span className="text-accent">Undo</span>
-                </button>
-              ) : (
-                <RunnerRow
-                  key={slot.runner.id}
-                  runner={slot.runner}
-                  eventId={event.id}
-                  onChange={(next) => saveRunner({ id: slot.runner.id, ...next })}
-                  onPhoto={(f) => photo(slot.runner.id, f)}
-                  onFix={event.status === "setup" ? undefined : () => setFixId(slot.runner.id)}
-                  onDelete={() => removeRunner(slot.runner)}
-                />
-              ),
             )}
+            {isSprint
+              ? sprintLaneRunners(event.runners).map((runner) => (
+                  <RunnerRow
+                    key={runner.id}
+                    runner={runner}
+                    eventId={event.id}
+                    sprint
+                    onChange={(next) => saveRunner({ id: runner.id, ...next })}
+                    onPhoto={(f) => photo(runner.id, f)}
+                    onFix={event.status === "setup" ? undefined : () => setFixId(runner.id)}
+                  />
+                ))
+              : runnerSlots([...event.runners].reverse(), displayGone(event.runners, gone)).map((slot) =>
+                  slot.kind === "gone" ? (
+                    <button
+                      key="deleted-runner"
+                      type="button"
+                      className="tap flex h-20 w-full items-center justify-center rounded-2xl bg-panel text-sm font-black ring-1 ring-line"
+                      onClick={undoRunner}
+                    >
+                      <span className="text-dim">Deleted</span>
+                      <span className="px-1.5 text-dim">·</span>
+                      <span className="text-accent">Undo</span>
+                    </button>
+                  ) : (
+                    <RunnerRow
+                      key={slot.runner.id}
+                      runner={slot.runner}
+                      eventId={event.id}
+                      onChange={(next) => saveRunner({ id: slot.runner.id, ...next })}
+                      onPhoto={(f) => photo(slot.runner.id, f)}
+                      onFix={event.status === "setup" ? undefined : () => setFixId(slot.runner.id)}
+                      onDelete={() => removeRunner(slot.runner)}
+                    />
+                  ),
+                )}
           </div>
         </section>
       </div>
@@ -455,7 +518,7 @@ function AdminInner({ code }: { code: string }) {
               className={`flex-1 ${event.ready ? "disabled:opacity-100" : ""}`}
               tone={event.ready ? "go" : "accent"}
               onClick={event.ready ? undefined : markReady}
-              disabled={event.ready || event.runners.length === 0}
+              disabled={readyDisabled}
             >
               READY
             </BigBtn>
@@ -808,6 +871,7 @@ function EndButton({ onEnd }: { onEnd: () => void }) {
 function RunnerRow({
   runner,
   eventId,
+  sprint = false,
   onChange,
   onPhoto,
   onDelete,
@@ -815,9 +879,10 @@ function RunnerRow({
 }: {
   runner: Runner;
   eventId: string;
+  sprint?: boolean;
   onChange: (r: Partial<Runner>) => void;
   onPhoto: (file: File) => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onFix?: () => void;
 }) {
   const file = useRef<HTMLInputElement>(null);
@@ -829,24 +894,33 @@ function RunnerRow({
   return (
     <SwipeRow
       label={runner.name ? `Remove ${runner.name}` : "Remove runner"}
-      onDelete={onDelete}
+      onDelete={onDelete ?? (() => {})}
+      disabled={!onDelete}
       className="rounded-2xl bg-panel ring-1 ring-line"
     >
       <div className="flex items-stretch gap-2 p-2">
         <button
           type="button"
-          className="tap relative grid w-16 shrink-0 place-items-center self-stretch overflow-hidden rounded-xl bg-panel2 ring-1 ring-line"
+          className={`tap relative grid w-16 shrink-0 place-items-center self-stretch overflow-hidden rounded-xl ${
+            sprint
+              ? "bg-accent text-ink shadow-[inset_0_-4px_0_rgba(0,0,0,0.25)]"
+              : "bg-panel2 ring-1 ring-line"
+          }`}
           aria-label={`Replace photo for bib ${runner.bib}`}
           onClick={() => file.current?.click()}
         >
           {src ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          ) : (
+          ) : sprint ? null : (
             <span className="absolute inset-0" style={{ background: bibColor(runner.bib || runner.name || "?") }} />
           )}
-          <span className="absolute inset-0 bg-black/45" />
-          <span className="relative font-mono text-2xl font-black tabular text-white [text-shadow:0_1px_2px_#000]">
+          {src || !sprint ? <span className="absolute inset-0 bg-black/45" /> : null}
+          <span
+            className={`relative font-mono text-2xl font-black tabular ${
+              sprint && !src ? "text-ink" : "text-white [text-shadow:0_1px_2px_#000]"
+            }`}
+          >
             {runner.bib}
           </span>
           {runner.dnfAt != null ? <DnfMark size={56} /> : null}
