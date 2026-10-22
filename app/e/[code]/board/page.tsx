@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Avatar } from "@/components/avatar";
+import { Avatar, DnfMark } from "@/components/avatar";
 import { PaceChart } from "@/components/chart";
 import { RaceClock } from "@/components/clock";
 import { BigBtn, Chip, MenuButton, Sheet, Stat, TopBar, useCopied } from "@/components/shell";
@@ -320,8 +320,8 @@ function BoardRow({
   const tone = [
     odd ? "sb-odd" : "",
     rank === 1 && race.crossings.length > 0 ? "sb-leader" : "",
-    race.finished ? "sb-fin" : "",
-    race.bell ? "sb-belling" : "",
+    race.runner.dnfAt != null ? "sb-dnf" : race.finished ? "sb-fin" : "",
+    race.runner.dnfAt == null && race.bell ? "sb-belling" : "",
   ].join(" ");
   return (
     <div
@@ -430,7 +430,8 @@ function TotalCell({ race, event, stats }: { race: RunnerRace; event: EventState
   const value = ms != null && last ? formatEst(formatClock(ms, 1), last.estimated) : "—";
   const dot = value.lastIndexOf(".");
   let status: React.ReactNode;
-  if (race.finished) status = <span className="text-go">FIN</span>;
+  if (race.runner.dnfAt != null) status = <span className="text-stop">DNF</span>;
+  else if (race.finished) status = <span className="text-go">FIN</span>;
   else if (race.bell) status = <span className="text-bell">BELL</span>;
   else if (race.lapDown > 0) status = <span className="text-stop">{lapDownLabel(race.lapDown)}</span>;
   else status = <span className="text-dim">{race.crossings.length}/{event.course.requiredCrossings}</span>;
@@ -475,6 +476,7 @@ function Thumb({ race, eventId }: { race: RunnerRace; eventId: string }) {
       <span className="absolute inset-x-0 bottom-0 grid h-[58%] place-items-center bg-gradient-to-t from-black/85 to-black/25 font-mono text-[15px] font-black leading-none tabular tracking-tight text-white [text-shadow:0_1px_2px_#000] sm:hidden">
         {r.bib}
       </span>
+      {r.dnfAt != null ? <DnfMark size={40} /> : null}
     </div>
   );
 }

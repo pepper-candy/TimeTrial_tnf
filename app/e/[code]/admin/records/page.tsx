@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/avatar";
 import { SwipeRow } from "@/components/swipe-row";
 import { PinGate } from "@/components/pin-gate";
-import { Screen, TopBar } from "@/components/shell";
+import { BOTTOM_TRAY, Screen, TopBar } from "@/components/shell";
 import { LoadingState } from "@/components/states";
 import { useHardwareKeys } from "@/lib/client/hardware-keys";
 import { json, useEvent } from "@/lib/client/hooks";
@@ -29,6 +29,8 @@ import type { EventState } from "@/lib/types";
 const ROW_BODY = 134;
 const ROW_GAP = 18;
 const ROW_H = ROW_BODY + ROW_GAP;
+/** Last bar in a pack stops at the card, not in the empty slot under CHANGE. */
+const PACK_END = `${ROW_GAP + 4}px`;
 
 type Editor =
   | { mode: "time"; index: number; tapId: string }
@@ -203,7 +205,7 @@ function RecordsInner({ code }: { code: string }) {
             <FlagIcon />
           </button>
         }
-        info="Row n is timer tap n beside marker bib n. A short tag marks a suspicious row. The flag shows only tagged rows. Delete, edit, or insert either side."
+        info="Row n is timer tap n beside marker bib n. A blue line is a Marker sync cutoff: pairing restarts after it. A short tag marks a suspicious row. The flag shows only tagged rows. Delete, edit, or insert either side."
       />
       <p
         className={`h-5 shrink-0 text-center text-[11px] font-bold uppercase tracking-[0.16em] ${
@@ -223,6 +225,8 @@ function RecordsInner({ code }: { code: string }) {
           return (
             <RecordLine
               row={row}
+              prev={index > 0 ? visible[index - 1] : undefined}
+              next={index < visible.length - 1 ? visible[index + 1] : undefined}
               tags={tagLists[row.index] ?? []}
               eventId={event.id}
               runners={event.runners}
@@ -247,7 +251,8 @@ function RecordsInner({ code }: { code: string }) {
         }}
       </Windowed>
       {editor ? (
-        <div className="shrink-0 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className={BOTTOM_TRAY}>
+          <div className="pointer-events-auto">
             <div className="mb-2 flex items-center gap-2">
               <div
                 className="flex h-12 min-w-0 flex-1 items-center justify-center rounded-[12px] bg-panel font-mono text-3xl font-black tabular tracking-[0.08em] ring-1 ring-line"
@@ -287,6 +292,7 @@ function RecordsInner({ code }: { code: string }) {
                 </button>
               ))}
             </div>
+          </div>
         </div>
       ) : null}
     </Screen>
@@ -335,7 +341,7 @@ function Windowed({
             return (
               <div
                 key={index}
-                className="absolute inset-x-0 px-3"
+                className="absolute inset-x-0"
                 style={{ top: index * ROW_H, height: ROW_H }}
               >
                 {children(index)}
@@ -350,6 +356,8 @@ function Windowed({
 
 function RecordLine({
   row,
+  prev,
+  next,
   eventId,
   runners,
   width,
@@ -363,6 +371,8 @@ function RecordLine({
   onInsertBib,
 }: {
   row: RecordRow;
+  prev?: RecordRow;
+  next?: RecordRow;
   eventId: string;
   runners: EventState["runners"];
   width: number;
@@ -378,7 +388,39 @@ function RecordLine({
   const n = String(row.index + 1).padStart(2, "0");
   const runner = row.mark ? runnerByBib(runners, row.mark.bib) : undefined;
   const bib = row.mark ? padBib(row.mark.bib, width) : "";
+  const tapJoinAbove = row.tapPack != null && prev?.tapPack === row.tapPack;
+  const tapJoinBelow = row.tapPack != null && next?.tapPack === row.tapPack;
+  const bibJoinAbove = row.bibPack != null && prev?.bibPack === row.bibPack;
+  const bibJoinBelow = row.bibPack != null && next?.bibPack === row.bibPack;
   return (
+    <div className="relative h-full px-4">
+      {row.tapPack != null ? (
+        <span
+          aria-hidden
+          className="absolute left-0 w-[9px] rounded-full bg-go"
+          style={{
+            top: tapJoinAbove ? "-0.35rem" : "0.25rem",
+            bottom: tapJoinBelow ? "-0.35rem" : PACK_END,
+          }}
+        />
+      ) : null}
+      {row.bibPack != null ? (
+        <span
+          aria-hidden
+          className="absolute right-0 w-[9px] rounded-full bg-go"
+          style={{
+            top: bibJoinAbove ? "-0.35rem" : "0.25rem",
+            bottom: bibJoinBelow ? "-0.35rem" : PACK_END,
+          }}
+        />
+      ) : null}
+      {row.cutAfter ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-4 z-10 h-[3px] rounded-full bg-sky"
+          style={{ bottom: 6 }}
+        />
+      ) : null}
     <div className="flex flex-col gap-1 rounded-2xl ring-1 ring-line" style={{ height: ROW_BODY }}>
       <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
         <SwipeRow
@@ -464,6 +506,7 @@ function RecordLine({
           </RowBtn>
         </div>
       </div>
+    </div>
     </div>
   );
 }

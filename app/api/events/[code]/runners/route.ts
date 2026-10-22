@@ -62,6 +62,7 @@ export async function POST(req: Request, ctx: Ctx) {
           studentId: incoming.studentId?.trim() || "",
           category: normalizeCategory(incoming.category),
           photoVer: incoming.photoVer ?? null,
+          dnfAt: incoming.dnfAt ?? null,
         };
         const at =
           typeof body.index === "number"
@@ -85,6 +86,7 @@ export async function POST(req: Request, ctx: Ctx) {
                     ? r.category
                     : normalizeCategory(incoming.category),
                 photoVer: incoming.photoVer === undefined ? r.photoVer : incoming.photoVer,
+                dnfAt: incoming.dnfAt === undefined ? r.dnfAt ?? null : incoming.dnfAt,
               }
             : r,
         ),
@@ -98,6 +100,7 @@ export async function POST(req: Request, ctx: Ctx) {
       studentId: incoming.studentId?.trim() || "",
       category: normalizeCategory(incoming.category),
       photoVer: incoming.photoVer ?? null,
+      dnfAt: null,
     };
     const exists = e.runners.some((r) => normalizeBib(r.bib) === bib);
     if (exists) {
@@ -119,5 +122,6 @@ function stripPhotoBytes(r: Runner): Runner {
     studentId: r.studentId,
     category: normalizeCategory(r.category),
     photoVer: r.photoVer ?? null,
+    dnfAt: r.dnfAt ?? null,
   };
 }

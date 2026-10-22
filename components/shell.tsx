@@ -22,10 +22,14 @@ export function Screen({
 export const ICON_BTN =
   "tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-xl font-black ring-1 ring-line active:bg-sand active:text-ink";
 
+/** Bottom keypad / TAP shelf. Fill clips to the round top so list shows in the corner ears. */
+export const BOTTOM_TRAY =
+  "pointer-events-none relative z-10 -mt-6 shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]";
+
 /**
- * Fixed 3-slot header. Left and right are both 48px, so the title is centred
- * on the screen. Right-hand controls hang left from that slot: menu, then
- * extra, then info.
+ * Three-slot header. Equal 1fr wings keep the title on the true centre of
+ * the bar even when Back+Sync sit on the left. Right-hand controls (menu,
+ * extra, info) pack against the trailing edge.
  * The bar is h-16 in normal flow, plus a 20px margin, so the first control
  * starts a header-height plus that gap below the top of the screen.
  */
@@ -34,6 +38,7 @@ export function TopBar({
   title,
   menu,
   extra,
+  leading,
   info,
   className = "",
 }: {
@@ -41,6 +46,8 @@ export function TopBar({
   title?: React.ReactNode;
   menu?: React.ReactNode;
   extra?: React.ReactNode;
+  /** Sits immediately right of the back button. */
+  leading?: React.ReactNode;
   info?: string;
   className?: string;
 }) {
@@ -54,9 +61,9 @@ export function TopBar({
     );
   return (
     <header
-      className={`sticky top-0 z-30 mb-5 grid h-16 shrink-0 grid-cols-[48px_minmax(0,1fr)_48px] items-center bg-void/90 px-3 backdrop-blur ${className}`}
+      className={`sticky top-0 z-30 mb-5 grid h-16 shrink-0 grid-cols-[1fr_auto_1fr] items-center bg-void/90 px-3 backdrop-blur ${className}`}
     >
-      <div className="justify-self-start">
+      <div className="flex items-center gap-2 justify-self-start">
         {backHref ? (
           <Link href={backHref} className={ICON_BTN} aria-label="Back">
             ←
@@ -64,14 +71,13 @@ export function TopBar({
         ) : (
           <span className="h-12 w-12" />
         )}
+        {leading}
       </div>
       <div className="flex min-w-0 items-center justify-center px-1">{titleNode}</div>
-      <div className="relative h-12 w-12 justify-self-end">
-        <div className="absolute right-0 top-0 z-10 flex items-center gap-2">
-          {menu}
-          {extra}
-          {info ? <InfoTip text={info} /> : null}
-        </div>
+      <div className="flex items-center justify-end gap-2 justify-self-end">
+        {menu}
+        {extra}
+        {info ? <InfoTip text={info} /> : null}
       </div>
     </header>
   );
@@ -229,7 +235,7 @@ export function Sheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70" onClick={onClose}>
       <div
-        className="sheet-up max-h-[88dvh] w-full max-w-lg overflow-auto rounded-t-3xl bg-panel p-4 pb-6 ring-1 ring-line sm:mb-6 sm:rounded-3xl"
+        className="sheet-up max-h-[88dvh] w-full max-w-lg overflow-auto rounded-t-3xl bg-panel p-4 pb-6 ring-1 ring-line [background-clip:padding-box] sm:mb-6 sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between gap-3">

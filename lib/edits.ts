@@ -1,4 +1,5 @@
 import { newId } from "./ids";
+import { IDLE_GAP_MS } from "./tap-list";
 import {
   appendMark,
   appendTap,
@@ -6,6 +7,7 @@ import {
   liveTaps,
   normalizeBib,
   reassignMark,
+  zipPairs,
 } from "./race";
 import type {
   EditActor,
@@ -97,6 +99,32 @@ export function insertTapAtLiveIndex(taps: Tap[], liveIndex: number, explicitT?:
     return { ...tap, t: next.t };
   });
   return appendTap(rewritten, byId.get(id)!);
+}
+
+/** Midpoint of this runner’s previous/next split (start = 0 elapsed, end = now). */
+export function runnerSplitMidpoint(
+  event: EventState,
+  bib: string,
+  tapId: string,
+  where: "above" | "below",
+  now = Date.now(),
+): number | null {
+  const n = normalizeBib(bib);
+  const mine: { id: string; t: number }[] = [];
+  for (const pair of zipPairs(event.taps, event.marks, event.syncs)) {
+    if (!pair.tap || !pair.mark || normalizeBib(pair.mark.bib) !== n) continue;
+    mine.push({ id: pair.tap.id, t: pair.tap.t });
+  }
+  const i = mine.findIndex((x) => x.id === tapId);
+  if (i < 0) return null;
+  const cur = mine[i].t;
+  if (where === "above") {
+    const prev = i > 0 ? mine[i - 1].t : (event.startedAt ?? 0);
+    return Math.round((prev + cur) / 2);
+  }
+  const next = i < mine.length - 1 ? mine[i + 1].t : now;
+  if (next <= cur) return cur + 800;
+  return Math.round((cur + next) / 2);
 }
 
 /** Midpoint of the two latest live taps, or 800ms before a single tap. */
@@ -217,6 +245,7 @@ export type EditInput = {
   j?: number;
   to?: number;
   t?: number;
+  where?: "above" | "below";
   estimated?: boolean;
   beforeId?: string;
   taps?: Tap[];
@@ -244,6 +273,67 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       });
     }
     return { ...event, taps };
+  }
+
+  if (action === "idle") {
+    const live = liveTaps(event.taps);
+    const last = live[live.length - 1];
+    if (!last) return event;
+    const idles = event.idles ?? [];
+    const lastIdle = idles.reduce((m, x) => (x.t > m ? x.t : m), 0);
+    if (last.t <= lastIdle) return event;
+    const t = typeof body.t === "number" ? Math.round(body.t) : at;
+    if (t - last.t < IDLE_GAP_MS) return event;
+    return { ...event, idles: [...idles, { id: newId(), t: Math.max(t, last.t + IDLE_GAP_MS) }] };
+  }
+
+  if (action === "group") {
+    const live = liveMarks(event.marks);
+    const last = live[live.length - 1];
+    if (!last) return event;
+    const groups = event.groups ?? [];
+    if (groups.some((g) => g.afterId === last.id)) return event;
+    return { ...event, groups: [...groups, { id: newId(), afterId: last.id }] };
+  }
+
+  if (action === "sync") {
+    const nT0 = liveTaps(event.taps).length;
+    const nM0 = liveMarks(event.marks).length;
+    if (nT0 === 0 && nM0 === 0) return event;
+    const syncs = event.syncs ?? [];
+    const last = syncs[syncs.length - 1];
+    if (last && last.taps === nT0 && last.marks === nM0) return event;
+    const target = Math.max(nT0, nM0);
+    let taps = event.taps;
+    let marks = event.marks;
+    const padTapIds: string[] = [];
+    const padMarkIds: string[] = [];
+    const baseT = liveTaps(taps)[liveTaps(taps).length - 1]?.t ?? at;
+    while (liveTaps(taps).length < target) {
+      const id = newId();
+      taps = appendTap(taps, { id, t: baseT, estimated: true });
+      padTapIds.push(id);
+    }
+    while (liveMarks(marks).length < target) {
+      marks = appendMark(marks, "?");
+      padMarkIds.push(marks[marks.length - 1].id);
+    }
+    return {
+      ...event,
+      taps,
+      marks,
+      syncs: [
+        ...syncs,
+        {
+          id: newId(),
+          at,
+          taps: liveTaps(taps).length,
+          marks: liveMarks(marks).length,
+          padTapIds,
+          padMarkIds,
+        },
+      ],
+    };
   }
 
   if (action === "tap-undo" || action === "undo") {
@@ -306,6 +396,40 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       ...event,
       taps,
       edits: log(event, actor, "tap-insert", { tapId: added.id, t: added.t, toIndex: body.index }, at),
+    };
+  }
+
+  if (action === "pair-insert-at") {
+    if (!body.bib) return event;
+    let t = typeof body.t === "number" ? body.t : null;
+    if (
+      t == null &&
+      body.tapId &&
+      (body.where === "above" || body.where === "below")
+    ) {
+      t = runnerSplitMidpoint(event, body.bib, body.tapId, body.where, at);
+    }
+    if (t != null) {
+      return applyEdit(event, { actor, action: "tap-insert-estimated", t, bib: body.bib }, at);
+    }
+    if (body.index == null || !Number.isFinite(body.index)) return event;
+    const before = new Set(event.taps.map((x) => x.id));
+    const taps = insertTapAtLiveIndex(event.taps, body.index);
+    const added = liveTaps(taps).find((x) => !before.has(x.id));
+    if (!added) return event;
+    const marks = insertMarkAtLiveIndex(event.marks, body.index, body.bib);
+    const mark = liveMarks(marks)[Math.max(0, Math.min(Math.floor(body.index), liveMarks(marks).length - 1))];
+    return {
+      ...event,
+      taps,
+      marks,
+      edits: log(
+        event,
+        actor,
+        "pair-insert",
+        { tapId: added.id, markId: mark?.id, t: added.t, bib: mark?.bib, toIndex: body.index },
+        at,
+      ),
     };
   }
 
@@ -414,12 +538,14 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
   }
 
   if (action === "mark-reassign" || action === "reassign") {
-    if (!body.bib || body.index == null) return event;
+    if (!body.bib) return event;
     const live = liveMarks(event.marks);
-    const prev = live[body.index];
+    const prev =
+      (body.markId ? live.find((m) => m.id === body.markId) : undefined) ??
+      (body.index != null ? live[body.index] : undefined);
     if (!prev) return event;
     const marks = reassignMark(event.marks, event.marks.findIndex((m) => m.id === prev.id), body.bib);
-    const next = liveMarks(marks)[body.index];
+    const next = liveMarks(marks).find((m) => m.id === prev.id);
     return {
       ...event,
       marks,

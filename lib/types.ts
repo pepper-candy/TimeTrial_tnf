@@ -15,6 +15,8 @@ export type Runner = {
   category: string;
   /** Short hash of the Redis photo object; never the bytes. */
   photoVer: string | null;
+  /** Wall time when admin marked DNF; null if still racing. */
+  dnfAt?: number | null;
 };
 
 export type Tap = {
@@ -30,6 +32,29 @@ export type Mark = {
   id: string;
   bib: string;
   deletedAt?: number | null;
+};
+
+/** Timer pressed Idle after a pack; taps after this time start a new group. */
+export type IdleBreak = {
+  id: string;
+  t: number;
+};
+
+/** Marker long-pressed Group; marks after `afterId` start a new group. */
+export type GroupBreak = {
+  id: string;
+  afterId: string;
+};
+
+/** Marker Sync: live tap/bib counts at the cutoff. Pairing restarts after this. */
+export type SyncCut = {
+  id: string;
+  at: number;
+  taps: number;
+  marks: number;
+  /** Placeholder taps/bibs filled so both sides share the next empty slot. */
+  padTapIds?: string[];
+  padMarkIds?: string[];
 };
 
 export type EditActor = "timer" | "marker" | "admin";
@@ -86,6 +111,9 @@ export type EventState = {
   runners: Runner[];
   taps: Tap[];
   marks: Mark[];
+  idles: IdleBreak[];
+  groups: GroupBreak[];
+  syncs: SyncCut[];
   /** Soft-edit history (who / when). Recoverable deletes live here. */
   edits: EditLogEntry[];
   demo: boolean;
@@ -116,4 +144,6 @@ export type Pair = {
   index: number;
   tap: Tap | null;
   mark: Mark | null;
+  /** Blue cutoff in records: this row is the last of a sync segment. */
+  cutAfter?: boolean;
 };

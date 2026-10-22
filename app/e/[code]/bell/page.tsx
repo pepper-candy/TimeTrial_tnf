@@ -15,6 +15,7 @@ import {
   setBellRung,
   vibrateBell,
 } from "@/lib/bell";
+import { hapticBellCheck } from "@/lib/haptic";
 import { useEvent } from "@/lib/client/hooks";
 import { buildRunnerRaces, type RunnerRace } from "@/lib/race";
 import type { CourseConfig } from "@/lib/types";
@@ -87,8 +88,10 @@ export default function BellPage() {
     setRung((prev) => {
       const next = new Set(prev);
       const on = !next.has(id);
-      if (on) next.add(id);
-      else next.delete(id);
+      if (on) {
+        next.add(id);
+        hapticBellCheck();
+      } else next.delete(id);
       setBellRung(code, id, on);
       return next;
     });

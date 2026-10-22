@@ -213,6 +213,11 @@ function ResultRow({
       <Td sticky={detailed ? "name" : undefined} bg={bg} className="font-bold">
         <span className="flex items-center gap-1.5">
           <span className="max-w-[10rem] truncate">{race.runner.name || "—"}</span>
+          {race.runner.dnfAt != null ? (
+            <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-stop/15 px-2 text-[11px] font-medium text-stop">
+              DNF
+            </span>
+          ) : null}
           {stats && stats.ignoredSplits > 0 ? (
             <span
               title={`${stats.ignoredSplits} lap${stats.ignoredSplits === 1 ? "" : "s"} under 20s per 400m ignored`}
