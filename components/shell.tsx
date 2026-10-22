@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { SprintIcon } from "@/components/sprint-icon";
 import { placePopover } from "@/lib/popover";
 
 export function Screen({
@@ -40,6 +41,8 @@ export function TopBar({
   extra,
   leading,
   info,
+  onSprint,
+  sprintActive,
   className = "",
 }: {
   backHref?: string;
@@ -49,6 +52,10 @@ export function TopBar({
   /** Sits immediately right of the back button. */
   leading?: React.ReactNode;
   info?: string;
+  /** Running-man control immediately left of Info; toggles Sprint create mode. */
+  onSprint?: () => void;
+  /** When true, Sprint control uses sand/inverted active styling. */
+  sprintActive?: boolean;
   className?: string;
 }) {
   const titleNode =
@@ -77,9 +84,31 @@ export function TopBar({
       <div className="flex items-center justify-end gap-2 justify-self-end">
         {menu}
         {extra}
+        {onSprint ? <SprintEventButton onClick={onSprint} active={sprintActive} /> : null}
         {info ? <InfoTip text={info} /> : null}
       </div>
     </header>
+  );
+}
+
+/** Header control for Sprint create mode. */
+export function SprintEventButton({
+  onClick,
+  active,
+}: {
+  onClick: () => void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${ICON_BTN}${active ? " bg-sand text-ink ring-sand" : ""}`}
+      onClick={onClick}
+      aria-label="Sprint Event"
+      aria-pressed={active}
+    >
+      <SprintIcon />
+    </button>
   );
 }
 

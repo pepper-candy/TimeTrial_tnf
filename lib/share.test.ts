@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eventLinks, helperLink } from "./share";
+import { eventLinks, finishCamLink, helperLink, starterLink } from "./share";
 
 describe("helper link", () => {
   it("is one URL and does not carry the PIN", () => {
@@ -8,5 +8,23 @@ describe("helper link", () => {
     expect(url).not.toMatch(/\n|pin|token/i);
     expect(eventLinks("https://tt.example.com/", "AB12C").helper).toBe(url);
     expect(eventLinks("https://x.dev", "Q").board).toBe("https://x.dev/e/Q/board");
+  });
+
+  it("starter deep link is additive and PIN-free", () => {
+    expect(starterLink("https://tt.example.com/", "AB12C")).toBe(
+      "https://tt.example.com/e/AB12C/starter",
+    );
+    expect(helperLink("https://tt.example.com/", "AB12C")).toBe(
+      "https://tt.example.com/e/AB12C/help",
+    );
+  });
+
+  it("finish cam deep link is additive and PIN-free", () => {
+    expect(finishCamLink("https://tt.example.com/", "AB12C")).toBe(
+      "https://tt.example.com/e/AB12C/finish-cam",
+    );
+    expect(helperLink("https://tt.example.com/", "AB12C")).toBe(
+      "https://tt.example.com/e/AB12C/help",
+    );
   });
 });

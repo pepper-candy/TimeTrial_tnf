@@ -62,6 +62,10 @@ The key is only read from the environment. It is never stored in the repo or sen
 
 On a default 5000 m / 200 m start, 1K is crossing #3 and 3K is crossing #8. Other distances include whichever whole-km marks land on a crossing; Admin can pick which km appear in the **Summary** paste. **Copy** has Summary (coach format) and Detailed (every km, ~ if estimated, fast/slow lap, half-split, consistency).
 
+## Sprint events (additive)
+
+Sprint is a **variant of New Event**, not a replacement for Time Trial. Distance create, Timer, Marker, Board, and the steps above stay as documented. A sprint event reuses the same create / PIN / share-helper pattern with short flat distances and two roles on `/e/{code}/help`: **Starter** (arm → bang → server race start) and **Finish Cam** (landscape record + Mark 1 / Mark 2). The race clock stays server-authoritative; YOLO (later) runs only on the marked slice `[Mark1 … Mark2+1s]`, not the whole roll.
+
 ## Demo race
 
 **Demo race** starts a simulated 5000 m from the gun, using realistic 28 Sep 2026 club times with **fake names and fake 8-digit student IDs**. Default playback is **10x**; switch to **1x** in Admin. Helper PIN is `1234`.

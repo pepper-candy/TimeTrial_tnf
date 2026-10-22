@@ -350,8 +350,8 @@ function AdminInner({ code }: { code: string }) {
                     <input
                       value={draft.bib}
                       onChange={(e) => setDraft((d) => ({ ...d, bib: e.target.value }))}
-                      placeholder="Bib"
-                      aria-label="Bib"
+                      placeholder={event.kind === "sprint" ? "Lane" : "Bib"}
+                      aria-label={event.kind === "sprint" ? "Lane" : "Bib"}
                       inputMode="numeric"
                       className={`h-12 w-20 shrink-0 rounded-xl bg-panel2 px-2 text-center font-mono text-2xl font-black tabular placeholder:text-base placeholder:text-dim ${
                         bibTaken ? "ring-1 ring-stop" : ""

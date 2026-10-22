@@ -38,6 +38,7 @@ function event(partial: Partial<EventState>): EventState {
     name: "5K",
     createdAt: 0,
     status: "running",
+    kind: "time-trial",
     ready: true,
     startedAt: START,
     endedAt: null,

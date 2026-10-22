@@ -16,6 +16,7 @@ export async function POST(req: Request) {
     pin?: string;
     resultKmSplits?: number[];
     hideStudentIds?: boolean;
+    kind?: "sprint" | "time-trial";
   };
   const pin = (body.pin ?? "").trim();
   if (!isValidPin(pin)) {
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     name: body.name?.trim() || defaultName(course.totalDistanceM),
     createdAt: Date.now(),
     status: "setup",
+    kind: body.kind === "sprint" ? "sprint" : "time-trial",
     ready: false,
     startedAt: null,
     endedAt: null,

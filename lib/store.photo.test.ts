@@ -16,6 +16,7 @@ function event(id: string, code: string): EventState {
     name: "Photo",
     createdAt: 0,
     status: "setup",
+    kind: "time-trial",
     ready: false,
     startedAt: null,
     endedAt: null,
