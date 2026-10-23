@@ -54,6 +54,25 @@ describe("finishTimeFromVideoMs", () => {
     const { finishMs } = finishTimeFromVideoMs({ startedAt, recServerAt, videoMs });
     expect(videoMsFromFinishMs({ startedAt, recServerAt, finishMs })).toBe(videoMs);
   });
+
+  it("an earlier corrected bang lengthens the finish by the correction", () => {
+    // POST arrived late, so an uncorrected server start was 700ms too late.
+    const recServerAt = 1_002_000;
+    const videoMs = 5_000;
+    const uncorrected = finishTimeFromVideoMs({
+      startedAt: 1_000_700,
+      recServerAt,
+      videoMs,
+    });
+    // Starter now stamps the bang itself → startedAt moves earlier, not later.
+    const corrected = finishTimeFromVideoMs({
+      startedAt: 1_000_000,
+      recServerAt,
+      videoMs,
+    });
+    expect(corrected.finishMs - uncorrected.finishMs).toBe(700);
+    expect(corrected.tapT).toBe(uncorrected.tapT);
+  });
 });
 
 describe("canProposeLaneFinish / applyLaneProposal", () => {
