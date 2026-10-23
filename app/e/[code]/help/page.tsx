@@ -48,7 +48,7 @@ export default function HelperPage() {
   if (!event) {
     return (
       <Screen>
-        <TopBar backHref="/" title={code} />
+        <TopBar backHref={`/e/${code}`} title={code} />
         <LoadingState rows={2} />
       </Screen>
     );
@@ -59,7 +59,7 @@ export default function HelperPage() {
   return (
     <Screen>
       <TopBar
-        backHref="/"
+        backHref={`/e/${code}`}
         title={
           <div className="min-w-0 text-center leading-tight">
             <h1 className="truncate font-mono text-base font-black tracking-[0.16em]">{event.code}</h1>

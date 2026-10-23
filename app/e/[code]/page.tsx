@@ -92,9 +92,11 @@ export default function RolePage() {
           </div>
         }
         extra={
-          <Link href={`/e/${code}/bell`} className={ICON_BTN} aria-label="Bell">
-            🔔
-          </Link>
+          sprint ? undefined : (
+            <Link href={`/e/${code}/bell`} className={ICON_BTN} aria-label="Bell">
+              🔔
+            </Link>
+          )
         }
         info={sprint ? SPRINT_INFO : TT_INFO}
       />
