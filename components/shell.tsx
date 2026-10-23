@@ -51,7 +51,7 @@ export function TopBar({
   extra?: React.ReactNode;
   /** Sits immediately right of the back button. */
   leading?: React.ReactNode;
-  info?: string;
+  info?: React.ReactNode;
   /** Running-man control immediately left of Info; toggles Sprint create mode. */
   onSprint?: () => void;
   /** When true, Sprint control uses sand/inverted active styling. */
@@ -112,7 +112,7 @@ export function SprintEventButton({
   );
 }
 
-export function InfoTip({ text }: { text: string }) {
+export function InfoTip({ text }: { text: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {

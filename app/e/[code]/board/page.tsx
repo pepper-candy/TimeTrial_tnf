@@ -20,7 +20,7 @@ import {
   type BoardHighlights,
   type LapColumn,
 } from "@/lib/board";
-import { CATEGORIES, normalizeCategory } from "@/lib/category";
+import { normalizeCategory } from "@/lib/category";
 import { useFlip } from "@/lib/client/flip";
 import { fetchWithPin, hasHelperCreds, useEvent } from "@/lib/client/hooks";
 import { getBoardTimesMode, setBoardTimesMode, type BoardTimesMode } from "@/lib/client/pin";
@@ -32,11 +32,40 @@ import { textFits } from "@/lib/text-fit";
 import type { RunnerStats } from "@/lib/stats";
 import type { EventState } from "@/lib/types";
 
-const INFO =
-  "Live board — no PIN. Each box: small = lap split, big = running time. Orange cell = fastest lap of the race. Blue border = runner's best lap. ~ = estimated time. Yellow box = bell lap. Tap a runner for details.";
+/** All → Male (Boys) → Female (Girls) → All. Default All. */
+const FILTER_CYCLE: BoardFilter[] = ["all", "Boys", "Girls"];
 
-const SPRINT_INFO =
-  "Sprint board — no PIN. One row per lane: lane · photo · name (SID under name) · finish time. Times show — until the runner finishes.";
+function CategoryFilterButton({
+  filter,
+  onChange,
+}: {
+  filter: BoardFilter;
+  onChange: (next: BoardFilter) => void;
+}) {
+  const label = filter === "all" ? "ALL" : filter === "Boys" ? "MALE" : "FEMALE";
+  const tone =
+    filter === "Girls"
+      ? "text-[#ff4d8a] ring-[#ff4d8a]"
+      : filter === "Boys"
+        ? "text-sky ring-sky"
+        : "text-sand ring-sand";
+  return (
+    <button
+      type="button"
+      aria-label={`Category filter ${label}`}
+      className={`tap grid h-12 shrink-0 min-w-[5.75rem] place-items-center rounded-2xl bg-panel2 px-3 text-lg font-black ring-1 ${tone}`}
+      onClick={() => {
+        const i = FILTER_CYCLE.indexOf(filter);
+        onChange(FILTER_CYCLE[(i + 1) % FILTER_CYCLE.length]!);
+      }}
+    >
+      <span className="col-start-1 row-start-1">{label}</span>
+      <span className="invisible col-start-1 row-start-1" aria-hidden>
+        FEMALE
+      </span>
+    </button>
+  );
+}
 
 function enterFullscreen() {
   const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
@@ -168,22 +197,6 @@ export default function BoardPage() {
           <TopBar
             backHref={`/e/${code}`}
             className="bg-sbdeep/95"
-            title={
-              hasCats ? (
-                <div className="flex gap-1.5">
-                  <Chip size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
-                    All
-                  </Chip>
-                  {CATEGORIES.map((c) => (
-                    <Chip key={c} size="sm" active={filter === c} onClick={() => setFilter(c)}>
-                      {c}
-                    </Chip>
-                  ))}
-                </div>
-              ) : (
-                <h1 className="truncate text-base font-black uppercase tracking-[0.16em]">{event.name}</h1>
-              )
-            }
             menu={
               <MenuButton title="Board">
                 {(close) => (
@@ -201,25 +214,29 @@ export default function BoardPage() {
               </MenuButton>
             }
             extra={
-              <button
-                type="button"
-                className="tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
-                aria-label="Full screen"
-                onClick={enterFullscreen}
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                  <path
-                    d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
+                  aria-label="Full screen"
+                  onClick={enterFullscreen}
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                    <path
+                      d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                {hasCats ? (
+                  <CategoryFilterButton filter={filter} onChange={setFilter} />
+                ) : null}
+              </>
             }
-            info={SPRINT_INFO}
           />
         )}
 
@@ -230,8 +247,8 @@ export default function BoardPage() {
             className="sb sb-sprint min-h-0 flex-1 overflow-auto overscroll-contain"
             style={{ "--rows": Math.max(1, rows.length) } as React.CSSProperties}
           >
-            <div className="sb-sprint-head font-mono font-black uppercase tracking-[0.16em] text-white/80">
-              <div className="sb-sprint-lane">Lane</div>
+            <div className="sb-sprint-head font-mono font-black uppercase text-white/80">
+              <div className="sb-sprint-lane" aria-label="Lane" />
               <div className="sb-sprint-name">Name</div>
               <div className="sb-sprint-time">Time</div>
             </div>
@@ -266,22 +283,6 @@ export default function BoardPage() {
       <TopBar
         backHref={`/e/${code}`}
         className="bg-sbdeep/95"
-        title={
-          hasCats ? (
-            <div className="flex gap-1.5">
-              <Chip size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
-                All
-              </Chip>
-              {CATEGORIES.map((c) => (
-                <Chip key={c} size="sm" active={filter === c} onClick={() => setFilter(c)}>
-                  {c}
-                </Chip>
-              ))}
-            </div>
-          ) : (
-            <h1 className="truncate text-base font-black uppercase tracking-[0.16em]">{event.name}</h1>
-          )
-        }
         menu={
           <MenuButton title="Board">
             {(close) => (
@@ -298,25 +299,29 @@ export default function BoardPage() {
           </MenuButton>
         }
         extra={
-          <button
-            type="button"
-            className="tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
-            aria-label="Full screen"
-            onClick={enterFullscreen}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-              <path
-                d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+          <>
+            <button
+              type="button"
+              className="tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-sand ring-1 ring-line active:bg-sand active:text-ink"
+              aria-label="Full screen"
+              onClick={enterFullscreen}
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                <path
+                  d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+            {hasCats ? (
+              <CategoryFilterButton filter={filter} onChange={setFilter} />
+            ) : null}
+          </>
         }
-        info={INFO}
       />
       )}
 

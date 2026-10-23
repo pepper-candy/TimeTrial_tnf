@@ -1,18 +1,39 @@
 /**
- * Finish Cam Analyse: sample Mark1…Mark2, run in-app YOLO, propose per-lane times.
+ * Finish Cam Analyse — background YOLO helper (Agent 3).
+ * Manual scrubber (Agent 1) opens immediately; this must never block UI.
  *
- * Timing = event.startedAt + (recServerAt offset? no) video offset of chest cross.
- * Race clock uses Starter server startedAt; video time is relative to recording start
- * (recServerAt). Finish epoch = startedAt + finishElapsedMs = recServerAt + crossVideoMs
+ * Timing formula: see `finishTimeFromVideoMs` in `@/lib/client/analyse-time`
+ *   tapT = recServerAt + videoMs; finishMs = max(0, tapT − startedAt)
  *
  * YOLO does NOT use the +1s pad — only markInMs…markOutMs.
+ * Propose only into empty/unlocked lanes via `canProposeLaneFinish` / `applyLaneProposal`.
  */
 
 import { FINISH_LINE_X, laneFromY, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+import { finishTimeFromVideoMs } from "@/lib/client/analyse-time";
+import {
+  drawLaneGuideBands,
+  feetPointFromBox,
+  loadLaneGuides,
+  mapFeetToLane,
+  type LaneGuides,
+} from "@/lib/client/lane-guides";
 import { detectPersons, loadPersonModel, type PersonBox } from "@/lib/client/yolo-person";
 import type { EventState, Runner } from "@/lib/types";
 
 export { FINISH_LINE_X, laneFromY, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+export {
+  applyLaneProposal,
+  canProposeLaneFinish,
+  finishTimeFromVideoMs,
+  type LaneFinishState,
+} from "@/lib/client/analyse-time";
+export {
+  feetPointFromBox,
+  loadLaneGuides,
+  mapFeetToLane,
+  pointInLane,
+} from "@/lib/client/lane-guides";
 
 /** Sample stride on the Mark1–Mark2 slice (ms). */
 export const SAMPLE_EVERY_MS = 80;
@@ -104,7 +125,8 @@ function emptySuggestion(runner: Runner, lane: number): LaneSuggestion {
 }
 
 /**
- * Draw finish frame + YOLO person box + red centre line + lane band guides.
+ * Draw finish frame + YOLO person box + red centre line + calibrated lane bands.
+ * Pass `guides` from `loadLaneGuides(eventCode, laneCount)` so bands match the overlay.
  */
 export function drawFinishSnapshot(
   ctx: CanvasRenderingContext2D,
@@ -114,28 +136,33 @@ export function drawFinishSnapshot(
   box: PersonBox | null,
   laneCount: number,
   highlightLane: number | null,
+  guides?: LaneGuides | null,
 ): void {
   ctx.drawImage(frame, 0, 0, width, height);
 
-  // Lane band guides (horizontal)
   const n = Math.max(1, laneCount);
-  ctx.save();
-  for (let i = 1; i < n; i++) {
-    const y = (i / n) * height;
-    ctx.strokeStyle = "rgba(255,255,255,0.28)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
+  if (guides) {
+    drawLaneGuideBands(ctx, width, height, guides, highlightLane);
+  } else {
+    // Fallback equal horizontal splits (pre-calibration)
+    ctx.save();
+    for (let i = 1; i < n; i++) {
+      const y = (i / n) * height;
+      ctx.strokeStyle = "rgba(255,255,255,0.28)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    if (highlightLane != null && highlightLane >= 1 && highlightLane <= n) {
+      const y0 = ((highlightLane - 1) / n) * height;
+      const y1 = (highlightLane / n) * height;
+      ctx.fillStyle = "rgba(34, 197, 94, 0.12)";
+      ctx.fillRect(0, y0, width, y1 - y0);
+    }
+    ctx.restore();
   }
-  if (highlightLane != null && highlightLane >= 1 && highlightLane <= n) {
-    const y0 = ((highlightLane - 1) / n) * height;
-    const y1 = (highlightLane / n) * height;
-    ctx.fillStyle = "rgba(34, 197, 94, 0.12)";
-    ctx.fillRect(0, y0, width, y1 - y0);
-  }
-  ctx.restore();
 
   // Red finishing line (centre vertical)
   const lx = FINISH_LINE_X * width;
@@ -159,12 +186,17 @@ export function drawFinishSnapshot(
     ctx.strokeStyle = "#22c55e";
     ctx.lineWidth = Math.max(2, Math.round(width * 0.004));
     ctx.strokeRect(x, y, w, h);
-    // Chest sample
-    const cx = box.chestX * width;
-    const cy = box.chestY * height;
+    // Feet / bottom-centre (lane map sample)
+    const feet = feetPointFromBox(box);
     ctx.fillStyle = "#22c55e";
     ctx.beginPath();
-    ctx.arc(cx, cy, Math.max(3, width * 0.006), 0, Math.PI * 2);
+    ctx.arc(
+      feet.x * width,
+      feet.y * height,
+      Math.max(3, width * 0.006),
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     ctx.restore();
   }
@@ -173,6 +205,23 @@ export function drawFinishSnapshot(
 /**
  * Run YOLO on Mark1…Mark2 and propose one finish time per lane/runner.
  */
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new DOMException("YOLO aborted", "AbortError");
+  }
+}
+
+/** Yield to the UI thread between sampled frames (scrubber stays interactive). */
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 export async function analyseFinishClip(opts: {
   blob: Blob;
   markInMs: number;
@@ -181,8 +230,11 @@ export async function analyseFinishClip(opts: {
   recServerAt: number;
   event: EventState;
   onProgress?: (p: AnalyseProgress) => void;
+  /** Cancel mid-scan when Analyse closes / remounts. */
+  signal?: AbortSignal;
 }): Promise<LaneSuggestion[]> {
-  const { blob, markInMs, markOutMs, recServerAt, event, onProgress } = opts;
+  const { blob, markInMs, markOutMs, recServerAt, event, onProgress, signal } =
+    opts;
   const runners = sprintersForAnalyse(event);
   const startedAt = event.startedAt;
   if (startedAt == null) {
@@ -192,8 +244,10 @@ export async function analyseFinishClip(opts: {
     throw new Error("Need Mark 1 and Mark 2 before Analyse");
   }
 
-  onProgress?.({ phase: "model", message: "Loading person model…", done: 0, total: 1 });
+  throwIfAborted(signal);
+  onProgress?.({ phase: "model", message: "YOLO scanning…", done: 0, total: 1 });
   await loadPersonModel();
+  throwIfAborted(signal);
 
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
@@ -207,6 +261,7 @@ export async function analyseFinishClip(opts: {
       video.onloadeddata = () => resolve();
       video.onerror = () => reject(new Error("Could not open recording"));
     });
+    throwIfAborted(signal);
 
     const from = markInMs;
     const to = markOutMs; // Mark1…Mark2 only — pad not used for YOLO
@@ -215,6 +270,8 @@ export async function analyseFinishClip(opts: {
     if (times[times.length - 1] !== to) times.push(to);
 
     const laneCount = Math.max(1, runners.length);
+    /** Same polygons as Finish Cam overlay (Agent 2). */
+    const guides = loadLaneGuides(event.code, laneCount);
     const tracks: LaneTrack[] = Array.from({ length: laneCount }, () => ({
       prevCx: null,
       prevVideoMs: null,
@@ -232,10 +289,12 @@ export async function analyseFinishClip(opts: {
     if (!ctx) throw new Error("Canvas unavailable");
 
     for (let i = 0; i < times.length; i++) {
+      throwIfAborted(signal);
+      await yieldToUi();
       const videoMs = times[i]!;
       onProgress?.({
         phase: "frames",
-        message: `Detecting… ${i + 1}/${times.length}`,
+        message: "YOLO scanning…",
         done: i + 1,
         total: times.length,
       });
@@ -247,7 +306,7 @@ export async function analyseFinishClip(opts: {
       canvas.height = vh;
       ctx.drawImage(video, 0, 0);
       const boxes = await detectPersons(canvas);
-      applyFrame(tracks, boxes, videoMs, laneCount);
+      applyFrame(tracks, boxes, videoMs, laneCount, guides);
     }
 
     for (const track of tracks) {
@@ -270,10 +329,12 @@ export async function analyseFinishClip(opts: {
       .filter(({ t }) => t.crossVideoMs != null && t.snapshotVideoMs != null);
 
     for (let s = 0; s < lanesNeedingSnap.length; s++) {
+      throwIfAborted(signal);
+      await yieldToUi();
       const { t, idx } = lanesNeedingSnap[s]!;
       onProgress?.({
         phase: "frames",
-        message: `Snapshots… ${s + 1}/${lanesNeedingSnap.length}`,
+        message: "YOLO scanning…",
         done: s + 1,
         total: Math.max(1, lanesNeedingSnap.length),
       });
@@ -284,7 +345,7 @@ export async function analyseFinishClip(opts: {
       if (!vw || !vh) continue;
       snapCanvas.width = vw;
       snapCanvas.height = vh;
-      drawFinishSnapshot(snapCtx, video, vw, vh, t.finishBox, laneCount, idx + 1);
+      drawFinishSnapshot(snapCtx, video, vw, vh, t.finishBox, laneCount, idx + 1, guides);
       snapshotByLane[idx] = snapCanvas.toDataURL("image/jpeg", 0.82);
     }
 
@@ -296,8 +357,11 @@ export async function analyseFinishClip(opts: {
       if (crossVideoMs == null) {
         return emptySuggestion(runner, idx + 1);
       }
-      const tapT = Math.round(recServerAt + crossVideoMs);
-      const finishMs = Math.max(0, tapT - startedAt);
+      const { finishMs, tapT } = finishTimeFromVideoMs({
+        startedAt,
+        recServerAt,
+        videoMs: crossVideoMs,
+      });
       return {
         lane: idx + 1,
         bib: runner.bib,
@@ -324,14 +388,16 @@ function applyFrame(
   boxes: PersonBox[],
   videoMs: number,
   laneCount: number,
+  guides: LaneGuides,
 ) {
-  // Best box per lane this frame
+  // Best box per lane this frame — feet / bottom-centre → calibrated band
   const best: { box: PersonBox; score: number }[] = Array.from(
     { length: laneCount },
     () => ({ box: null as unknown as PersonBox, score: -1 }),
   );
   for (const box of boxes) {
-    const lane = laneFromY(box.chestY, laneCount);
+    const mapped = mapFeetToLane(feetPointFromBox(box), guides);
+    const lane = mapped ?? laneFromY(box.chestY, laneCount);
     const i = lane - 1;
     if (box.score > best[i]!.score) best[i] = { box, score: box.score };
   }

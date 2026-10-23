@@ -9,6 +9,8 @@ import {
   FinishAnalysePanel,
   type FinishSnapshotPreview,
 } from "@/components/finish-analyse";
+import { LaneGuidesOverlay } from "@/components/lane-guides";
+import { sprintersForAnalyse } from "@/lib/client/analyse-lanes";
 import { formatClock } from "@/lib/format";
 import {
   applyHardwareZoom,
@@ -32,7 +34,8 @@ import type { EventState } from "@/lib/types";
 
 /**
  * Sprint-only Finish Cam helper.
- * Recording marks are local video offsets; Analyse runs in-app YOLO then writes per-lane finishes.
+ * Recording marks are local video offsets; Analyse opens a manual scrubber
+ * (Mark1…Mark2) to Set/Accept per-lane finishes. YOLO is a later helper only.
  */
 export default function FinishCamPage() {
   const { code } = useParams<{ code: string }>();
@@ -49,6 +52,8 @@ function FinishCamInner({ code }: { code: string }) {
   const { event, error, serverNow, setEvent } = useEvent(code, 4000);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  /** Scrubber playback on the stage after Analyse opens. */
+  const scrubVideoRef = useRef<HTMLVideoElement>(null);
   const previewHostRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
@@ -81,6 +86,8 @@ function FinishCamInner({ code }: { code: string }) {
   const [snapshotPreview, setSnapshotPreview] = useState<FinishSnapshotPreview | null>(
     null,
   );
+  /** Object URL for Mark1…Mark2 scrubber video on the stage. */
+  const [scrubberUrl, setScrubberUrl] = useState<string | null>(null);
   const [clipBlob, setClipBlob] = useState<Blob | null>(null);
   const [clipMeta, setClipMeta] = useState<FinishCamMeta | null>(null);
   const [stopping, setStopping] = useState(false);
@@ -142,6 +149,7 @@ function FinishCamInner({ code }: { code: string }) {
     setAnalyseStarted(false);
     setAnalyseHasResults(false);
     setSnapshotPreview(null);
+    setScrubberUrl(null);
     setMarkInMs(null);
     setMarkOutMs(null);
     setStopping(false);
@@ -389,6 +397,8 @@ function FinishCamInner({ code }: { code: string }) {
     phase === "recording" && !running && markInMs == null
       ? "Waiting for start…"
       : status;
+  /** Calibrated lane bands — same count Analyse / YOLO will use. */
+  const laneGuideCount = Math.max(1, sprintersForAnalyse(event).length);
 
   // recording → fullscreen; ended before analyse → ↻; analysing/results → download (no reset)
   const showDownload = analyseStarted;
@@ -460,14 +470,14 @@ function FinishCamInner({ code }: { code: string }) {
               </button>
             )
           }
-          info="Landscape finish camera. Continuous record; Mark 1 enter / Mark 2 exit. After Mark 2 keep +1s then RACE END. Analyse runs in-app YOLO on Mark1…Mark2 and writes one finish time per lane."
+          info="Landscape finish camera. Continuous record; Mark 1 enter / Mark 2 exit. After Mark 2 keep +1s then RACE END. Analyse opens a scrubber on Mark1…Mark2 — Set finish per lane and Accept to write the Board."
         />
 
         <div
           className="relative mx-4 min-h-0 flex-1 overflow-hidden rounded-2xl bg-black ring-1 ring-line"
           style={{ containerType: "size" }}
         >
-          {!landscape && !analyseShow && !snapshotPreview ? (
+          {!landscape && !analyseShow && !snapshotPreview && !scrubberUrl ? (
             <video
               src="/Rotate.mp4"
               playsInline
@@ -482,12 +492,12 @@ function FinishCamInner({ code }: { code: string }) {
           {/* object-contain both axes: min(stageW, stageH×ar) × min(stageH, stageW/ar), centered */}
           <div
             className={`absolute inset-0 flex items-center justify-center${
-              landscape || snapshotPreview ? "" : " invisible"
+              landscape || snapshotPreview || scrubberUrl ? "" : " invisible"
             }`}
           >
             {snapshotPreview ? (
               <div className="relative flex h-full w-full items-center justify-center">
-                {/* YOLO finish-frame: box + red line already baked into JPEG */}
+                {/* Finish-frame snapshot: red line (+ YOLO box later) baked into JPEG */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={snapshotPreview.snapshotDataUrl}
@@ -499,6 +509,31 @@ function FinishCamInner({ code }: { code: string }) {
                   {snapshotPreview.finishMs != null
                     ? ` · ${formatClock(snapshotPreview.finishMs, 2)}`
                     : ""}
+                </div>
+              </div>
+            ) : scrubberUrl ? (
+              <div className="relative flex h-full w-full items-center justify-center">
+                <div className="relative inline-flex max-h-full max-w-full">
+                  <video
+                    ref={scrubVideoRef}
+                    src={scrubberUrl}
+                    playsInline
+                    muted
+                    preload="auto"
+                    className="block max-h-[100cqh] max-w-[100cqw] object-contain"
+                  />
+                  {/* Agent 2 lane guides — consume overlay; geometry owned by lane-guides */}
+                  <LaneGuidesOverlay
+                    eventCode={code}
+                    laneCount={laneGuideCount}
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-y-0 left-1/2 z-[2] w-[3px] -translate-x-1/2 bg-stop shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+                    aria-hidden
+                  />
+                  <div className="pointer-events-none absolute top-3 left-[calc(50%+10px)] z-[3] rounded-lg border border-stop bg-[#7f1d1d]/90 px-2.5 py-1.5 text-xs font-bold tracking-wide text-[#fecaca]">
+                    Finishing Line
+                  </div>
                 </div>
               </div>
             ) : (
@@ -524,6 +559,10 @@ function FinishCamInner({ code }: { code: string }) {
                 />
                 {landscape ? (
                   <>
+                    <LaneGuidesOverlay
+                      eventCode={code}
+                      laneCount={laneGuideCount}
+                    />
                     <div
                       className="pointer-events-none absolute inset-y-0 left-1/2 z-[2] w-[3px] -translate-x-1/2 bg-stop shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
                       aria-hidden
@@ -585,6 +624,8 @@ function FinishCamInner({ code }: { code: string }) {
               meta={clipMeta}
               markInMs={markInMs}
               markOutMs={markOutMs}
+              videoRef={scrubVideoRef}
+              onScrubberUrl={setScrubberUrl}
               onEvent={setEvent}
               onLog={pushLog}
               onStatus={setStatus}

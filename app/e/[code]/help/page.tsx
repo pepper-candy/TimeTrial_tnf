@@ -5,9 +5,27 @@ import { useParams } from "next/navigation";
 import { BigBtn, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import { useEvent } from "@/lib/client/hooks";
+import { SPRINT_COMPLETE_FLOW_URL } from "@/lib/share";
 
 const BTN =
   "launch tap flex min-h-36 w-full flex-1 items-center justify-center rounded-[10px] px-4 text-4xl font-black uppercase tracking-[0.14em]";
+
+const SPRINT_FLOW_INFO = (
+  <>
+    Race day: Admin creates lanes and shares links; Starter arms and bangs the gun (server
+    clock); Finish Cam records, marks, and Accepts finishes; Board shows live lane times. Full
+    flow:{" "}
+    <a
+      href={SPRINT_COMPLETE_FLOW_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="font-bold text-sky underline underline-offset-2"
+    >
+      SPRINT-COMPLETE-FLOW.md
+    </a>
+    .
+  </>
+);
 
 export default function HelperPage() {
   const { code } = useParams<{ code: string }>();
@@ -30,7 +48,7 @@ export default function HelperPage() {
   if (!event) {
     return (
       <Screen>
-        <TopBar backHref="/" title={code} />
+        <TopBar backHref={`/e/${code}`} title={code} />
         <LoadingState rows={2} />
       </Screen>
     );
@@ -41,18 +59,18 @@ export default function HelperPage() {
   return (
     <Screen>
       <TopBar
-        backHref="/"
+        backHref={`/e/${code}`}
         title={
           <div className="min-w-0 text-center leading-tight">
             <h1 className="truncate font-mono text-base font-black tracking-[0.16em]">{event.code}</h1>
             {event.name ? <p className="truncate text-xs font-bold text-dim">{event.name}</p> : null}
           </div>
         }
+        info={sprint ? SPRINT_FLOW_INFO : undefined}
       />
       <div className="flex flex-1 flex-col gap-3 px-4 pb-8">
         {sprint ? (
           <>
-            {/* Agent B/C: /starter and /finish-cam implement Starter + Finish Cam. */}
             <Link href={`/e/${code}/starter`} className={`${BTN} launch-solid bg-accent text-ink`}>
               Starter
             </Link>

@@ -7,6 +7,7 @@ import { BigBtn, ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import { useEvent } from "@/lib/client/hooks";
 import { isAdminDevice } from "@/lib/client/pin";
+import { SPRINT_COMPLETE_FLOW_URL } from "@/lib/share";
 
 const TT_ROLES = [
   { href: "timer", label: "Timer", icon: "◉", hint: "Tap" },
@@ -25,8 +26,22 @@ const SPRINT_ROLES = [
 
 const TT_INFO =
   "Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN.";
-const SPRINT_INFO =
-  "Board is public — no PIN. Starter listens for the bang; Finish Cam records the finish. Both and Admin unlock with the helper PIN.";
+const SPRINT_INFO = (
+  <>
+    Race day: Admin creates lanes and shares links; Starter arms and bangs the gun (server clock);
+    Finish Cam records, marks, and Accepts finishes; Board shows live lane times. Board is public —
+    no PIN. Starter, Finish Cam and Admin unlock with the helper PIN. Full flow:{" "}
+    <a
+      href={SPRINT_COMPLETE_FLOW_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="font-bold text-sky underline underline-offset-2"
+    >
+      SPRINT-COMPLETE-FLOW.md
+    </a>
+    .
+  </>
+);
 
 export default function RolePage() {
   const { code } = useParams<{ code: string }>();
@@ -77,9 +92,11 @@ export default function RolePage() {
           </div>
         }
         extra={
-          <Link href={`/e/${code}/bell`} className={ICON_BTN} aria-label="Bell">
-            🔔
-          </Link>
+          sprint ? undefined : (
+            <Link href={`/e/${code}/bell`} className={ICON_BTN} aria-label="Bell">
+              🔔
+            </Link>
+          )
         }
         info={sprint ? SPRINT_INFO : TT_INFO}
       />
