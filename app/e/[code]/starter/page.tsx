@@ -18,7 +18,9 @@ import type { EventState } from "@/lib/types";
 
 /**
  * Sprint-only start-line helper. Time Trial keeps `/timer` START unchanged.
- * Mic warm → Arm → bang/airhorn onset → existing POST /start (server `startedAt`).
+ * Mic warm → Arm → bang/airhorn onset → stamp `startedAt` on the phone in
+ * server-ms (`Date.now() + offset`) → optimistic running UI → POST /start,
+ * which clamps and persists that stamp.
  */
 export default function StarterPage() {
   const { code } = useParams<{ code: string }>();
@@ -30,11 +32,22 @@ export default function StarterPage() {
 }
 
 function StarterInner({ code }: { code: string }) {
-  const { event, setEvent, serverNow, error } = useEvent(code, 1500);
+  const { event, setEvent, offset, serverNow, error } = useEvent(code, 1500);
   const [starting, setStarting] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [startErr, setStartErr] = useState<string | null>(null);
   const startingRef = useRef(false);
+  /** Latest committed event — rollback target if the optimistic start fails. */
+  const eventRef = useRef<EventState | null>(event);
+  /** Latest server-ms offset, so the bang stamp never reads a stale render. */
+  const offsetRef = useRef(offset);
+
+  useEffect(() => {
+    eventRef.current = event;
+  }, [event]);
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
 
   const running = event?.status === "running" && event.startedAt != null;
   const adminReady = Boolean(event?.ready);
@@ -45,14 +58,23 @@ function StarterInner({ code }: { code: string }) {
     startingRef.current = true;
     setStarting(true);
     setStartErr(null);
+
+    // Stamp the bang here — before any await — in server-ms domain. The POST can
+    // crawl on 4G; the race clock must not. `offset` absorbs phone clock skew.
+    const bangAt = Math.round(Date.now() + offsetRef.current);
+    const prior = eventRef.current;
+    // Optimistic: race is running on the bang, not on the POST round trip.
+    if (prior) setEvent({ ...prior, status: "running", startedAt: bangAt });
+    hapticHoldOk();
+
     try {
-      // Same server-authoritative start as Timer; phone only signals "now".
       const data = await json<{ event: EventState }>(`/api/events/${code}/start`, {
         method: "POST",
+        body: JSON.stringify({ startedAt: bangAt }),
       });
       setEvent(data.event);
-      hapticHoldOk();
     } catch {
+      if (prior) setEvent(prior);
       setStartErr("Start failed — try Arm again");
     } finally {
       startingRef.current = false;

@@ -49,7 +49,7 @@ export default function FinishCamPage() {
 type Phase = "boot" | "recording" | "ended" | "error";
 
 function FinishCamInner({ code }: { code: string }) {
-  const { event, error, serverNow, setEvent } = useEvent(code, 4000);
+  const { event, error, serverNow, setEvent, refresh } = useEvent(code, 4000);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   /** Scrubber playback on the stage after Analyse opens. */
@@ -245,6 +245,10 @@ function FinishCamInner({ code }: { code: string }) {
         setAnalyseShow(true);
       };
 
+      // One GET ping right before Record: `recServerAt` must land in the same
+      // server-ms domain as Starter's `startedAt`, not the device wall clock.
+      const freshServerNow = await refresh();
+      if (freshServerNow != null) serverNowRef.current = freshServerNow;
       recStartedPerfRef.current = performance.now();
       recServerAtRef.current = serverNowRef.current || Date.now();
       recorder.start(250);
@@ -257,7 +261,7 @@ function FinishCamInner({ code }: { code: string }) {
       setStatus("Camera error");
       console.debug(msg);
     }
-  }, [teardown]);
+  }, [teardown, refresh]);
 
   useEffect(() => {
     if (!event || event.kind !== "sprint") return;

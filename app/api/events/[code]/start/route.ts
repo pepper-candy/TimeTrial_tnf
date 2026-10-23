@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isDenied, requireHelper, toPublic } from "@/lib/auth";
+import { clampClientStartedAt } from "@/lib/start-clock";
 import { updateEvent } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,12 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!gate.event.ready) {
     return NextResponse.json({ error: "not ready" }, { status: 409 });
   }
-  const startedAt = Date.now();
+  // Sprint Starter stamps the bang on the phone (server-ms domain) and posts it.
+  // Prefer that stamp, clamped; receive time is the fallback for bodyless POSTs
+  // (Time Trial Timer). Never `recv − halfRtt` — that only adds variance.
+  const recv = Date.now();
+  const body = (await req.json().catch(() => null)) as { startedAt?: unknown } | null;
+  const startedAt = clampClientStartedAt(body?.startedAt, recv);
   const event = await updateEvent(code, (e) => ({
     ...e,
     ready: true,

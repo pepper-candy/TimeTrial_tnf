@@ -15,7 +15,12 @@ export function useEvent(code: string, intervalMs = 1000) {
   const [offset, setOffset] = useState(0);
   const revRef = useRef<number | null>(null);
 
-  const refresh = useCallback(async () => {
+  /**
+   * Poll once. Returns the estimated server time (ms) for this round trip, or
+   * `null` on 404 / network failure — Finish Cam uses it to stamp `recServerAt`
+   * fresh right before recording.
+   */
+  const refresh = useCallback(async (): Promise<number | null> => {
     const t0 = Date.now();
     try {
       const q = revRef.current != null ? `?v=${revRef.current}` : "";
@@ -23,7 +28,7 @@ export function useEvent(code: string, intervalMs = 1000) {
       const t1 = Date.now();
       if (res.status === 404) {
         setError("missing");
-        return;
+        return null;
       }
       const data = (await res.json()) as {
         unchanged?: boolean;
@@ -31,18 +36,21 @@ export function useEvent(code: string, intervalMs = 1000) {
         rev?: number;
         now: number;
       };
-      setOffset(data.now + (t1 - t0) / 2 - t1);
+      const nextOffset = data.now + (t1 - t0) / 2 - t1;
+      setOffset(nextOffset);
       if (data.unchanged) {
         setError(null);
-        return;
+        return Math.round(t1 + nextOffset);
       }
       if (data.event) {
         revRef.current = data.rev ?? data.event.rev;
         setEvent(data.event);
         setError(null);
       }
+      return Math.round(t1 + nextOffset);
     } catch {
       setError("net");
+      return null;
     }
   }, [code]);
 
@@ -94,6 +102,8 @@ export function useEvent(code: string, intervalMs = 1000) {
     event: live,
     error,
     setEvent: setEventAndRev,
+    /** Poll once now; resolves to estimated server time (ms) or null. */
+    refresh,
     offset,
     serverNow: clockNow,
     races,
