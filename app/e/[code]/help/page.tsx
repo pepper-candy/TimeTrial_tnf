@@ -9,6 +9,9 @@ import { useEvent } from "@/lib/client/hooks";
 const BTN =
   "launch tap flex min-h-36 w-full flex-1 items-center justify-center rounded-[10px] px-4 text-4xl font-black uppercase tracking-[0.14em]";
 
+const SPRINT_FLOW_INFO =
+  "Race day: Admin creates lanes and shares links; Starter arms and bangs the gun (server clock); Finish Cam records, marks, and Accepts finishes; Board shows live lane times. Full flow: SPRINT-COMPLETE-FLOW.md";
+
 export default function HelperPage() {
   const { code } = useParams<{ code: string }>();
   const { event, error } = useEvent(code, 8000);
@@ -48,26 +51,11 @@ export default function HelperPage() {
             {event.name ? <p className="truncate text-xs font-bold text-dim">{event.name}</p> : null}
           </div>
         }
+        info={sprint ? SPRINT_FLOW_INFO : undefined}
       />
       <div className="flex flex-1 flex-col gap-3 px-4 pb-8">
         {sprint ? (
           <>
-            <p className="text-sm leading-snug text-dim">
-              Race day: <span className="font-bold text-sand">Admin</span> creates lanes and shares
-              links; <span className="font-bold text-sand">Starter</span> arms and bangs the gun
-              (server clock); <span className="font-bold text-sand">Finish Cam</span> records,
-              marks, and Accepts finishes; <span className="font-bold text-sand">Board</span> shows
-              live lane times. Full flow:{" "}
-              <a
-                href="https://github.com/pepper-candy/TimeTrial_tnf/blob/Sprint-Event/SPRINT-COMPLETE-FLOW.md"
-                target="_blank"
-                rel="noreferrer"
-                className="font-bold text-sky underline underline-offset-2"
-              >
-                SPRINT-COMPLETE-FLOW.md
-              </a>
-              .
-            </p>
             <Link href={`/e/${code}/starter`} className={`${BTN} launch-solid bg-accent text-ink`}>
               Starter
             </Link>

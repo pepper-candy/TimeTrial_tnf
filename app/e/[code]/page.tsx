@@ -26,7 +26,7 @@ const SPRINT_ROLES = [
 const TT_INFO =
   "Board is a public read-only link — no PIN. Timer, Marker and Admin unlock once per device with the helper PIN.";
 const SPRINT_INFO =
-  "Board is public — no PIN. Starter listens for the bang; Finish Cam records the finish. Both and Admin unlock with the helper PIN.";
+  "Race day: Admin creates lanes and shares links; Starter arms and bangs the gun (server clock); Finish Cam records, marks, and Accepts finishes; Board shows live lane times. Board is public — no PIN. Starter, Finish Cam and Admin unlock with the helper PIN. Full flow: SPRINT-COMPLETE-FLOW.md";
 
 export default function RolePage() {
   const { code } = useParams<{ code: string }>();

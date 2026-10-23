@@ -612,6 +612,20 @@ body {
   cursor: text;
 }
 
+/* Matches Chip h-12 — used on sprint gender + distance row */
+.home-code-field--sm {
+  height: 48px;
+}
+
+.home-code-field--sm .home-code {
+  font-size: 1.25rem;
+  line-height: 48px;
+}
+
+.home-code-field--sm .home-code-prefix {
+  font-size: 0.85rem;
+}
+
 .home-code-prefix {
   flex: none;
   color: rgb(183 192 214 / 0.7);
