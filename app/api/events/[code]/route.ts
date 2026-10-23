@@ -40,6 +40,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     name?: string;
     course?: CourseInput;
     status?: "setup" | "running" | "finished";
+    /** Optional freeze instant (e.g. Finish Cam Mark 2). Defaults to now when finishing. */
+    endedAt?: number;
     ready?: boolean;
     demoAutoMark?: boolean;
     demoSpeed?: number;
@@ -52,7 +54,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (body.course) next.course = deriveCourse(body.course);
     if (body.status) {
       next.status = body.status;
-      if (body.status === "finished") next.endedAt = next.endedAt ?? Date.now();
+      if (body.status === "finished") {
+        if (typeof body.endedAt === "number" && Number.isFinite(body.endedAt)) {
+          next.endedAt = Math.round(body.endedAt);
+        } else {
+          next.endedAt = next.endedAt ?? Date.now();
+        }
+      }
     }
     if (body.ready === true) next.ready = true;
     if (body.demoAutoMark != null) next.demoAutoMark = body.demoAutoMark;

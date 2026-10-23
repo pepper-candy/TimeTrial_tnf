@@ -94,6 +94,13 @@ export function hydrateEvent(event: EventState): EventState {
   delete rest.categories;
   return {
     ...rest,
+    kind: event.kind === "sprint" ? "sprint" : "time-trial",
+    sprintGender:
+      event.sprintGender === "female" || event.sprintGender === "mixed"
+        ? event.sprintGender
+        : event.kind === "sprint"
+          ? "male"
+          : event.sprintGender,
     endedAt: event.endedAt ?? null,
     ready: Boolean(event.ready) || event.status !== "setup",
     demoSpeed: event.demoSpeed > 0 ? event.demoSpeed : 1,

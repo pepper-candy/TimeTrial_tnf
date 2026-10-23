@@ -24,3 +24,25 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json({ event: toPublic(event), now: Date.now() });
 }
+
+/** Sprint Starter only — clear startedAt so a false bang can re-arm. TT keeps /timer START. */
+export async function DELETE(req: Request, ctx: Ctx) {
+  const { code } = await ctx.params;
+  const gate = await requireHelper(req, code);
+  if (isDenied(gate)) return gate;
+  if (gate.event.kind !== "sprint") {
+    return NextResponse.json({ error: "sprint only" }, { status: 409 });
+  }
+  if (gate.event.startedAt == null && gate.event.status === "setup") {
+    return NextResponse.json({ event: toPublic(gate.event), now: Date.now() });
+  }
+  const event = await updateEvent(code, (e) => ({
+    ...e,
+    status: "setup",
+    startedAt: null,
+    endedAt: null,
+    // ready stays armed — Admin Ready is irreversible; Starter can bang again.
+  }));
+  if (!event) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json({ event: toPublic(event), now: Date.now() });
+}

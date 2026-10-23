@@ -36,6 +36,8 @@ export default function HelperPage() {
     );
   }
 
+  const sprint = event.kind === "sprint";
+
   return (
     <Screen>
       <TopBar
@@ -48,15 +50,32 @@ export default function HelperPage() {
         }
       />
       <div className="flex flex-1 flex-col gap-3 px-4 pb-8">
-        <Link href={`/e/${code}/timer`} className={`${BTN} launch-solid bg-accent text-ink`}>
-          Timer
-        </Link>
-        <Link
-          href={`/e/${code}/marker`}
-          className={`${BTN} launch-outline bg-sky/5 text-sky ring-2 ring-sky/70 active:bg-sky active:text-ink`}
-        >
-          Marker
-        </Link>
+        {sprint ? (
+          <>
+            {/* Agent B/C: /starter and /finish-cam implement Starter + Finish Cam. */}
+            <Link href={`/e/${code}/starter`} className={`${BTN} launch-solid bg-accent text-ink`}>
+              Starter
+            </Link>
+            <Link
+              href={`/e/${code}/finish-cam`}
+              className={`${BTN} launch-outline bg-sky/5 text-sky ring-2 ring-sky/70 active:bg-sky active:text-ink`}
+            >
+              Finish Cam
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link href={`/e/${code}/timer`} className={`${BTN} launch-solid bg-accent text-ink`}>
+              Timer
+            </Link>
+            <Link
+              href={`/e/${code}/marker`}
+              className={`${BTN} launch-outline bg-sky/5 text-sky ring-2 ring-sky/70 active:bg-sky active:text-ink`}
+            >
+              Marker
+            </Link>
+          </>
+        )}
       </div>
     </Screen>
   );

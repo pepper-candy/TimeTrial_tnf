@@ -8,6 +8,7 @@ import {
   formatLapSplitBig,
   lapColumns,
   lapDownLabel,
+  sprintBoardRows,
 } from "./board";
 import { defaultFiveK } from "./course";
 import { buildRunnerRaces } from "./race";
@@ -38,6 +39,7 @@ function event(partial: Partial<EventState>): EventState {
     name: "5K",
     createdAt: 0,
     status: "running",
+    kind: "time-trial",
     ready: true,
     startedAt: START,
     endedAt: null,
@@ -168,6 +170,54 @@ describe("board rows", () => {
     expect(boardRows(races, "all").map((r) => r.runner.bib)).toEqual(["1", "2", "3"]);
     expect(boardRows(races, "Girls").map((r) => r.runner.bib)).toEqual(["2"]);
     expect(boardRows(races, "Boys").map((r) => r.runner.bib)).toEqual(["1"]);
+  });
+});
+
+describe("sprint board rows", () => {
+  it("sorts by lane 1→N, not by finish rank, and keeps unfinished lanes", () => {
+    const { taps, marks } = race({ "3": [11_200], "1": [12_500] });
+    const ev = event({
+      kind: "sprint",
+      course: { ...defaultFiveK(), totalDistanceM: 100, lapLengthM: 100, firstPartialM: 0, requiredCrossings: 1 },
+      runners: [runner("3"), runner("1"), runner("2")],
+      taps,
+      marks,
+    });
+    const races = buildRunnerRaces(ev);
+    // Rank order would put lane 3 first (faster finish); sprint board is lane order.
+    expect(races.map((r) => r.runner.bib)).toEqual(["3", "1", "2"]);
+    expect(sprintBoardRows(races).map((r) => r.runner.bib)).toEqual(["1", "2", "3"]);
+    expect(sprintBoardRows(races).find((r) => r.runner.bib === "2")?.finishMs).toBeNull();
+  });
+
+  it("omits empty lane placeholders (no name and no SID)", () => {
+    const { taps, marks } = race({ "1": [12_000] });
+    const empty = { ...runner("2"), name: "", studentId: "" };
+    const sidOnly = { ...runner("3"), name: "", studentId: "20881003" };
+    const ev = event({
+      kind: "sprint",
+      course: { ...defaultFiveK(), totalDistanceM: 100, lapLengthM: 100, firstPartialM: 0, requiredCrossings: 1 },
+      runners: [runner("1"), empty, sidOnly],
+      taps,
+      marks,
+    });
+    expect(sprintBoardRows(buildRunnerRaces(ev)).map((r) => r.runner.bib)).toEqual(["1", "3"]);
+  });
+
+  it("filters by Boys / Girls but keeps lane order (does not re-sort by rank)", () => {
+    const { taps, marks } = race({ "3": [11_000], "1": [12_000], "2": [13_000] });
+    const ev = event({
+      kind: "sprint",
+      course: { ...defaultFiveK(), totalDistanceM: 100, lapLengthM: 100, firstPartialM: 0, requiredCrossings: 1 },
+      runners: [runner("3", "Boys"), runner("1", "Girls"), runner("2", "Boys")],
+      taps,
+      marks,
+    });
+    const races = buildRunnerRaces(ev);
+    expect(sprintBoardRows(races, "all").map((r) => r.runner.bib)).toEqual(["1", "2", "3"]);
+    // Boys: lanes 2 then 3 — lane order, not finish order (3 finished first).
+    expect(sprintBoardRows(races, "Boys").map((r) => r.runner.bib)).toEqual(["2", "3"]);
+    expect(sprintBoardRows(races, "Girls").map((r) => r.runner.bib)).toEqual(["1"]);
   });
 });
 

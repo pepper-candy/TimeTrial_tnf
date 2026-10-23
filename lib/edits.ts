@@ -619,6 +619,54 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
     );
   }
 
+  /**
+   * Sprint Finish Cam: upsert one finish (tap+mark) for a lane/bib.
+   * Gated on kind === "sprint". Updates that lane only — never clears others.
+   */
+  if (action === "sprint-finish") {
+    if (event.kind !== "sprint") return event;
+    if (!body.bib || typeof body.t !== "number" || !Number.isFinite(body.t)) return event;
+    const bib = normalizeBib(body.bib);
+    const t = Math.round(body.t);
+    let existingTapId: string | null = null;
+    for (const pair of zipPairs(event.taps, event.marks, event.syncs)) {
+      if (
+        pair.tap &&
+        pair.mark &&
+        isLive(pair.tap) &&
+        isLive(pair.mark) &&
+        normalizeBib(pair.mark.bib) === bib
+      ) {
+        existingTapId = pair.tap.id;
+        break;
+      }
+    }
+    if (existingTapId) {
+      return applyEdit(
+        event,
+        { actor, action: "tap-set-time", id: existingTapId, t, estimated: false },
+        at,
+      );
+    }
+    const tapId = newId();
+    const taps = appendTap(event.taps, { id: tapId, t, estimated: false });
+    const idx = liveIndexOfTap(taps, tapId);
+    const marks = insertMarkAtLiveIndex(event.marks, idx, bib);
+    const mark = liveMarks(marks)[idx];
+    return {
+      ...event,
+      taps,
+      marks,
+      edits: log(
+        event,
+        actor,
+        "pair-insert",
+        { tapId, markId: mark?.id, t, bib, toIndex: idx },
+        at,
+      ),
+    };
+  }
+
   if (action === "restore-last") {
     const last = [...(event.edits ?? [])].reverse().find((e) =>
       e.kind === "tap-delete" || e.kind === "mark-delete" || e.kind === "pair-delete",

@@ -7,6 +7,14 @@ export const DISTANCE_PRESETS = [
   { id: "10000", meters: 10000 },
 ] as const;
 
+/** Flat sprint distances (single finish / one crossing). */
+export const SPRINT_DISTANCE_PRESETS = [
+  { id: "60", meters: 60 },
+  { id: "100", meters: 100 },
+  { id: "200", meters: 200 },
+  { id: "400", meters: 400 },
+] as const;
+
 export type CourseInput = {
   totalDistanceM?: number;
   lapLengthM?: number;

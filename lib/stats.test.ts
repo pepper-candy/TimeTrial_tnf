@@ -12,6 +12,7 @@ function ev(partial: Partial<EventState> = {}): EventState {
     name: "S",
     createdAt: 0,
     status: "running",
+    kind: "time-trial",
     ready: true,
     startedAt: 0,
     course: defaultFiveK(),

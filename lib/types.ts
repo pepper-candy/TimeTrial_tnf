@@ -96,12 +96,22 @@ export type DemoPlan = {
 
 export type EventStatus = "setup" | "running" | "finished";
 
+/** Sprint = flat one-finish race; time-trial = multi-crossing lap course. */
+export type EventKind = "sprint" | "time-trial";
+
 export type EventState = {
   id: string;
   code: string;
   name: string;
   createdAt: number;
   status: EventStatus;
+  /** Set at create; older events without this hydrate as time-trial. */
+  kind: EventKind;
+  /**
+   * Sprint lane gender at create. Male/female seed all lanes; mixed leaves per-row toggle
+   * (defaults Boys). Older / TT events hydrate as male when read for seeding.
+   */
+  sprintGender?: "male" | "female" | "mixed";
   /** Admin armed the gun; timer START stays locked until this is true. Irreversible. */
   ready: boolean;
   startedAt: number | null;

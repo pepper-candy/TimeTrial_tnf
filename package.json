@@ -9,11 +9,14 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "icons": "tsx scripts/render-icons.ts"
+    "icons": "tsx scripts/render-icons.ts",
+    "postinstall": "node scripts/copy-ort-wasm.mjs",
+    "yolo:assets": "node scripts/copy-ort-wasm.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.39.0",
     "next": "16.3.6",
+    "onnxruntime-web": "^1.22.0",
     "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8"
