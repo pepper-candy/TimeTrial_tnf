@@ -1,3 +1,7 @@
+/** Race-day flow doc on the Sprint-Event branch (moved under `.cursor/plan/`). */
+export const SPRINT_COMPLETE_FLOW_URL =
+  "https://github.com/pepper-candy/TimeTrial_tnf/blob/Sprint-Event/.cursor/plan/SPRINT-COMPLETE-FLOW.md";
+
 export function eventLinks(origin: string, code: string) {
   const base = `${origin.replace(/\/$/, "")}/e/${code}`;
   return {

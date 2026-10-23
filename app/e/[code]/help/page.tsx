@@ -5,12 +5,27 @@ import { useParams } from "next/navigation";
 import { BigBtn, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import { useEvent } from "@/lib/client/hooks";
+import { SPRINT_COMPLETE_FLOW_URL } from "@/lib/share";
 
 const BTN =
   "launch tap flex min-h-36 w-full flex-1 items-center justify-center rounded-[10px] px-4 text-4xl font-black uppercase tracking-[0.14em]";
 
-const SPRINT_FLOW_INFO =
-  "Race day: Admin creates lanes and shares links; Starter arms and bangs the gun (server clock); Finish Cam records, marks, and Accepts finishes; Board shows live lane times. Full flow: SPRINT-COMPLETE-FLOW.md";
+const SPRINT_FLOW_INFO = (
+  <>
+    Race day: Admin creates lanes and shares links; Starter arms and bangs the gun (server
+    clock); Finish Cam records, marks, and Accepts finishes; Board shows live lane times. Full
+    flow:{" "}
+    <a
+      href={SPRINT_COMPLETE_FLOW_URL}
+      target="_blank"
+      rel="noreferrer"
+      className="font-bold text-sky underline underline-offset-2"
+    >
+      SPRINT-COMPLETE-FLOW.md
+    </a>
+    .
+  </>
+);
 
 export default function HelperPage() {
   const { code } = useParams<{ code: string }>();
