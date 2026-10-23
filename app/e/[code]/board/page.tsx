@@ -36,7 +36,7 @@ const INFO =
   "Live board — no PIN. Each box: small = lap split, big = running time. Orange cell = fastest lap of the race. Blue border = runner's best lap. ~ = estimated time. Yellow box = bell lap. Tap a runner for details.";
 
 const SPRINT_INFO =
-  "Sprint board — no PIN. One row per lane: lane · photo · name (SID under name) · finish time. Times show — until the runner finishes.";
+  "Sprint board — no PIN. Lane · photo · name (SID) · time (or —). Sorted by lane. Boys / Girls / All when categories are set. Accept from Finish Cam fills times live.";
 
 function enterFullscreen() {
   const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };

@@ -52,7 +52,22 @@ export default function HelperPage() {
       <div className="flex flex-1 flex-col gap-3 px-4 pb-8">
         {sprint ? (
           <>
-            {/* Agent B/C: /starter and /finish-cam implement Starter + Finish Cam. */}
+            <p className="text-sm leading-snug text-dim">
+              Race day: <span className="font-bold text-sand">Admin</span> creates lanes and shares
+              links; <span className="font-bold text-sand">Starter</span> arms and bangs the gun
+              (server clock); <span className="font-bold text-sand">Finish Cam</span> records,
+              marks, and Accepts finishes; <span className="font-bold text-sand">Board</span> shows
+              live lane times. Full flow:{" "}
+              <a
+                href="https://github.com/pepper-candy/TimeTrial_tnf/blob/Sprint-Event/SPRINT-COMPLETE-FLOW.md"
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-sky underline underline-offset-2"
+              >
+                SPRINT-COMPLETE-FLOW.md
+              </a>
+              .
+            </p>
             <Link href={`/e/${code}/starter`} className={`${BTN} launch-solid bg-accent text-ink`}>
               Starter
             </Link>

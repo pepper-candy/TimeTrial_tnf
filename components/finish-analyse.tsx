@@ -1,22 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import {
   analyseFinishClip,
+  downloadBlob,
   type AnalyseProgress,
-  type LaneSuggestion,
 } from "@/lib/client/analyse-finish";
+import { FINISH_LINE_X, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+import {
+  drawLaneGuideBands,
+  loadLaneGuides,
+} from "@/lib/client/lane-guides";
+import {
+  FRAME_STEP_SEC,
+  applyLaneProposal,
+  finishTimeFromVideoMs,
+  type LaneFinishState,
+  videoMsFromFinishMs,
+} from "@/lib/client/analyse-time";
 import type { FinishCamMeta } from "@/lib/client/finish-cam";
-import { acceptSprintFinish, acceptSprintFinishes } from "@/lib/client/sprint-records";
+import { acceptSprintFinish } from "@/lib/client/sprint-records";
+import { prefetchPersonModel } from "@/lib/client/yolo-person";
 import { formatClock } from "@/lib/format";
 import type { EventState } from "@/lib/types";
 import { BigBtn } from "@/components/shell";
-
-type Row = LaneSuggestion & {
-  /** Editable elapsed ms string (seconds with decimals). */
-  editMs: string;
-  accepted: boolean;
-};
 
 export type FinishSnapshotPreview = {
   bib: string;
@@ -26,17 +40,65 @@ export type FinishSnapshotPreview = {
   finishMs: number | null;
 };
 
-function msToEdit(ms: number | null): string {
-  if (ms == null || !Number.isFinite(ms)) return "";
-  return (ms / 1000).toFixed(2);
+function emptyRows(event: EventState): LaneFinishState[] {
+  return sprintersForAnalyse(event).map((runner, idx) => ({
+    lane: idx + 1,
+    bib: runner.bib,
+    runnerId: runner.id,
+    name: runner.name || runner.studentId || runner.bib,
+    finishMs: null,
+    tapT: null,
+    snapshotDataUrl: null,
+    snapshotVideoMs: null,
+    source: "none",
+    locked: false,
+    accepted: false,
+  }));
 }
 
-function editToMs(s: string): number | null {
-  const n = Number(s.trim());
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(n * 1000);
+function captureFrameJpeg(
+  video: HTMLVideoElement,
+  highlightLane: number | null,
+  laneCount: number,
+  eventCode: string,
+): string | null {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = vw;
+  canvas.height = vh;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, vw, vh);
+
+  // Same calibrated polygons as LaneGuidesOverlay (Agent 2)
+  const guides = loadLaneGuides(eventCode, laneCount);
+  drawLaneGuideBands(ctx, vw, vh, guides, highlightLane);
+
+  const lx = FINISH_LINE_X * vw;
+  ctx.save();
+  ctx.strokeStyle = "#ef4444";
+  ctx.lineWidth = Math.max(2, Math.round(vw * 0.004));
+  ctx.beginPath();
+  ctx.moveTo(lx, 0);
+  ctx.lineTo(lx, vh);
+  ctx.stroke();
+  ctx.restore();
+
+  return canvas.toDataURL("image/jpeg", 0.82);
 }
 
+/**
+ * Finish Cam Analyse scrubber (P0).
+ * Opens immediately on Analyse — no YOLO wait.
+ *
+ * Agent 3 extension points:
+ * - Lane state: `LaneFinishState` + `setRows` (merge with `applyLaneProposal`)
+ * - Accept: `acceptOne` → `acceptSprintFinish(code, bib, tapT)` → Board
+ * - Time map: `finishTimeFromVideoMs({ startedAt, recServerAt, videoMs })`
+ * YOLO must only fill lanes where `canProposeLaneFinish(row)` is true.
+ */
 export function FinishAnalysePanel({
   code,
   event,
@@ -44,6 +106,8 @@ export function FinishAnalysePanel({
   meta,
   markInMs,
   markOutMs,
+  videoRef,
+  onScrubberUrl,
   onEvent,
   onLog,
   onStatus,
@@ -58,31 +122,127 @@ export function FinishAnalysePanel({
   meta: FinishCamMeta | null;
   markInMs: number | null;
   markOutMs: number | null;
+  /** Shared stage <video> controlled by this panel while scrubbing. */
+  videoRef: RefObject<HTMLVideoElement | null>;
+  /** Object URL for the stage video (page sets src). */
+  onScrubberUrl: (url: string | null) => void;
   onEvent: (e: EventState) => void;
   onLog: (msg: string) => void;
   onStatus: (s: string) => void;
-  /** Fires once Analyse is tapped (and stays true through results / redo). */
   onAnalyseStarted?: () => void;
   onHasResults?: (has: boolean) => void;
-  /** Show lane finish-frame on the Finish Cam preview stage. */
   onShowSnapshot?: (preview: FinishSnapshotPreview | null) => void;
-  /** Bib currently shown on the stage (highlights Show). */
   shownBib?: string | null;
 }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<LaneFinishState[]>([]);
+  const [selectedLane, setSelectedLane] = useState(1);
+  const [playing, setPlaying] = useState(false);
+  const [videoMs, setVideoMs] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<AnalyseProgress | null>(null);
-  const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const timeInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  /** Background YOLO chip — never gates scrubber open. */
+  const [yoloChip, setYoloChip] = useState<"idle" | "scanning" | "done" | "error">(
+    "idle",
+  );
+  const objectUrlRef = useRef<string | null>(null);
+  const startedRef = useRef(false);
+  const yoloRunIdRef = useRef(0);
+  const eventRef = useRef(event);
+  eventRef.current = event;
+  const onLogRef = useRef(onLog);
+  onLogRef.current = onLog;
 
   const markIn = meta?.markInMs ?? markInMs;
   const markOut = meta?.markOutMs ?? markOutMs;
+  const recServerAt = meta?.recServerAt ?? event.startedAt ?? 0;
+  const laneCount = Math.max(1, sprintersForAnalyse(event).length);
+
+  const sliceReady =
+    blob != null &&
+    markIn != null &&
+    markOut != null &&
+    markOut > markIn &&
+    event.startedAt != null;
+
+  const clampMs = useCallback(
+    (ms: number) => {
+      if (markIn == null || markOut == null) return Math.max(0, ms);
+      return Math.min(markOut, Math.max(markIn, ms));
+    },
+    [markIn, markOut],
+  );
+
+  const seekToMs = useCallback(
+    (ms: number) => {
+      const video = videoRef.current;
+      if (!video || markIn == null || markOut == null) return;
+      const clamped = clampMs(ms);
+      video.currentTime = clamped / 1000;
+      setVideoMs(clamped);
+    },
+    [videoRef, markIn, markOut, clampMs],
+  );
+
+  // Sync UI clock from stage video; loop within Mark1…Mark2 (exclude +1s pad).
+  useEffect(() => {
+    if (!open) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const onTime = () => {
+      if (markIn == null || markOut == null) return;
+      const ms = video.currentTime * 1000;
+      if (ms < markIn - 20) {
+        video.currentTime = markIn / 1000;
+        setVideoMs(markIn);
+        return;
+      }
+      if (ms >= markOut) {
+        video.pause();
+        video.currentTime = markOut / 1000;
+        setVideoMs(markOut);
+        setPlaying(false);
+        return;
+      }
+      setVideoMs(ms);
+    };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onEnded = () => {
+      setPlaying(false);
+      if (markOut != null) seekToMs(markOut);
+    };
+
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("seeked", onTime);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("ended", onEnded);
+    return () => {
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("seeked", onTime);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("ended", onEnded);
+    };
+  }, [open, videoRef, markIn, markOut, seekToMs]);
 
   useEffect(() => {
-    onHasResults?.(rows != null);
-  }, [rows, onHasResults]);
+    onHasResults?.(open);
+  }, [open, onHasResults]);
 
-  const runAnalyse = useCallback(async () => {
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+      onScrubberUrl(null);
+    };
+  }, [onScrubberUrl]);
+
+  const openScrubber = useCallback(() => {
     if (!blob || markIn == null || markOut == null) {
       setErr("Need a recording with Mark 1 and Mark 2");
       return;
@@ -91,52 +251,271 @@ export function FinishAnalysePanel({
       setErr("No start time — Starter bang required");
       return;
     }
-    onAnalyseStarted?.();
-    onShowSnapshot?.(null);
-    setBusy(true);
-    setErr(null);
-    setProgress({ phase: "model", message: "Starting…", done: 0, total: 1 });
-    onStatus("Analyse running…");
-    try {
-      const suggestions = await analyseFinishClip({
-        blob,
-        markInMs: markIn,
-        markOutMs: markOut,
-        recServerAt: meta?.recServerAt ?? event.startedAt,
-        event,
-        onProgress: setProgress,
-      });
-      setRows(
-        suggestions.map((s) => ({
-          ...s,
-          editMs: msToEdit(s.finishMs),
-          accepted: false,
-        })),
-      );
-      onLog(
-        `Analyse YOLO Mark1…Mark2 only [${markIn}…${markOut}] ms · ${suggestions.filter((s) => s.source === "yolo").length}/${suggestions.length} lanes detected`,
-      );
-      onStatus("Analyse ready — edit / Accept");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setErr(msg);
-      onLog(`Analyse error: ${msg}`);
-      onStatus("Analyse failed");
-    } finally {
-      setBusy(false);
-      setProgress(null);
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
     }
-  }, [blob, markIn, markOut, meta, event, onLog, onStatus, onAnalyseStarted, onShowSnapshot]);
+    const url = URL.createObjectURL(blob);
+    objectUrlRef.current = url;
+    onScrubberUrl(url);
+    onShowSnapshot?.(null);
 
-  function updateEdit(bib: string, editMs: string) {
-    setRows((prev) =>
-      prev?.map((r) => (r.bib === bib ? { ...r, editMs, source: r.source } : r)) ?? null,
+    const next = emptyRows(event);
+    setRows(next);
+    setSelectedLane(next[0]?.lane ?? 1);
+    setOpen(true);
+    setErr(null);
+    setPlaying(false);
+    setVideoMs(markIn);
+    setYoloChip("idle");
+    // Kick model load immediately; scan starts in effect below (never blocks UI).
+    prefetchPersonModel();
+
+    if (!startedRef.current) {
+      startedRef.current = true;
+      onAnalyseStarted?.();
+    }
+    onStatus("Scrub · Set finish · Accept");
+    onLog(
+      `Analyse scrubber Mark1…Mark2 [${markIn}…${markOut}] ms (pad excluded)`,
     );
+  }, [
+    blob,
+    markIn,
+    markOut,
+    event,
+    onScrubberUrl,
+    onShowSnapshot,
+    onAnalyseStarted,
+    onStatus,
+    onLog,
+  ]);
+
+  // After stage <video> mounts with scrubberUrl, seek to Mark 1.
+  useEffect(() => {
+    if (!open || markIn == null) return;
+    let cancelled = false;
+    let tries = 0;
+    const go = (video: HTMLVideoElement) => {
+      if (cancelled) return;
+      video.currentTime = markIn / 1000;
+      setVideoMs(markIn);
+    };
+    const tryBind = () => {
+      if (cancelled) return;
+      const video = videoRef.current;
+      if (!video) {
+        if (tries++ < 45) requestAnimationFrame(tryBind);
+        return;
+      }
+      if (video.readyState >= 1) go(video);
+      else video.addEventListener("loadedmetadata", () => go(video), { once: true });
+    };
+    tryBind();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, markIn, videoRef]);
+
+  /**
+   * Background YOLO (P1) — starts in parallel when Analyse opens.
+   * Merges only via applyLaneProposal (skips Accepted / locked / manual).
+   * Own video element inside analyseFinishClip — does not fight scrubber.
+   */
+  useEffect(() => {
+    if (!open || !blob || markIn == null || markOut == null) return;
+    if (event.startedAt == null) return;
+
+    const runId = ++yoloRunIdRef.current;
+    const ac = new AbortController();
+    setYoloChip("scanning");
+
+    const onProgress = (p: AnalyseProgress) => {
+      if (runId !== yoloRunIdRef.current) return;
+      if (p.phase === "error") setYoloChip("error");
+      else if (p.phase === "done") setYoloChip("done");
+      else setYoloChip("scanning");
+    };
+
+    void (async () => {
+      try {
+        const suggestions = await analyseFinishClip({
+          blob,
+          markInMs: markIn,
+          markOutMs: markOut,
+          recServerAt,
+          event: eventRef.current,
+          signal: ac.signal,
+          onProgress,
+        });
+        if (runId !== yoloRunIdRef.current) return;
+
+        const detected = suggestions.filter(
+          (s) => s.finishMs != null && s.tapT != null,
+        ).length;
+        setRows((prev) =>
+          prev.map((row) => {
+            const sug = suggestions.find((s) => s.lane === row.lane);
+            if (!sug || sug.finishMs == null || sug.tapT == null) return row;
+            // Manual / Accepted / locked lanes unchanged (canProposeLaneFinish).
+            return applyLaneProposal(row, {
+              finishMs: sug.finishMs,
+              tapT: sug.tapT,
+              snapshotDataUrl: sug.snapshotDataUrl,
+              snapshotVideoMs: sug.snapshotVideoMs,
+            });
+          }),
+        );
+        setYoloChip("done");
+        onLogRef.current(
+          `YOLO done · ${detected} detection(s) → empty/unlocked lanes only`,
+        );
+      } catch (e) {
+        if (ac.signal.aborted || runId !== yoloRunIdRef.current) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        setYoloChip("error");
+        onLogRef.current(`YOLO helper failed: ${msg}`);
+      }
+    })();
+
+    return () => {
+      ac.abort();
+    };
+    // Intentionally omit `event` — Accept updates must not re-trigger YOLO.
+  }, [open, blob, markIn, markOut, recServerAt]);
+
+  const togglePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || markIn == null || markOut == null) return;
+    if (video.paused) {
+      if (video.currentTime * 1000 >= markOut - 5) {
+        video.currentTime = markIn / 1000;
+      }
+      void video.play().catch(() => undefined);
+    } else {
+      video.pause();
+    }
+  }, [videoRef, markIn, markOut]);
+
+  const stepFrame = useCallback(
+    (dir: -1 | 1) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.pause();
+      seekToMs(video.currentTime * 1000 + dir * FRAME_STEP_SEC * 1000);
+    },
+    [videoRef, seekToMs],
+  );
+
+  const setFinishHere = useCallback(() => {
+    if (!event.startedAt || markIn == null) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const ms = clampMs(video.currentTime * 1000);
+    /*
+     * Finish-time formula — see lib/client/analyse-time.ts:
+     *   tapT     = recServerAt + videoMs
+     *   finishMs = max(0, tapT − startedAt)
+     */
+    const { finishMs, tapT } = finishTimeFromVideoMs({
+      startedAt: event.startedAt,
+      recServerAt,
+      videoMs: ms,
+    });
+    const target = rows.find((r) => r.lane === selectedLane);
+    if (target?.locked && target.accepted) {
+      setErr(`Lane ${selectedLane}: tap Edit before re-setting`);
+      return;
+    }
+    const snap = captureFrameJpeg(video, selectedLane, laneCount, code);
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.lane !== selectedLane) return r;
+        return {
+          ...r,
+          finishMs,
+          tapT,
+          snapshotDataUrl: snap,
+          snapshotVideoMs: ms,
+          source: "manual",
+          locked: false,
+          accepted: false,
+        };
+      }),
+    );
+    setErr(null);
+    onShowSnapshot?.(null);
+    onStatus(`Lane ${selectedLane} set · ${formatClock(finishMs, 2)}`);
+    onLog(`Set lane ${selectedLane} @ video ${Math.round(ms)} ms → ${formatClock(finishMs, 2)}`);
+  }, [
+    event.startedAt,
+    markIn,
+    videoRef,
+    clampMs,
+    recServerAt,
+    selectedLane,
+    laneCount,
+    code,
+    rows,
+    onShowSnapshot,
+    onStatus,
+    onLog,
+  ]);
+
+  function editRow(row: LaneFinishState) {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.bib === row.bib ? { ...r, locked: false, accepted: false } : r,
+      ),
+    );
+    setSelectedLane(row.lane);
+    if (row.snapshotVideoMs != null) seekToMs(row.snapshotVideoMs);
+    else if (row.finishMs != null && event.startedAt != null) {
+      seekToMs(
+        videoMsFromFinishMs({
+          startedAt: event.startedAt,
+          recServerAt,
+          finishMs: row.finishMs,
+        }),
+      );
+    }
+    onShowSnapshot?.(null);
+    onStatus(`Editing lane ${row.lane}`);
   }
 
-  function showRow(row: Row) {
+  function clearRow(row: LaneFinishState) {
+    if (row.locked && row.accepted) {
+      setErr(`Lane ${row.lane}: tap Edit before Clear`);
+      return;
+    }
+    setRows((prev) =>
+      prev.map((r) =>
+        r.bib === row.bib
+          ? {
+              ...r,
+              finishMs: null,
+              tapT: null,
+              snapshotDataUrl: null,
+              snapshotVideoMs: null,
+              source: "none",
+              locked: false,
+              accepted: false,
+            }
+          : r,
+      ),
+    );
+    if (shownBib === row.bib) onShowSnapshot?.(null);
+    onStatus(`Lane ${row.lane} cleared`);
+  }
+
+  function showRow(row: LaneFinishState) {
     if (!row.snapshotDataUrl) {
-      setErr(`Lane ${row.lane}: no finish-frame snapshot`);
+      if (row.snapshotVideoMs != null) {
+        seekToMs(row.snapshotVideoMs);
+        setSelectedLane(row.lane);
+        return;
+      }
+      setErr(`Lane ${row.lane}: no finish frame yet — Set finish here`);
       return;
     }
     onShowSnapshot?.({
@@ -144,41 +523,32 @@ export function FinishAnalysePanel({
       lane: row.lane,
       name: row.name,
       snapshotDataUrl: row.snapshotDataUrl,
-      finishMs: editToMs(row.editMs) ?? row.finishMs,
+      finishMs: row.finishMs,
     });
+    setSelectedLane(row.lane);
     onStatus(`Showing lane ${row.lane} finish frame`);
   }
 
-  function focusTimeInput(bib: string) {
-    const el = timeInputRefs.current.get(bib);
-    if (!el || el.disabled) return;
-    el.focus();
-    el.select();
-  }
-
-  async function acceptOne(row: Row) {
+  async function acceptOne(row: LaneFinishState) {
     if (!event.startedAt) return;
-    const finishMs = editToMs(row.editMs);
-    if (finishMs == null) {
-      setErr(`Lane ${row.lane}: enter a time`);
+    if (row.finishMs == null || row.tapT == null) {
+      setErr(`Lane ${row.lane}: Set finish here first`);
       return;
     }
     setBusy(true);
     setErr(null);
     try {
-      const tapT = event.startedAt + finishMs;
-      const next = await acceptSprintFinish(code, row.bib, tapT);
+      const next = await acceptSprintFinish(code, row.bib, row.tapT);
       onEvent(next);
-      setRows(
-        (prev) =>
-          prev?.map((r) =>
-            r.bib === row.bib
-              ? { ...r, finishMs, tapT, editMs: msToEdit(finishMs), accepted: true }
-              : r,
-          ) ?? null,
+      setRows((prev) =>
+        prev.map((r) =>
+          r.bib === row.bib
+            ? { ...r, accepted: true, locked: true, source: "manual" }
+            : r,
+        ),
       );
-      onLog(`Accepted lane ${row.lane} · ${formatClock(finishMs, 2)}`);
-      onStatus(`Lane ${row.lane} saved`);
+      onLog(`Accepted lane ${row.lane} · ${formatClock(row.finishMs, 2)}`);
+      onStatus(`Lane ${row.lane} saved · Board updated`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -186,87 +556,156 @@ export function FinishAnalysePanel({
     }
   }
 
-  async function acceptAll() {
-    if (!event.startedAt || !rows) return;
-    const startedAt = event.startedAt;
-    const batch = rows
-      .map((r) => {
-        const finishMs = editToMs(r.editMs);
-        if (finishMs == null) return null;
-        return { bib: r.bib, tapT: startedAt + finishMs, finishMs };
-      })
-      .filter((x): x is { bib: string; tapT: number; finishMs: number } => x != null);
-    if (batch.length === 0) {
-      setErr("Enter at least one time");
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      const next = await acceptSprintFinishes(
-        code,
-        batch.map(({ bib, tapT }) => ({ bib, tapT })),
-      );
-      if (next) onEvent(next);
-      setRows(
-        (prev) =>
-          prev?.map((r) => {
-            const hit = batch.find((b) => b.bib === r.bib);
-            if (!hit) return r;
-            return {
-              ...r,
-              finishMs: hit.finishMs,
-              tapT: hit.tapT,
-              editMs: msToEdit(hit.finishMs),
-              accepted: true,
-            };
-          }) ?? null,
-      );
-      onLog(`Accepted ${batch.length} lane finish(es)`);
-      onStatus("Finishes saved to board");
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
+  function downloadFull() {
+    if (!blob) return;
+    void downloadBlob(blob, `finish-${code}-full-${Date.now()}.webm`);
+    onLog("Downloaded full clip (includes +1s pad after Mark 2)");
   }
 
-  /* Pre-results: single Analyse CTA. Results: scrollable lanes + sticky Redo | Accept All. */
-  if (!rows) {
+  const raceClockLabel = useMemo(() => {
+    if (!event.startedAt || markIn == null) return "—";
+    const { finishMs } = finishTimeFromVideoMs({
+      startedAt: event.startedAt,
+      recServerAt,
+      videoMs: clampMs(videoMs),
+    });
+    return formatClock(finishMs, 2);
+  }, [event.startedAt, markIn, recServerAt, videoMs, clampMs]);
+
+  // Pre-scrubber: Analyse CTA opens scrubber immediately (no YOLO gate).
+  if (!open) {
     return (
       <div className="flex flex-col gap-2">
-        <BigBtn tone="go" className="w-full" disabled={busy || !blob} onClick={() => void runAnalyse()}>
-          {busy && progress ? progress.message : "Analyse"}
+        <BigBtn
+          tone="go"
+          className="w-full"
+          disabled={!sliceReady}
+          onClick={openScrubber}
+        >
+          Analyse
         </BigBtn>
-        {progress ? (
+        {err ? <p className="text-sm font-semibold text-stop">{err}</p> : null}
+        {!sliceReady && blob ? (
           <p className="text-xs font-semibold text-dim">
-            {progress.message}
-            {progress.total > 1 ? ` · ${progress.done}/${progress.total}` : ""}
+            {event.startedAt == null
+              ? "Waiting for Starter bang…"
+              : "Need Mark 1 and Mark 2"}
           </p>
         ) : null}
-        {err ? <p className="text-sm font-semibold text-stop">{err}</p> : null}
       </div>
     );
   }
 
+  const duration = markIn != null && markOut != null ? markOut - markIn : 0;
+  const scrubValue = markIn != null ? clampMs(videoMs) - markIn : 0;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {err ? <p className="shrink-0 text-sm font-semibold text-stop">{err}</p> : null}
+
+      {/* Non-blocking YOLO helper chip — scrubber usable immediately */}
+      {yoloChip === "scanning" ? (
+        <div
+          className="shrink-0 self-start rounded-full bg-panel2 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-sand ring-1 ring-line"
+          role="status"
+          aria-live="polite"
+        >
+          YOLO scanning…
+        </div>
+      ) : null}
+      {yoloChip === "error" ? (
+        <div className="shrink-0 self-start rounded-full bg-stop/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-stop ring-1 ring-stop/40">
+          YOLO skipped — scrub still works
+        </div>
+      ) : null}
+
+      {/* Transport: play · frame step · timeline */}
+      <div className="shrink-0 rounded-2xl bg-panel ring-1 ring-line p-2">
+        <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-dim">
+          <span>Mark1 → Mark2</span>
+          <span className="font-mono tabular text-sand normal-case tracking-normal">
+            race {raceClockLabel}
+            <span className="text-dim"> · vid {Math.round(clampMs(videoMs))}ms</span>
+          </span>
+        </div>
+        <input
+          type="range"
+          className="w-full accent-accent"
+          min={0}
+          max={Math.max(1, duration)}
+          step={1}
+          value={Math.min(duration, Math.max(0, scrubValue))}
+          onChange={(e) => {
+            if (markIn == null) return;
+            seekToMs(markIn + Number(e.target.value));
+          }}
+        />
+        <div className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="tap rounded-lg bg-panel2 px-2.5 py-1.5 text-sm font-bold ring-1 ring-line"
+              aria-label="Previous frame"
+              onClick={() => stepFrame(-1)}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="tap rounded-lg bg-panel2 px-3 py-1.5 text-sm font-bold ring-1 ring-line"
+              aria-label={playing ? "Pause" : "Play"}
+              onClick={togglePlay}
+            >
+              {playing ? "Pause" : "Play"}
+            </button>
+            <button
+              type="button"
+              className="tap rounded-lg bg-panel2 px-2.5 py-1.5 text-sm font-bold ring-1 ring-line"
+              aria-label="Next frame"
+              onClick={() => stepFrame(1)}
+            >
+              →
+            </button>
+          </div>
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+            {rows.map((r) => (
+              <button
+                key={r.bib}
+                type="button"
+                className={`tap shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold ring-1 ${
+                  selectedLane === r.lane
+                    ? "bg-accent/25 text-accent ring-accent/60"
+                    : "bg-void text-sand ring-line"
+                }`}
+                onClick={() => {
+                  setSelectedLane(r.lane);
+                  onShowSnapshot?.(null);
+                }}
+              >
+                L{r.lane}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="tap shrink-0 rounded-lg bg-go/20 px-2.5 py-1.5 text-xs font-bold text-go ring-1 ring-go/50 disabled:opacity-40"
+            disabled={busy || !event.startedAt}
+            onClick={setFinishHere}
+          >
+            Set finish here
+          </button>
+        </div>
+      </div>
+
+      {/* Per-lane: time · thumb · Edit / Clear / Accept */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-2xl ring-1 ring-line">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 bg-panel text-[10px] font-bold uppercase tracking-wider text-dim">
             <tr>
-              <th className="w-8 px-1 py-2 text-center sm:w-12 sm:px-2">
-                <span className="sm:hidden">L</span>
-                <span className="hidden sm:inline">Lane</span>
-              </th>
+              <th className="w-8 px-1 py-2 text-center sm:w-10 sm:px-2">L</th>
+              <th className="w-12 px-1 py-2 sm:w-14">Thumb</th>
               <th className="px-2 py-2">Athlete</th>
-              {/* min width keeps header + 2005.93 visible; % share grows with Athlete when space allows. */}
-              <th className="min-w-[6.5rem] w-[22%] whitespace-nowrap px-1 py-2 sm:min-w-[7.5rem] sm:px-2">
-                <span className="sm:hidden">Time</span>
-                <span className="hidden sm:inline">Time (s)</span>
-              </th>
-              {/* w-0 + nowrap: column width = Show+Accept only (auto table layout). */}
+              <th className="min-w-[4.5rem] px-1 py-2 sm:px-2">Time</th>
               <th className="w-0 px-1 py-2 whitespace-nowrap sm:px-2" />
             </tr>
           </thead>
@@ -276,61 +715,76 @@ export function FinishAnalysePanel({
               return (
                 <tr
                   key={r.bib}
-                  className={`border-t border-line/60${showing ? " bg-accent/10" : ""}`}
+                  className={`border-t border-line/60${showing ? " bg-accent/10" : ""}${
+                    selectedLane === r.lane ? " bg-sand/5" : ""
+                  }`}
                 >
                   <td
-                    className="w-8 cursor-pointer px-1 py-2 text-center font-mono font-bold sm:w-12 sm:px-2"
-                    onClick={() => showRow(r)}
+                    className="cursor-pointer px-1 py-2 text-center font-mono font-bold sm:px-2"
+                    onClick={() => {
+                      setSelectedLane(r.lane);
+                      showRow(r);
+                    }}
                   >
                     {r.lane}
                   </td>
-                  <td className="cursor-pointer px-2 py-2" onClick={() => showRow(r)}>
+                  <td className="px-1 py-1.5 sm:px-2">
+                    {r.snapshotDataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.snapshotDataUrl}
+                        alt={`Lane ${r.lane}`}
+                        className="h-10 w-12 cursor-pointer rounded object-cover ring-1 ring-line"
+                        onClick={() => showRow(r)}
+                      />
+                    ) : (
+                      <div className="grid h-10 w-12 place-items-center rounded bg-void text-[10px] text-dim ring-1 ring-line">
+                        —
+                      </div>
+                    )}
+                  </td>
+                  <td
+                    className="cursor-pointer px-2 py-2"
+                    onClick={() => {
+                      setSelectedLane(r.lane);
+                      showRow(r);
+                    }}
+                  >
                     <div className="truncate font-semibold">{r.name || "—"}</div>
                     <div className="text-[10px] text-dim">
-                      {r.source === "yolo" ? "YOLO" : "—"}
+                      {r.source === "manual"
+                        ? "manual"
+                        : r.source === "yolo"
+                          ? "YOLO"
+                          : "—"}
                       {r.accepted ? " · saved" : ""}
                     </div>
                   </td>
-                  <td
-                    className="min-w-[6.5rem] w-[22%] cursor-text whitespace-nowrap px-1 py-2 sm:min-w-[7.5rem] sm:px-2"
-                    onClick={(e) => {
-                      // Don't steal focus from nested controls; pad click → focus input.
-                      if (e.target instanceof HTMLInputElement) return;
-                      focusTimeInput(r.bib);
-                    }}
-                  >
-                    <input
-                      ref={(el) => {
-                        if (el) timeInputRefs.current.set(r.bib, el);
-                        else timeInputRefs.current.delete(r.bib);
-                      }}
-                      type="text"
-                      inputMode="decimal"
-                      className="w-full min-w-[5.5rem] rounded-lg bg-void px-1.5 py-1 font-mono text-sand ring-1 ring-line sm:px-2"
-                      value={r.editMs}
-                      placeholder="—"
-                      disabled={busy}
-                      onChange={(e) => updateEdit(r.bib, e.target.value)}
-                    />
+                  <td className="whitespace-nowrap px-1 py-2 font-mono tabular sm:px-2">
+                    {r.finishMs != null ? formatClock(r.finishMs, 2) : "—"}
                   </td>
                   <td className="w-0 px-1 py-2 whitespace-nowrap sm:px-2">
-                    <div className="inline-flex items-center gap-1 sm:gap-1.5">
+                    <div className="inline-flex items-center gap-1">
                       <button
                         type="button"
-                        className={`rounded-lg px-2 py-1 text-xs font-bold ring-1 disabled:opacity-40 sm:px-2.5 ${
-                          showing
-                            ? "bg-accent/25 text-accent ring-accent/60"
-                            : "bg-panel text-sand ring-line"
-                        }`}
-                        disabled={busy || !r.snapshotDataUrl}
-                        onClick={() => showRow(r)}
+                        className="rounded-lg bg-panel px-2 py-1 text-xs font-bold ring-1 ring-line disabled:opacity-40"
+                        disabled={busy || (r.finishMs == null && !r.accepted)}
+                        onClick={() => editRow(r)}
                       >
-                        Show
+                        Edit
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg bg-go/20 px-2 py-1 text-xs font-bold text-go ring-1 ring-go/50 disabled:opacity-40 sm:px-2.5"
-                        disabled={busy || !r.editMs.trim()}
+                        className="rounded-lg bg-panel px-2 py-1 text-xs font-bold ring-1 ring-line disabled:opacity-40"
+                        disabled={busy || r.finishMs == null || (r.locked && r.accepted)}
+                        onClick={() => clearRow(r)}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-go/20 px-2 py-1 text-xs font-bold text-go ring-1 ring-go/50 disabled:opacity-40"
+                        disabled={busy || r.finishMs == null || r.accepted}
                         onClick={() => void acceptOne(r)}
                       >
                         Accept
@@ -343,17 +797,28 @@ export function FinishAnalysePanel({
           </tbody>
         </table>
       </div>
+
       <div className="grid shrink-0 grid-cols-2 gap-2">
-        <BigBtn tone="plain" className="w-full" disabled={busy || !blob} onClick={() => void runAnalyse()}>
-          {busy && progress ? progress.message : "Redo"}
+        <BigBtn
+          tone="plain"
+          size="md"
+          className="w-full"
+          disabled={!blob}
+          onClick={downloadFull}
+        >
+          Download WebM
         </BigBtn>
         <BigBtn
-          tone="accent"
+          tone="plain"
+          size="md"
           className="w-full"
-          disabled={busy || !rows.some((r) => r.editMs.trim())}
-          onClick={() => void acceptAll()}
+          disabled={busy}
+          onClick={() => {
+            onShowSnapshot?.(null);
+            onStatus("Scrub · Set finish · Accept");
+          }}
         >
-          Accept All
+          Show video
         </BigBtn>
       </div>
     </div>

@@ -2,6 +2,9 @@
  * Client-only YOLOv8n person detector (onnxruntime-web).
  * Lazy-loaded on first Analyse — never on create/board.
  *
+ * Execution providers: webgpu → webgl → wasm (first that creates a session).
+ * Inference prefers a Dedicated Worker; falls back to main thread.
+ *
  * YOLO window = Mark1…Mark2 only (the +1s pad stays on the saved blob).
  */
 
@@ -27,8 +30,19 @@ const PERSON_CLASS = 0;
 const SCORE_THRESH = 0.35;
 const IOU_THRESH = 0.45;
 
+/** Prefer GPU EPs, then WASM (spec: webgpu → webgl → wasm). */
+const EXECUTION_PROVIDERS = ["webgpu", "webgl", "wasm"] as const;
+
 let ortPromise: Promise<OrtModule> | null = null;
 let sessionPromise: Promise<InferenceSession> | null = null;
+let activeEp: string | null = null;
+
+type WorkerBridge = {
+  detect: (bitmap: ImageBitmap) => Promise<PersonBox[]>;
+  terminate: () => void;
+};
+
+let workerBridgePromise: Promise<WorkerBridge | null> | null = null;
 
 async function loadOrt(): Promise<OrtModule> {
   if (!ortPromise) {
@@ -42,23 +56,49 @@ async function loadOrt(): Promise<OrtModule> {
   return ortPromise;
 }
 
+async function createSessionWithFallback(ort: OrtModule): Promise<InferenceSession> {
+  let lastErr: unknown;
+  for (const ep of EXECUTION_PROVIDERS) {
+    try {
+      const session = await ort.InferenceSession.create(MODEL_URL, {
+        executionProviders: [ep],
+        graphOptimizationLevel: "all",
+      });
+      activeEp = ep;
+      return session;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Could not create YOLO session (webgpu/webgl/wasm)");
+}
+
 /** Load the person model once per tab. Safe to call repeatedly. */
 export async function loadPersonModel(): Promise<InferenceSession> {
   if (!sessionPromise) {
     sessionPromise = (async () => {
       const ort = await loadOrt();
-      return ort.InferenceSession.create(MODEL_URL, {
-        executionProviders: ["wasm"],
-        graphOptimizationLevel: "all",
-      });
+      return createSessionWithFallback(ort);
     })();
   }
   return sessionPromise;
 }
 
+/** Which EP won (null until first successful load). */
+export function getPersonModelEp(): string | null {
+  return activeEp;
+}
+
 export function resetPersonModelForTests() {
   sessionPromise = null;
   ortPromise = null;
+  activeEp = null;
+  if (workerBridgePromise) {
+    void workerBridgePromise.then((b) => b?.terminate());
+    workerBridgePromise = null;
+  }
 }
 
 /** Letterbox RGB frame → Float32 NCHW [1,3,640,640] + scale meta. */
@@ -110,10 +150,7 @@ function iou(
   return uni <= 0 ? 0 : inter / uni;
 }
 
-function nms(
-  boxes: PersonBox[],
-  thresh: number,
-): PersonBox[] {
+function nms(boxes: PersonBox[], thresh: number): PersonBox[] {
   const sorted = boxes.slice().sort((a, b) => b.score - a.score);
   const keep: PersonBox[] = [];
   for (const box of sorted) {
@@ -122,33 +159,15 @@ function nms(
   return keep;
 }
 
-/**
- * Detect persons in a canvas/video frame.
- * Returns boxes in normalised source coordinates.
- */
-export async function detectPersons(
-  source: HTMLCanvasElement | HTMLVideoElement,
-  session?: InferenceSession,
-): Promise<PersonBox[]> {
-  const sess = session ?? (await loadPersonModel());
-  const ort = await loadOrt();
-  const srcW =
-    source instanceof HTMLVideoElement ? source.videoWidth : source.width;
-  const srcH =
-    source instanceof HTMLVideoElement ? source.videoHeight : source.height;
-  if (!srcW || !srcH) return [];
-
-  const { tensor, gain, padX, padY } = preprocess(source, srcW, srcH);
-  const inputName = sess.inputNames[0] ?? "images";
-  const feeds: Record<string, import("onnxruntime-web").Tensor> = {
-    [inputName]: new ort.Tensor("float32", tensor, [1, 3, INPUT, INPUT]),
-  };
-  const out = await sess.run(feeds);
-  const outName = sess.outputNames[0]!;
-  const raw = out[outName]!;
-  const data = raw.data as Float32Array;
-  const dims = raw.dims;
-
+export function parseYoloOutput(
+  data: Float32Array,
+  dims: readonly number[],
+  srcW: number,
+  srcH: number,
+  gain: number,
+  padX: number,
+  padY: number,
+): PersonBox[] {
   // YOLOv8: [1, 84, N] or [1, N, 84]
   let numPred: number;
   let transposed: boolean;
@@ -159,7 +178,6 @@ export async function detectPersons(
     numPred = dims[1]!;
     transposed = false;
   } else {
-    // Unexpected shape — bail cleanly
     return [];
   }
 
@@ -186,7 +204,6 @@ export async function detectPersons(
     }
     if (personScore < SCORE_THRESH) continue;
 
-    // Undo letterbox → pixel → normalised
     const x1p = (cx - w / 2 - padX) / gain;
     const y1p = (cy - h / 2 - padY) / gain;
     const x2p = (cx + w / 2 - padX) / gain;
@@ -205,4 +222,177 @@ export async function detectPersons(
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, n));
+}
+
+async function detectPersonsMain(
+  source: HTMLCanvasElement | HTMLVideoElement,
+  session?: InferenceSession,
+): Promise<PersonBox[]> {
+  const sess = session ?? (await loadPersonModel());
+  const ort = await loadOrt();
+  const srcW =
+    source instanceof HTMLVideoElement ? source.videoWidth : source.width;
+  const srcH =
+    source instanceof HTMLVideoElement ? source.videoHeight : source.height;
+  if (!srcW || !srcH) return [];
+
+  const { tensor, gain, padX, padY } = preprocess(source, srcW, srcH);
+  const inputName = sess.inputNames[0] ?? "images";
+  const feeds: Record<string, import("onnxruntime-web").Tensor> = {
+    [inputName]: new ort.Tensor("float32", tensor, [1, 3, INPUT, INPUT]),
+  };
+  const out = await sess.run(feeds);
+  const outName = sess.outputNames[0]!;
+  const raw = out[outName]!;
+  return parseYoloOutput(
+    raw.data as Float32Array,
+    raw.dims,
+    srcW,
+    srcH,
+    gain,
+    padX,
+    padY,
+  );
+}
+
+function tryCreateWorkerBridge(): Promise<WorkerBridge | null> {
+  if (typeof window === "undefined" || typeof Worker === "undefined") {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./yolo-infer.worker.ts", import.meta.url), {
+        type: "module",
+      });
+    } catch {
+      resolve(null);
+      return;
+    }
+
+    const pending = new Map<
+      number,
+      { resolve: (b: PersonBox[]) => void; reject: (e: Error) => void }
+    >();
+    let nextId = 1;
+    let ready = false;
+    let settled = false;
+
+    const failInit = () => {
+      if (settled) return;
+      settled = true;
+      try {
+        worker.terminate();
+      } catch {
+        /* ignore */
+      }
+      resolve(null);
+    };
+
+    const timer = window.setTimeout(failInit, 45_000);
+
+    worker.onmessage = (ev: MessageEvent) => {
+      const msg = ev.data as
+        | { type: "ready"; ep: string }
+        | { type: "boxes"; id: number; boxes: PersonBox[] }
+        | { type: "error"; id?: number; message: string };
+
+      if (msg.type === "ready") {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        activeEp = msg.ep || activeEp;
+        ready = true;
+        resolve({
+          detect: (bitmap) =>
+            new Promise<PersonBox[]>((res, rej) => {
+              const id = nextId++;
+              pending.set(id, { resolve: res, reject: rej });
+              try {
+                worker.postMessage({ type: "detect", id, bitmap }, [bitmap]);
+              } catch (e) {
+                pending.delete(id);
+                rej(e instanceof Error ? e : new Error(String(e)));
+              }
+            }),
+          terminate: () => {
+            worker.terminate();
+            for (const [, p] of pending) p.reject(new Error("YOLO worker terminated"));
+            pending.clear();
+          },
+        });
+        return;
+      }
+
+      if (msg.type === "boxes") {
+        const p = pending.get(msg.id);
+        if (p) {
+          pending.delete(msg.id);
+          p.resolve(msg.boxes);
+        }
+        return;
+      }
+
+      if (msg.type === "error") {
+        if (!ready) {
+          failInit();
+          return;
+        }
+        if (msg.id != null) {
+          const p = pending.get(msg.id);
+          if (p) {
+            pending.delete(msg.id);
+            p.reject(new Error(msg.message));
+          }
+        }
+      }
+    };
+
+    worker.onerror = () => failInit();
+    worker.postMessage({ type: "init", modelUrl: MODEL_URL, wasmPaths: WASM_PATHS });
+  });
+}
+
+async function getWorkerBridge(): Promise<WorkerBridge | null> {
+  if (!workerBridgePromise) {
+    workerBridgePromise = tryCreateWorkerBridge();
+  }
+  return workerBridgePromise;
+}
+
+/**
+ * Detect persons in a canvas/video frame.
+ * Prefers Dedicated Worker (ORT off main thread); falls back to main-thread ORT.
+ * Returns boxes in normalised source coordinates. Person class only.
+ */
+export async function detectPersons(
+  source: HTMLCanvasElement | HTMLVideoElement,
+  session?: InferenceSession,
+): Promise<PersonBox[]> {
+  // Explicit session → main-thread path (tests / callers that own the session).
+  if (session) return detectPersonsMain(source, session);
+
+  const srcW =
+    source instanceof HTMLVideoElement ? source.videoWidth : source.width;
+  const srcH =
+    source instanceof HTMLVideoElement ? source.videoHeight : source.height;
+  if (!srcW || !srcH) return [];
+
+  const bridge = await getWorkerBridge();
+  if (bridge && typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(source);
+      return await bridge.detect(bitmap);
+    } catch {
+      // Worker failed mid-run — fall through to main thread.
+    }
+  }
+
+  return detectPersonsMain(source);
+}
+
+/** Warm model + optional worker as soon as Analyse opens (non-blocking). */
+export function prefetchPersonModel(): void {
+  void loadPersonModel().catch(() => undefined);
+  void getWorkerBridge();
 }
