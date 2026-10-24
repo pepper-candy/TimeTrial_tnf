@@ -4,7 +4,8 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RaceClock } from "@/components/clock";
 import { PinGate } from "@/components/pin-gate";
-import { BOTTOM_TRAY, BigBtn, ICON_BTN, Screen, TopBar } from "@/components/shell";
+import { ResetIcon } from "@/components/reset-icon";
+import { BOTTOM_TRAY, BigBtn, ICON_BTN, RESET_ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import {
   BANG_THRESHOLD_MAX,
@@ -194,16 +195,22 @@ function StarterInner({ code }: { code: string }) {
           </div>
         }
         extra={
-          ended || running || mic === "armed" ? (
+          ended || running ? (
+            <button
+              type="button"
+              className={RESET_ICON_BTN}
+              aria-label="Reset"
+              disabled={undoing}
+              onClick={() => void undoStart()}
+            >
+              <ResetIcon />
+            </button>
+          ) : mic === "armed" ? (
             <button
               type="button"
               className={ICON_BTN}
-              aria-label={ended || running ? "Reset" : "Disarm"}
-              disabled={undoing}
-              onClick={() => {
-                if (ended || running) void undoStart();
-                else disarm();
-              }}
+              aria-label="Disarm"
+              onClick={() => disarm()}
             >
               ↻
             </button>
@@ -298,19 +305,9 @@ function StarterInner({ code }: { code: string }) {
       <div className={BOTTOM_TRAY}>
         <div className="pointer-events-auto">
           {ended ? (
-            <div className="flex h-[42dvh] w-full flex-col gap-3">
-              <div className="tap flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
-                <span className="text-5xl font-black text-stop">ENDED</span>
-                <span className="text-base font-bold">Race over</span>
-              </div>
-              <button
-                type="button"
-                className="tap flex h-16 w-full shrink-0 items-center justify-center rounded-[1.25rem] bg-accent text-xl font-black text-ink disabled:opacity-50"
-                disabled={undoing}
-                onClick={() => void undoStart()}
-              >
-                {undoing ? "Resetting…" : "Reset"}
-              </button>
+            <div className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
+              <span className="text-5xl font-black text-stop">ENDED</span>
+              <span className="text-base font-bold">Race over</span>
             </div>
           ) : running ? (
             <div className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">

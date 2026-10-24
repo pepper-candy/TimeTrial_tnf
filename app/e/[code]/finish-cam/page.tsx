@@ -3,7 +3,8 @@
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PinGate } from "@/components/pin-gate";
-import { BigBtn, ICON_BTN, Screen, TopBar } from "@/components/shell";
+import { ResetIcon } from "@/components/reset-icon";
+import { BigBtn, ICON_BTN, RESET_ICON_BTN, Screen, TopBar } from "@/components/shell";
 import { EmptyState, LoadingState } from "@/components/states";
 import {
   FinishAnalysePanel,
@@ -539,11 +540,11 @@ function FinishCamInner({ code }: { code: string }) {
             ) : showReset ? (
               <button
                 type="button"
-                className={ICON_BTN}
+                className={RESET_ICON_BTN}
                 aria-label={phase === "error" ? "Reset" : "Record again"}
                 onClick={() => void startSession()}
               >
-                ↻
+                <ResetIcon />
               </button>
             ) : (
               <button

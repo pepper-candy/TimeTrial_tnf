@@ -23,6 +23,10 @@ export function Screen({
 export const ICON_BTN =
   "tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-panel2 text-xl font-black ring-1 ring-line active:bg-sand active:text-ink";
 
+/** Alert reset control: red fill, white glyph. */
+export const RESET_ICON_BTN =
+  "tap grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-stop text-white ring-1 ring-stop active:opacity-90 disabled:opacity-50";
+
 /** Bottom keypad / TAP shelf. Fill clips to the round top so list shows in the corner ears. */
 export const BOTTOM_TRAY =
   "pointer-events-none relative z-10 -mt-6 shrink-0 rounded-t-3xl bg-[color-mix(in_srgb,var(--color-panel2)_40%,var(--color-panel))] px-3 pt-4 pb-[max(12px,env(safe-area-inset-bottom))]";
