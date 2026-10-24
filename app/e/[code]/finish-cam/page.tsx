@@ -18,6 +18,7 @@ import {
   BANG_SOUNDTRACK_TODO,
   exitFullscreenUnlockOrientation,
   openFinishStream,
+  clipExtFromMime,
   pickRecorderMime,
   readZoomCaps,
   startZoomPipeline,
@@ -497,15 +498,16 @@ function FinishCamInner({ code }: { code: string }) {
   const laneGuideCount = Math.max(1, sprintersForAnalyse(event).length);
 
   // recording → fullscreen; ended before analyse → ↻; analysing/results → download (no reset)
-  const showDownload = analyseStarted;
+  const showDownload = Boolean(clipBlob) && (phase === "ended" || analyseStarted);
   const showReset =
     !analyseStarted && (phase === "ended" || phase === "error");
   const showRaceEndOverlay = phase === "ended" && !analyseStarted;
 
   function downloadFullClip() {
     if (!clipBlob) return;
-    void downloadBlob(clipBlob, `finish-${code}-full-${Date.now()}.webm`);
-    pushLog("Downloaded full clip (no post-Mark2 pad)");
+    const ext = clipExtFromMime(clipBlob.type);
+    void downloadBlob(clipBlob, `finish-${code}-full-${Date.now()}.${ext}`);
+    pushLog(`Downloaded full clip (.${ext}, no post-Mark2 pad)`);
   }
 
   return (
@@ -515,62 +517,71 @@ function FinishCamInner({ code }: { code: string }) {
         className="flex min-h-0 flex-1 flex-col bg-void [:fullscreen]:h-dvh [:fullscreen]:w-screen"
       >
         <TopBar
+          className="!mb-1"
           backHref={`/e/${code}/help`}
           title="Finish Cam"
           extra={
-            showDownload ? (
-              <button
-                type="button"
-                className={ICON_BTN}
-                aria-label="Download full clip"
-                disabled={!clipBlob}
-                onClick={downloadFullClip}
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                  <path
-                    d="M9 2v10M5 8l4 4 4-4M3 15h12"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            ) : showReset ? (
-              <button
-                type="button"
-                className={RESET_ICON_BTN}
-                aria-label={phase === "error" ? "Reset" : "Record again"}
-                onClick={() => void startSession()}
-              >
-                <ResetIcon />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={ICON_BTN}
-                aria-label={stageFullscreen ? "Exit full screen" : "Full screen"}
-                onClick={() => void onToggleFullscreen()}
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-                  <path
-                    d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            )
+            <>
+              {showDownload ? (
+                <button
+                  type="button"
+                  className={ICON_BTN}
+                  aria-label="Download full clip"
+                  disabled={!clipBlob}
+                  onClick={downloadFullClip}
+                  title={
+                    clipBlob
+                      ? `Download .${clipExtFromMime(clipBlob.type)}`
+                      : "Download"
+                  }
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                    <path
+                      d="M9 2v10M5 8l4 4 4-4M3 15h12"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              ) : null}
+              {showReset ? (
+                <button
+                  type="button"
+                  className={RESET_ICON_BTN}
+                  aria-label={phase === "error" ? "Reset" : "Record again"}
+                  onClick={() => void startSession()}
+                >
+                  <ResetIcon />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={ICON_BTN}
+                  aria-label={stageFullscreen ? "Exit full screen" : "Full screen"}
+                  onClick={() => void onToggleFullscreen()}
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                    <path
+                      d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              )}
+            </>
           }
           info="Finish camera — portrait or landscape. Continuous record. Two-press: Mark 1 enter / Mark 2 exit (Space advances). Single-press: one press per sprinter (Space logs each). Mark 2 / stop ends the race clock; Analyse is review only."
         />
 
         <div
-          className="relative mx-4 min-h-0 flex-1 overflow-hidden rounded-2xl bg-black ring-1 ring-line"
+          className="relative mx-3 mt-0 min-h-0 flex-1 overflow-hidden rounded-2xl bg-black ring-1 ring-line"
           style={{ containerType: "size" }}
         >
           {/* object-contain both axes: min(stageW, stageH×ar) × min(stageH, stageW/ar), centered */}
@@ -582,7 +593,16 @@ function FinishCamInner({ code }: { code: string }) {
                 <img
                   src={snapshotPreview.snapshotDataUrl}
                   alt={`Lane ${snapshotPreview.lane} finish frame`}
-                  className="max-h-full max-w-full object-contain"
+                  className="max-h-full max-w-full cursor-pointer object-contain"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSnapshotPreview(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSnapshotPreview(null);
+                    }
+                  }}
                 />
                 <div className="pointer-events-none absolute top-3 left-3 z-[3] rounded-lg border border-line bg-black/75 px-2.5 py-1.5 text-xs font-bold tracking-wide text-sand">
                   Lane {snapshotPreview.lane}
@@ -661,20 +681,22 @@ function FinishCamInner({ code }: { code: string }) {
         </div>
 
         <div
-          className={`flex flex-col gap-2 px-4 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] ${
+          className={`flex flex-col gap-2 px-3 pb-[max(12px,env(safe-area-inset-bottom))] ${analyseShow ? "pt-2" : "pt-3"} ${
             analyseHasResults ? "min-h-0 flex-1" : "shrink-0"
           }`}
         >
-          <div className="flex shrink-0 items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-dim">
-            <span>{statusLine}</span>
-            <span className="font-mono tabular text-sand">
-              {markMode === "single-press"
-                ? `${pressesMs.length} pass${pressesMs.length === 1 ? "" : "es"}`
-                : `${markInMs != null ? `M1 ${markInMs}ms` : "—"} · ${
-                    markOutMs != null ? `M2 ${markOutMs}ms` : "—"
-                  }`}
-            </span>
-          </div>
+          {!analyseShow ? (
+            <div className="flex shrink-0 items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-dim">
+              <span>{statusLine}</span>
+              <span className="font-mono tabular text-sand">
+                {markMode === "single-press"
+                  ? `${pressesMs.length} pass${pressesMs.length === 1 ? "" : "es"}`
+                  : `${markInMs != null ? `M1 ${markInMs}ms` : "—"} · ${
+                      markOutMs != null ? `M2 ${markOutMs}ms` : "—"
+                    }`}
+              </span>
+            </div>
+          ) : null}
 
           {zoom && !analyseShow ? (
             <label className="block shrink-0 text-xs font-bold uppercase tracking-wider text-dim">

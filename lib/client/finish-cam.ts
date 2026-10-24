@@ -14,16 +14,25 @@ export type FinishCamMeta = {
 };
 
 export function pickRecorderMime(): string {
+  // Prefer MP4 when the browser can record it (Safari / some Chromium builds).
+  // Chrome desktop still usually only offers WebM — no silent re-encode.
   const types = [
-    "video/webm;codecs=vp8,opus",
-    "video/webm;codecs=vp9,opus",
-    "video/webm",
     "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
   ];
   for (const t of types) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t)) return t;
   }
   return "";
+}
+
+/** File extension matching a recorded blob MIME (mp4 when possible, else webm). */
+export function clipExtFromMime(mime: string | undefined | null): "mp4" | "webm" {
+  const m = (mime || "").toLowerCase();
+  if (m.includes("mp4") || m.includes("avc") || m.includes("mpeg")) return "mp4";
+  return "webm";
 }
 
 export function isLandscape(): boolean {
