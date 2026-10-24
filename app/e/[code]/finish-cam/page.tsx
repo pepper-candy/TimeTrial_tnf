@@ -16,20 +16,27 @@ import {
   applyHardwareZoom,
   BANG_SOUNDTRACK_TODO,
   exitFullscreenUnlockOrientation,
-  isLandscape,
   openFinishStream,
   pickRecorderMime,
   readZoomCaps,
   startZoomPipeline,
   stopStream,
   toggleStageFullscreen,
-  tryLockLandscape,
   YOLO_SLICE_NOTE,
   type FinishCamMeta,
   type ZoomCaps,
 } from "@/lib/client/finish-cam";
+import { useHardwareKeys } from "@/lib/client/hardware-keys";
+import {
+  loadMarkMode,
+  saveMarkMode,
+  SINGLE_PRESS_BUFFER_MS,
+  singlePressEndVideoMs,
+  type MarkMode,
+} from "@/lib/client/mark-mode";
 import { downloadBlob } from "@/lib/client/analyse-finish";
 import { json, useEvent } from "@/lib/client/hooks";
+import { hapticHoldOk, hapticTap } from "@/lib/haptic";
 import type { EventState } from "@/lib/types";
 
 /**
@@ -64,6 +71,8 @@ function FinishCamInner({ code }: { code: string }) {
   const recServerAtRef = useRef(0);
   const markInRef = useRef<number | null>(null);
   const markOutRef = useRef<number | null>(null);
+  /** Single-press mode: video offsets (ms) of each passer, in lane order. */
+  const pressesRef = useRef<number[]>([]);
   const stoppingRef = useRef(false);
   const blobRef = useRef<Blob | null>(null);
   const metaRef = useRef<FinishCamMeta | null>(null);
@@ -73,11 +82,12 @@ function FinishCamInner({ code }: { code: string }) {
 
   const [phase, setPhase] = useState<Phase>("boot");
   const [status, setStatus] = useState("Warming camera…");
-  const [landscape, setLandscape] = useState(true);
   const [stageFullscreen, setStageFullscreen] = useState(false);
   const [zoom, setZoom] = useState<ZoomCaps | null>(null);
   const [markInMs, setMarkInMs] = useState<number | null>(null);
   const [markOutMs, setMarkOutMs] = useState<number | null>(null);
+  const [pressesMs, setPressesMs] = useState<number[]>([]);
+  const [markMode, setMarkMode] = useState<MarkMode>(() => loadMarkMode(code));
   const [analyseShow, setAnalyseShow] = useState(false);
   /** True once Analyse is tapped — locks reset, swaps TopBar to download. */
   const [analyseStarted, setAnalyseStarted] = useState(false);
@@ -101,23 +111,18 @@ function FinishCamInner({ code }: { code: string }) {
   }, []);
 
   useEffect(() => {
-    function check() {
-      setLandscape(isLandscape());
-    }
     function onFs() {
       setStageFullscreen(!!document.fullscreenElement);
     }
-    check();
     onFs();
-    window.addEventListener("resize", check);
-    window.addEventListener("orientationchange", check);
     document.addEventListener("fullscreenchange", onFs);
-    return () => {
-      window.removeEventListener("resize", check);
-      window.removeEventListener("orientationchange", check);
-      document.removeEventListener("fullscreenchange", onFs);
-    };
+    return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
+
+  // Reload the persisted mode when the event code changes (client nav keeps this component alive).
+  useEffect(() => {
+    setMarkMode(loadMarkMode(code));
+  }, [code]);
 
   const teardown = useCallback(() => {
     try {
@@ -152,9 +157,11 @@ function FinishCamInner({ code }: { code: string }) {
     setScrubberUrl(null);
     setMarkInMs(null);
     setMarkOutMs(null);
+    setPressesMs([]);
     setStopping(false);
     markInRef.current = null;
     markOutRef.current = null;
+    pressesRef.current = [];
     stoppingRef.current = false;
     blobRef.current = null;
     metaRef.current = null;
@@ -164,10 +171,7 @@ function FinishCamInner({ code }: { code: string }) {
     setPreviewAr(null);
 
     try {
-      // Orientation only — do not require document fullscreen for live preview.
-      await tryLockLandscape();
-      setLandscape(isLandscape());
-
+      // Portrait and landscape both work; no forced orientation lock.
       teardown();
       const { stream, track } = await openFinishStream();
       streamRef.current = stream;
@@ -225,16 +229,28 @@ function FinishCamInner({ code }: { code: string }) {
       recorder.onstop = () => {
         const markIn = markInRef.current;
         const markOut = markOutRef.current;
+        const presses = [...pressesRef.current];
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType || "video/webm",
         });
         blobRef.current = blob;
+        const durationMs = performance.now() - recStartedPerfRef.current;
+        const lastPress = presses.length
+          ? Math.round(presses[presses.length - 1]!)
+          : null;
         const meta: FinishCamMeta = {
           recServerAt: recServerAtRef.current,
           markInMs: markIn,
           markOutMs: markOut,
-          analyseEndMs: markOut != null ? markOut + 1000 : null,
-          durationMs: performance.now() - recStartedPerfRef.current,
+          // No post-Mark2 pad. Single-press keeps only the ±0.5s buffer.
+          analyseEndMs:
+            markOut != null
+              ? markOut
+              : lastPress != null
+                ? lastPress + SINGLE_PRESS_BUFFER_MS
+                : durationMs,
+          durationMs,
+          pressesMs: presses.length ? presses : null,
           note: `${BANG_SOUNDTRACK_TODO}. ${YOLO_SLICE_NOTE}.`,
         };
         metaRef.current = meta;
@@ -270,27 +286,30 @@ function FinishCamInner({ code }: { code: string }) {
     void startSession();
   }, [event, startSession]);
 
-  function onMark1() {
-    // Wait for Starter bang — same running gate as Timer (`status` + `startedAt`).
-    if (!event || event.status !== "running" || event.startedAt == null) return;
-    if (phase !== "recording" || recorderRef.current?.state !== "recording") return;
-    if (markInRef.current != null) return;
-    const ms = Math.round(performance.now() - recStartedPerfRef.current);
-    markInRef.current = ms;
-    setMarkInMs(ms);
-    setStatus(`Mark 1 @ ${ms} ms`);
-  }
+  /** POST the race end (server ms). Mark 2 / single-press stop — not Analyse. */
+  const endRaceClock = useCallback(
+    (videoMs: number) => {
+      const recAt = recServerAtRef.current;
+      const endedAt = recAt > 0 ? Math.round(recAt + videoMs) : null;
+      if (endedAt == null) return;
+      void json<{ event: EventState }>(`/api/events/${code}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "finished", endedAt }),
+      })
+        .then((data) => {
+          setEvent(data.event);
+          pushLog(`Race clock ended · endedAt ${endedAt}`);
+        })
+        .catch((e) => {
+          console.debug(
+            `end-race failed: ${e instanceof Error ? e.message : e}`,
+          );
+        });
+    },
+    [code, setEvent, pushLog],
+  );
 
-  async function onMark2() {
-    if (phase !== "recording" || recorderRef.current?.state !== "recording") return;
-    if (markInRef.current == null || markOutRef.current != null || stoppingRef.current) return;
-    const ms = Math.round(performance.now() - recStartedPerfRef.current);
-    markOutRef.current = ms;
-    setMarkOutMs(ms);
-    setStatus(`Mark 2 @ ${ms} ms · +1s…`);
-    stoppingRef.current = true;
-    setStopping(true);
-    await new Promise((r) => setTimeout(r, 1000));
+  function stopRecorderNow() {
     try {
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     } catch {
@@ -301,6 +320,95 @@ function FinishCamInner({ code }: { code: string }) {
     stopStream(streamRef.current);
     streamRef.current = null;
     trackRef.current = null;
+  }
+
+  function onMark1() {
+    // Wait for Starter bang — same running gate as Timer (`status` + `startedAt`).
+    if (!event || event.status !== "running" || event.startedAt == null) return;
+    if (phase !== "recording" || recorderRef.current?.state !== "recording") return;
+    if (markInRef.current != null) return;
+    const ms = Math.round(performance.now() - recStartedPerfRef.current);
+    markInRef.current = ms;
+    setMarkInMs(ms);
+    setStatus(`Mark 1 @ ${ms} ms`);
+    hapticTap();
+  }
+
+  function onMark2() {
+    if (phase !== "recording" || recorderRef.current?.state !== "recording") return;
+    if (markInRef.current == null || markOutRef.current != null || stoppingRef.current) return;
+    const ms = Math.round(performance.now() - recStartedPerfRef.current);
+    markOutRef.current = ms;
+    setMarkOutMs(ms);
+    setStatus(`Mark 2 @ ${ms} ms`);
+    stoppingRef.current = true;
+    setStopping(true);
+    hapticHoldOk();
+    // Race clock ends at Mark 2 (server ms).
+    endRaceClock(ms);
+    // Stop recording immediately — no post-Mark2 wait/pad.
+    stopRecorderNow();
+  }
+
+  function onPress() {
+    if (!event || event.status !== "running" || event.startedAt == null) return;
+    if (phase !== "recording" || recorderRef.current?.state !== "recording") return;
+    if (stoppingRef.current) return;
+    const ms = Math.round(performance.now() - recStartedPerfRef.current);
+    pressesRef.current.push(ms);
+    setPressesMs([...pressesRef.current]);
+    setStatus(`Passer ${pressesRef.current.length} @ ${ms} ms`);
+    hapticTap();
+  }
+
+  async function stopSinglePress() {
+    if (phase !== "recording" || recorderRef.current?.state !== "recording") return;
+    if (stoppingRef.current) return;
+    if (pressesRef.current.length === 0) return;
+    const ms = Math.round(performance.now() - recStartedPerfRef.current);
+    stoppingRef.current = true;
+    setStopping(true);
+    hapticHoldOk();
+    // Race clock ends at the last passer's press (fallback: now).
+    endRaceClock(singlePressEndVideoMs(pressesRef.current, ms));
+    // Keep only the ±0.5s Analyse buffer after the last press, then stop.
+    const last = pressesRef.current[pressesRef.current.length - 1]!;
+    const delay = Math.max(0, last + SINGLE_PRESS_BUFFER_MS - ms);
+    if (delay > 0) {
+      await new Promise((r) => setTimeout(r, delay));
+      if (recorderRef.current?.state !== "recording") return;
+    }
+    stopRecorderNow();
+  }
+
+  /** Hardware Space/Enter drives marks in both modes — soft keyboard not required. */
+  useHardwareKeys((e) => {
+    if (phase !== "recording") return false;
+    const k = e.key;
+    if (k !== " " && k !== "Spacebar" && k !== "Enter") return false;
+    if (e.repeat) return false;
+    if (markMode === "two-press") {
+      if (markInRef.current == null) {
+        onMark1();
+        return true;
+      }
+      if (markOutRef.current == null && !stoppingRef.current) {
+        onMark2();
+        return true;
+      }
+      return false;
+    }
+    // single-press: Space logs each passer.
+    if (!stoppingRef.current) {
+      onPress();
+      return true;
+    }
+    return false;
+  });
+
+  function setMarkModeUI(mode: MarkMode) {
+    saveMarkMode(code, mode);
+    setMarkMode(mode);
   }
 
   async function onZoom(v: number) {
@@ -318,36 +426,17 @@ function FinishCamInner({ code }: { code: string }) {
 
   async function onToggleFullscreen() {
     await toggleStageFullscreen(stageRef.current);
-    setLandscape(isLandscape());
     setStageFullscreen(!!document.fullscreenElement);
   }
 
   const onAnalyseStarted = useCallback(() => {
     setAnalyseStarted(true);
-    // Freeze board race clock at Mark 2 (rec start + mark-out video offset).
-    const markOut = markOutRef.current ?? metaRef.current?.markOutMs ?? null;
-    const recAt = metaRef.current?.recServerAt ?? recServerAtRef.current;
-    if (markOut != null && recAt > 0) {
-      const endedAt = Math.round(recAt + markOut);
-      void json<{ event: EventState }>(`/api/events/${code}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status: "finished", endedAt }),
-      })
-        .then((data) => {
-          setEvent(data.event);
-          pushLog(`Race clock stopped at Mark 2 · endedAt ${endedAt}`);
-        })
-        .catch((e) => {
-          console.debug(
-            `end-at-mark2 failed: ${e instanceof Error ? e.message : e}`,
-          );
-        });
-    }
+    // Race clock is already ended at Mark 2 / single-press stop — Analyse is
+    // review-only and must not move the clock.
     void exitFullscreenUnlockOrientation().then(() => {
       setStageFullscreen(!!document.fullscreenElement);
-      setLandscape(isLandscape());
     });
-  }, [code, setEvent, pushLog]);
+  }, []);
 
   if (error === "missing") {
     return (
@@ -397,8 +486,10 @@ function FinishCamInner({ code }: { code: string }) {
   const canMark1 = running && phase === "recording" && markInMs == null;
   const canMark2 =
     phase === "recording" && markInMs != null && markOutMs == null && !stopping;
+  const canPress = running && phase === "recording" && !stopping;
+  const canStopSingle = phase === "recording" && pressesMs.length > 0 && !stopping;
   const statusLine =
-    phase === "recording" && !running && markInMs == null
+    phase === "recording" && !running && markInMs == null && pressesMs.length === 0
       ? "Waiting for start…"
       : status;
   /** Calibrated lane bands — same count Analyse / YOLO will use. */
@@ -413,7 +504,7 @@ function FinishCamInner({ code }: { code: string }) {
   function downloadFullClip() {
     if (!clipBlob) return;
     void downloadBlob(clipBlob, `finish-${code}-full-${Date.now()}.webm`);
-    pushLog("Downloaded full clip (includes +1s pad after Mark 2)");
+    pushLog("Downloaded full clip (no post-Mark2 pad)");
   }
 
   return (
@@ -474,31 +565,15 @@ function FinishCamInner({ code }: { code: string }) {
               </button>
             )
           }
-          info="Landscape finish camera. Continuous record; Mark 1 enter / Mark 2 exit. After Mark 2 keep +1s then RACE END. Analyse opens a scrubber on Mark1…Mark2 — Set finish per lane and Accept to write the Board."
+          info="Finish camera — portrait or landscape. Continuous record. Two-press: Mark 1 enter / Mark 2 exit (Space advances). Single-press: one press per sprinter (Space logs each). Mark 2 / stop ends the race clock; Analyse is review only."
         />
 
         <div
           className="relative mx-4 min-h-0 flex-1 overflow-hidden rounded-2xl bg-black ring-1 ring-line"
           style={{ containerType: "size" }}
         >
-          {!landscape && !analyseShow && !snapshotPreview && !scrubberUrl ? (
-            <video
-              src="/Rotate.mp4"
-              playsInline
-              muted
-              autoPlay
-              loop
-              className="absolute inset-0 z-[5] h-full w-full object-contain"
-              aria-label="Rotate phone to landscape"
-            />
-          ) : null}
-
           {/* object-contain both axes: min(stageW, stageH×ar) × min(stageH, stageW/ar), centered */}
-          <div
-            className={`absolute inset-0 flex items-center justify-center${
-              landscape || snapshotPreview || scrubberUrl ? "" : " invisible"
-            }`}
-          >
+          <div className="absolute inset-0 flex items-center justify-center">
             {snapshotPreview ? (
               <div className="relative flex h-full w-full items-center justify-center">
                 {/* Finish-frame snapshot: red line (+ YOLO box later) baked into JPEG */}
@@ -561,21 +636,17 @@ function FinishCamInner({ code }: { code: string }) {
                   autoPlay
                   className="absolute inset-0 h-full w-full object-contain"
                 />
-                {landscape ? (
-                  <>
-                    <LaneGuidesOverlay
-                      eventCode={code}
-                      laneCount={laneGuideCount}
-                    />
-                    <div
-                      className="pointer-events-none absolute inset-y-0 left-1/2 z-[2] w-[3px] -translate-x-1/2 bg-stop shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
-                      aria-hidden
-                    />
-                    <div className="pointer-events-none absolute top-3 left-[calc(50%+10px)] z-[3] rounded-lg border border-stop bg-[#7f1d1d]/90 px-2.5 py-1.5 text-xs font-bold tracking-wide text-[#fecaca]">
-                      Finishing Line
-                    </div>
-                  </>
-                ) : null}
+                <LaneGuidesOverlay
+                  eventCode={code}
+                  laneCount={laneGuideCount}
+                />
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-1/2 z-[2] w-[3px] -translate-x-1/2 bg-stop shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+                  aria-hidden
+                />
+                <div className="pointer-events-none absolute top-3 left-[calc(50%+10px)] z-[3] rounded-lg border border-stop bg-[#7f1d1d]/90 px-2.5 py-1.5 text-xs font-bold tracking-wide text-[#fecaca]">
+                  Finishing Line
+                </div>
               </div>
             )}
           </div>
@@ -596,9 +667,11 @@ function FinishCamInner({ code }: { code: string }) {
           <div className="flex shrink-0 items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-dim">
             <span>{statusLine}</span>
             <span className="font-mono tabular text-sand">
-              {markInMs != null ? `M1 ${markInMs}ms` : "—"}
-              {" · "}
-              {markOutMs != null ? `M2 ${markOutMs}ms` : "—"}
+              {markMode === "single-press"
+                ? `${pressesMs.length} pass${pressesMs.length === 1 ? "" : "es"}`
+                : `${markInMs != null ? `M1 ${markInMs}ms` : "—"} · ${
+                    markOutMs != null ? `M2 ${markOutMs}ms` : "—"
+                  }`}
             </span>
           </div>
 
@@ -639,18 +712,72 @@ function FinishCamInner({ code }: { code: string }) {
               shownBib={snapshotPreview?.bib ?? null}
             />
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <BigBtn tone="plain" className="w-full" disabled={!canMark1} onClick={onMark1}>
-                Mark 1 · enter
-              </BigBtn>
-              <BigBtn
-                tone="danger"
-                className="w-full"
-                disabled={!canMark2}
-                onClick={() => void onMark2()}
+            <div className="flex flex-col gap-2">
+              {/* Mark mode switch (A two-press / B single-press) — locked during recording. */}
+              <div
+                className="grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-panel2 p-1 ring-1 ring-line"
+                role="tablist"
+                aria-label="Mark mode"
               >
-                Mark 2 · exit
-              </BigBtn>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={markMode === "two-press"}
+                  disabled={phase === "recording"}
+                  className={`tap rounded-lg px-2 py-1.5 text-xs font-black uppercase tracking-wide ring-1 ${
+                    markMode === "two-press"
+                      ? "bg-accent text-ink ring-accent/60"
+                      : "bg-transparent text-dim ring-transparent"
+                  }`}
+                  onClick={() => setMarkModeUI("two-press")}
+                >
+                  A · Two-press
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={markMode === "single-press"}
+                  disabled={phase === "recording"}
+                  className={`tap rounded-lg px-2 py-1.5 text-xs font-black uppercase tracking-wide ring-1 ${
+                    markMode === "single-press"
+                      ? "bg-accent text-ink ring-accent/60"
+                      : "bg-transparent text-dim ring-transparent"
+                  }`}
+                  onClick={() => setMarkModeUI("single-press")}
+                >
+                  B · Single-press
+                </button>
+              </div>
+
+              {markMode === "two-press" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <BigBtn tone="plain" className="w-full" disabled={!canMark1} onClick={onMark1}>
+                    Mark 1 · enter
+                  </BigBtn>
+                  <BigBtn
+                    tone="danger"
+                    className="w-full"
+                    disabled={!canMark2}
+                    onClick={() => onMark2()}
+                  >
+                    Mark 2 · exit
+                  </BigBtn>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <BigBtn tone="plain" className="w-full" disabled={!canPress} onClick={onPress}>
+                    Mark passer
+                  </BigBtn>
+                  <BigBtn
+                    tone="danger"
+                    className="w-full"
+                    disabled={!canStopSingle}
+                    onClick={() => void stopSinglePress()}
+                  >
+                    Stop
+                  </BigBtn>
+                </div>
+              )}
             </div>
           )}
 

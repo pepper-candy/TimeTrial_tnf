@@ -50,6 +50,8 @@ function StarterInner({ code }: { code: string }) {
   }, [offset]);
 
   const running = event?.status === "running" && event.startedAt != null;
+  /** Race over (Mark 2 / single-press stop) — Starter must not re-Arm or undo. */
+  const ended = event?.status === "finished";
   const adminReady = Boolean(event?.ready);
   const isSprint = event?.kind === "sprint";
 
@@ -121,11 +123,11 @@ function StarterInner({ code }: { code: string }) {
   const max1sPct = bangBarPct(levelMax1s);
   const levelTrail = useMicLevelTrail(fillPct);
 
-  // Warm mic as soon as we know this is a sprint event (not on TT).
+  // Warm mic as soon as we know this is a sprint event (not on TT, not once ended).
   useEffect(() => {
-    if (!isSprint || running) return;
+    if (!isSprint || running || ended) return;
     void openMic();
-  }, [isSprint, running, openMic]);
+  }, [isSprint, running, ended, openMic]);
 
   useEffect(() => {
     if (running) disarm();
@@ -294,7 +296,12 @@ function StarterInner({ code }: { code: string }) {
 
       <div className={BOTTOM_TRAY}>
         <div className="pointer-events-auto">
-          {running ? (
+          {ended ? (
+            <div className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
+              <span className="text-5xl font-black text-stop">ENDED</span>
+              <span className="text-base font-bold">Race over</span>
+            </div>
+          ) : running ? (
             <div className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
               <span className="text-5xl font-black text-go">STARTED</span>
               <span className="text-base font-bold">Race clock is live</span>

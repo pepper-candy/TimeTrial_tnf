@@ -5,9 +5,11 @@ export type FinishCamMeta = {
   recServerAt: number;
   markInMs: number | null;
   markOutMs: number | null;
-  /** Clip end including +1s pad after Mark2 (download/full blob). YOLO uses markIn…markOut only. */
+  /** Clip end (download/full blob). Two-press = markOut (no pad); single-press = last press + buffer. */
   analyseEndMs: number | null;
   durationMs: number;
+  /** Single-press mode: video offsets (ms) of each passer press, in lane order. */
+  pressesMs: number[] | null;
   note: string;
 };
 
@@ -32,18 +34,6 @@ export function isLandscape(): boolean {
   );
 }
 
-/** Best-effort screen.orientation.lock("landscape"). Does not enter fullscreen. */
-export async function tryLockLandscape(): Promise<void> {
-  try {
-    const orient = screen.orientation as ScreenOrientation & {
-      lock?: (o: string) => Promise<void>;
-    };
-    if (orient?.lock) await orient.lock("landscape");
-  } catch {
-    /* ignore — show rotate nudge instead */
-  }
-}
-
 /** Best-effort exit fullscreen + unlock orientation (e.g. Analyse → return to portrait). */
 export async function exitFullscreenUnlockOrientation(): Promise<void> {
   try {
@@ -60,7 +50,6 @@ export async function exitFullscreenUnlockOrientation(): Promise<void> {
 
 /**
  * Toggle stage fullscreen (Finish Cam: TopBar + preview + Mark controls; log outside).
- * Entering also best-effort locks landscape; exiting only leaves fullscreen.
  */
 export async function toggleStageFullscreen(stage?: HTMLElement | null): Promise<void> {
   try {
@@ -73,7 +62,6 @@ export async function toggleStageFullscreen(stage?: HTMLElement | null): Promise
   } catch {
     /* ignore */
   }
-  await tryLockLandscape();
 }
 
 export async function openFinishStream(deviceId?: string): Promise<{
@@ -210,6 +198,6 @@ export function stopStream(stream: MediaStream | null): void {
 export const BANG_SOUNDTRACK_TODO =
   "TODO: weak bang-on-soundtrack vs Starter server time (sound travel)";
 
-/** YOLO / Analyse uses Mark1…Mark2 only; +1s pad remains on the saved blob for download. */
+/** YOLO / Analyse uses Mark1…Mark2 (or single-press ±0.5s buffer) — no extra pad. */
 export const YOLO_SLICE_NOTE =
-  "YOLO window = Mark1…Mark2 only (+1s pad kept on blob, not analysed)";
+  "YOLO window = Mark1…Mark2 (or single-press ±0.5s buffer); no post-Mark2 pad";

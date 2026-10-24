@@ -1,3 +1,4 @@
+import { fetchWithPin } from "@/lib/client/hooks";
 import {
   FULL_EDGE,
   FULL_MAX_BYTES,
@@ -86,4 +87,53 @@ function normalizeMime(mime: string): string {
 
 function toBlob(canvas: HTMLCanvasElement, mime: string, quality: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, quality));
+}
+
+/** Convert a JPEG data URL (finish-frame still) into a File for the photo route. */
+export function dataUrlToFile(dataUrl: string, name = "finish.jpg"): File | null {
+  try {
+    const m = /^data:([^;,]+)(;base64)?,([\s\S]*)$/.exec(dataUrl);
+    if (!m) return null;
+    const mime = m[1] || "image/jpeg";
+    const body = m[3];
+    const bin = m[2] ? atob(body) : decodeURIComponent(body);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], name, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Upload a snapped finish-line still under a runner, mirroring the admin
+ * person-photo capture (`preparePhotos` → multipart → `/api/events/[code]/photo`).
+ * Still only — a video blob is never sent to server storage.
+ */
+export async function uploadFinishSnapshot(
+  code: string,
+  runnerId: string,
+  dataUrl: string,
+): Promise<void> {
+  const file = dataUrlToFile(dataUrl);
+  if (!file) return;
+  const { thumb, full } = await preparePhotos(file);
+  const form = new FormData();
+  form.set(
+    "thumb",
+    new File([thumb.blob], thumb.mime === "image/webp" ? "t.webp" : "t.jpg", {
+      type: thumb.mime,
+    }),
+  );
+  form.set(
+    "full",
+    new File(
+      [full.blob],
+      full.mime === "image/webp" ? "f.webp" : full.mime === "image/png" ? "f.png" : "f.jpg",
+      { type: full.mime },
+    ),
+  );
+  form.set("runnerId", runnerId);
+  const res = await fetchWithPin(`/api/events/${code}/photo`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(String(res.status));
 }

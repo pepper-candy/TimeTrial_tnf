@@ -26,6 +26,12 @@ import {
   videoMsFromFinishMs,
 } from "@/lib/client/analyse-time";
 import type { FinishCamMeta } from "@/lib/client/finish-cam";
+import {
+  pressSeeds,
+  SINGLE_PRESS_BUFFER_MS,
+  singlePressWindow,
+} from "@/lib/client/mark-mode";
+import { uploadFinishSnapshot } from "@/lib/client/photo";
 import { acceptSprintFinish } from "@/lib/client/sprint-records";
 import { prefetchPersonModel } from "@/lib/client/yolo-person";
 import { formatClock } from "@/lib/format";
@@ -153,17 +159,38 @@ export function FinishAnalysePanel({
   const onLogRef = useRef(onLog);
   onLogRef.current = onLog;
 
-  const markIn = meta?.markInMs ?? markInMs;
-  const markOut = meta?.markOutMs ?? markOutMs;
+  /** Single-press mode: one press per sprinter, resolved within a ±0.5s buffer. */
+  const presses = meta?.pressesMs ?? null;
+  const isSinglePress = presses != null && presses.length > 0;
+
+  function windowFor(lane: number): { in: number; out: number } {
+    const w = singlePressWindow(presses ?? [], lane);
+    if (w) return w;
+    const first = presses?.[0];
+    const last = presses?.[presses.length - 1];
+    if (first == null || last == null) return { in: 0, out: 0 };
+    return {
+      in: Math.max(0, Math.round(first - SINGLE_PRESS_BUFFER_MS)),
+      out: Math.round(last + SINGLE_PRESS_BUFFER_MS),
+    };
+  }
+
+  const markIn = isSinglePress
+    ? windowFor(selectedLane).in
+    : meta?.markInMs ?? markInMs;
+  const markOut = isSinglePress
+    ? windowFor(selectedLane).out
+    : meta?.markOutMs ?? markOutMs;
   const recServerAt = meta?.recServerAt ?? event.startedAt ?? 0;
   const laneCount = Math.max(1, sprintersForAnalyse(event).length);
 
-  const sliceReady =
-    blob != null &&
-    markIn != null &&
-    markOut != null &&
-    markOut > markIn &&
-    event.startedAt != null;
+  const sliceReady = isSinglePress
+    ? blob != null && event.startedAt != null
+    : blob != null &&
+      markIn != null &&
+      markOut != null &&
+      markOut > markIn &&
+      event.startedAt != null;
 
   const clampMs = useCallback(
     (ms: number) => {
@@ -243,7 +270,12 @@ export function FinishAnalysePanel({
   }, [onScrubberUrl]);
 
   const openScrubber = useCallback(() => {
-    if (!blob || markIn == null || markOut == null) {
+    if (isSinglePress) {
+      if (!blob || presses == null || presses.length === 0) {
+        setErr("Need at least one pass");
+        return;
+      }
+    } else if (!blob || markIn == null || markOut == null) {
       setErr("Need a recording with Mark 1 and Mark 2");
       return;
     }
@@ -261,12 +293,29 @@ export function FinishAnalysePanel({
     onShowSnapshot?.(null);
 
     const next = emptyRows(event);
+    // Single-press: each press seeds its lane as a manual finish draft.
+    if (isSinglePress && presses) {
+      const seeds = pressSeeds({
+        pressesMs: presses,
+        startedAt: event.startedAt,
+        recServerAt,
+        laneCount: next.length,
+      });
+      for (const s of seeds) {
+        const row = next.find((r) => r.lane === s.lane);
+        if (!row) continue;
+        row.finishMs = s.finishMs;
+        row.tapT = s.tapT;
+        row.source = "manual";
+        row.snapshotVideoMs = presses[s.lane - 1] ?? null;
+      }
+    }
     setRows(next);
     setSelectedLane(next[0]?.lane ?? 1);
     setOpen(true);
     setErr(null);
     setPlaying(false);
-    setVideoMs(markIn);
+    setVideoMs(markIn ?? 0);
     setYoloChip("idle");
     // Kick model load immediately; scan starts in effect below (never blocks UI).
     prefetchPersonModel();
@@ -277,13 +326,18 @@ export function FinishAnalysePanel({
     }
     onStatus("Scrub · Set finish · Accept");
     onLog(
-      `Analyse scrubber Mark1…Mark2 [${markIn}…${markOut}] ms (pad excluded)`,
+      isSinglePress
+        ? `Analyse single-press · ${presses?.length ?? 0} pass(es) (±0.5s buffer)`
+        : `Analyse scrubber Mark1…Mark2 [${markIn}…${markOut}] ms (pad excluded)`,
     );
   }, [
     blob,
     markIn,
     markOut,
     event,
+    isSinglePress,
+    presses,
+    recServerAt,
     onScrubberUrl,
     onShowSnapshot,
     onAnalyseStarted,
@@ -325,6 +379,8 @@ export function FinishAnalysePanel({
   useEffect(() => {
     if (!open || !blob || markIn == null || markOut == null) return;
     if (event.startedAt == null) return;
+    // Single-press already seeds each lane from its press; skip YOLO.
+    if (isSinglePress) return;
 
     const runId = ++yoloRunIdRef.current;
     const ac = new AbortController();
@@ -382,7 +438,7 @@ export function FinishAnalysePanel({
       ac.abort();
     };
     // Intentionally omit `event` — Accept updates must not re-trigger YOLO.
-  }, [open, blob, markIn, markOut, recServerAt]);
+  }, [open, blob, markIn, markOut, recServerAt, isSinglePress]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
@@ -529,6 +585,33 @@ export function FinishAnalysePanel({
     onStatus(`Showing lane ${row.lane} finish frame`);
   }
 
+  async function captureStillAt(videoMs: number, lane: number): Promise<string | null> {
+    const video = videoRef.current;
+    if (!video) return null;
+    const v: HTMLVideoElement = video;
+    const target = videoMs / 1000;
+    if (Math.abs(v.currentTime - target) > 0.001) {
+      await new Promise<void>((resolve, reject) => {
+        const onSeek = () => {
+          cleanup();
+          resolve();
+        };
+        const onErr = () => {
+          cleanup();
+          reject(new Error("seek failed"));
+        };
+        function cleanup() {
+          v.removeEventListener("seeked", onSeek);
+          v.removeEventListener("error", onErr);
+        }
+        v.addEventListener("seeked", onSeek);
+        v.addEventListener("error", onErr);
+        v.currentTime = target;
+      });
+    }
+    return captureFrameJpeg(v, lane, laneCount, code);
+  }
+
   async function acceptOne(row: LaneFinishState) {
     if (!event.startedAt) return;
     if (row.finishMs == null || row.tapT == null) {
@@ -538,15 +621,36 @@ export function FinishAnalysePanel({
     setBusy(true);
     setErr(null);
     try {
+      // Ensure a finish-frame still for the snapshot upload (never video).
+      let snap = row.snapshotDataUrl;
+      if (!snap && row.snapshotVideoMs != null) {
+        try {
+          snap = await captureStillAt(row.snapshotVideoMs, row.lane);
+        } catch {
+          snap = null;
+        }
+      }
       const next = await acceptSprintFinish(code, row.bib, row.tapT);
       onEvent(next);
       setRows((prev) =>
         prev.map((r) =>
           r.bib === row.bib
-            ? { ...r, accepted: true, locked: true, source: "manual" }
+            ? {
+                ...r,
+                accepted: true,
+                locked: true,
+                source: "manual",
+                snapshotDataUrl: snap ?? r.snapshotDataUrl,
+              }
             : r,
         ),
       );
+      // Upload the snapped finish-line still (snapshot only, never video).
+      if (snap && row.runnerId) {
+        void uploadFinishSnapshot(code, row.runnerId, snap).catch((e) => {
+          onLog(`snapshot upload failed: ${e instanceof Error ? e.message : e}`);
+        });
+      }
       onLog(`Accepted lane ${row.lane} · ${formatClock(row.finishMs, 2)}`);
       onStatus(`Lane ${row.lane} saved · Board updated`);
     } catch (e) {
@@ -589,7 +693,9 @@ export function FinishAnalysePanel({
           <p className="text-xs font-semibold text-dim">
             {event.startedAt == null
               ? "Waiting for Starter bang…"
-              : "Need Mark 1 and Mark 2"}
+              : isSinglePress
+                ? "Need at least one pass"
+                : "Need Mark 1 and Mark 2"}
           </p>
         ) : null}
       </div>
