@@ -503,12 +503,6 @@ function FinishCamInner({ code }: { code: string }) {
     !analyseStarted && (phase === "ended" || phase === "error");
   const showRaceEndOverlay = phase === "ended" && !analyseStarted;
 
-  // Analyse / editing: never stay in fullscreen (no FS trigger in the top bar either).
-  useEffect(() => {
-    if (!analyseStarted) return;
-    void exitFullscreenUnlockOrientation();
-  }, [analyseStarted]);
-
   function downloadFullClip() {
     if (!clipBlob) return;
     const ext = clipExtFromMime(clipBlob.type);
