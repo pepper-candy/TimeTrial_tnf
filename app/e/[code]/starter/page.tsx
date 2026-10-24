@@ -50,7 +50,7 @@ function StarterInner({ code }: { code: string }) {
   }, [offset]);
 
   const running = event?.status === "running" && event.startedAt != null;
-  /** Race over (Mark 2 / single-press stop) — Starter must not re-Arm or undo. */
+  /** Race over (Mark 2 / single-press stop) — no re-Arm; Reset stays for the next heat. */
   const ended = event?.status === "finished";
   const adminReady = Boolean(event?.ready);
   const isSprint = event?.kind === "sprint";
@@ -85,7 +85,8 @@ function StarterInner({ code }: { code: string }) {
   }, [adminReady, code, setEvent]);
 
   const undoStart = useCallback(async () => {
-    if (undoing || !running) return;
+    // Running: undo false bang. Finished: Reset clears clock for the next heat.
+    if (undoing || (!running && !ended)) return;
     setUndoing(true);
     setStartErr(null);
     try {
@@ -94,16 +95,16 @@ function StarterInner({ code }: { code: string }) {
       });
       setEvent(data.event);
     } catch {
-      setStartErr("Undo start failed");
+      setStartErr(ended ? "Reset failed" : "Undo start failed");
     } finally {
       setUndoing(false);
     }
-  }, [code, running, setEvent, undoing]);
+  }, [code, ended, running, setEvent, undoing]);
 
   const onBang = useCallback(() => {
-    if (running || !adminReady) return;
+    if (running || ended || !adminReady) return;
     void fireStart();
-  }, [running, adminReady, fireStart]);
+  }, [running, ended, adminReady, fireStart]);
 
   const {
     status: mic,
@@ -193,14 +194,14 @@ function StarterInner({ code }: { code: string }) {
           </div>
         }
         extra={
-          running || mic === "armed" ? (
+          ended || running || mic === "armed" ? (
             <button
               type="button"
               className={ICON_BTN}
-              aria-label={running ? "Undo start" : "Disarm"}
+              aria-label={ended || running ? "Reset" : "Disarm"}
               disabled={undoing}
               onClick={() => {
-                if (running) void undoStart();
+                if (ended || running) void undoStart();
                 else disarm();
               }}
             >
@@ -297,9 +298,19 @@ function StarterInner({ code }: { code: string }) {
       <div className={BOTTOM_TRAY}>
         <div className="pointer-events-auto">
           {ended ? (
-            <div className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
-              <span className="text-5xl font-black text-stop">ENDED</span>
-              <span className="text-base font-bold">Race over</span>
+            <div className="flex h-[42dvh] w-full flex-col gap-3">
+              <div className="tap flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
+                <span className="text-5xl font-black text-stop">ENDED</span>
+                <span className="text-base font-bold">Race over</span>
+              </div>
+              <button
+                type="button"
+                className="tap flex h-16 w-full shrink-0 items-center justify-center rounded-[1.25rem] bg-accent text-xl font-black text-ink disabled:opacity-50"
+                disabled={undoing}
+                onClick={() => void undoStart()}
+              >
+                {undoing ? "Resetting…" : "Reset"}
+              </button>
             </div>
           ) : running ? (
             <div className="tap flex h-[42dvh] w-full flex-col items-center justify-center gap-2 rounded-[2rem] bg-panel2 text-dim">
