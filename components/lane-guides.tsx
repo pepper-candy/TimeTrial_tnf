@@ -221,7 +221,7 @@ export function LaneGuidesOverlay({
 
       {showPresetToggle ? (
         <div
-          className="pointer-events-auto absolute right-0 bottom-2 z-[5] flex flex-col gap-1"
+          className="pointer-events-auto absolute right-0 bottom-2 z-[5] flex flex-row gap-1"
           aria-label="Lane guide preset"
         >
           <PresetChip
@@ -251,18 +251,15 @@ function PresetChip({
   label: string;
   active: boolean;
   onClick: () => void;
-  /** Flush chips to the preview edge so the finishing line stays clear. */
+  /** Kept for API; horizontal group is positioned with right-0 on the parent. */
   dock?: "none" | "right";
 }) {
-  const shape =
-    dock === "right"
-      ? "rounded-l-lg rounded-r-none pl-2.5 pr-2"
-      : "rounded-lg px-2.5";
+  void dock;
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`tap py-1.5 text-[10px] font-bold uppercase tracking-wider ring-1 ${shape} ${
+      className={`tap rounded-lg px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider ring-1 ${
         active
           ? "bg-sand text-ink ring-sand"
           : "bg-black/70 text-sand ring-line active:bg-panel2"

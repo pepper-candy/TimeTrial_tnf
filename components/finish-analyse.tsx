@@ -709,7 +709,6 @@ export function FinishAnalysePanel({
   const scrubValue = markIn != null ? clampMs(videoMs) - markIn : 0;
 
   const viewingSnapshot = shownBib != null;
-  const selectedRow = rows.find((r) => r.lane === selectedLane) ?? rows[0];
   const yoloCount =
     yoloProgress.total > 0
       ? `${yoloProgress.done}/${yoloProgress.total}`
@@ -852,66 +851,120 @@ export function FinishAnalysePanel({
         </div>
       </div>
 
-      {/* Compact lane actions (table + WebM/Show video removed) */}
-      {selectedRow ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-dim">
-            L{selectedRow.lane}
-            {selectedRow.finishMs != null
-              ? ` · ${formatClock(selectedRow.finishMs, 2)}`
-              : ""}
-            {selectedRow.accepted ? " · saved" : ""}
-          </span>
-          <button
-            type="button"
-            className="tap rounded-lg bg-panel px-2.5 py-1.5 text-xs font-bold ring-1 ring-line disabled:opacity-40"
-            disabled={
-              busy ||
-              viewingSnapshot ||
-              (selectedRow.finishMs == null && !selectedRow.accepted)
-            }
-            onClick={() => editRow(selectedRow)}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="tap rounded-lg bg-panel px-2.5 py-1.5 text-xs font-bold ring-1 ring-line disabled:opacity-40"
-            disabled={
-              busy ||
-              viewingSnapshot ||
-              selectedRow.finishMs == null ||
-              (selectedRow.locked && selectedRow.accepted)
-            }
-            onClick={() => clearRow(selectedRow)}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            className="tap rounded-lg bg-go/20 px-2.5 py-1.5 text-xs font-bold text-go ring-1 ring-go/50 disabled:opacity-40"
-            disabled={
-              busy ||
-              viewingSnapshot ||
-              selectedRow.finishMs == null ||
-              selectedRow.accepted
-            }
-            onClick={() => void acceptOne(selectedRow)}
-          >
-            Accept
-          </button>
-          {selectedRow.snapshotDataUrl ? (
-            <button
-              type="button"
-              className="tap rounded-lg bg-panel2 px-2.5 py-1.5 text-xs font-bold ring-1 ring-line disabled:opacity-40"
-              disabled={busy}
-              onClick={() => showRow(selectedRow)}
-            >
-              Preview
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      {/* Purple: per-person ranks / records (fills space where WebM + Show video were) */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-2xl ring-1 ring-line">
+        <table className="w-full text-left text-sm">
+          <thead className="sticky top-0 bg-panel text-[10px] font-bold uppercase tracking-wider text-dim">
+            <tr>
+              <th className="w-8 px-1 py-2 text-center sm:w-10 sm:px-2">L</th>
+              <th className="w-12 px-1 py-2 sm:w-14">Thumb</th>
+              <th className="px-2 py-2">Athlete</th>
+              <th className="min-w-[4.5rem] px-1 py-2 sm:px-2">Time</th>
+              <th className="w-0 px-1 py-2 whitespace-nowrap sm:px-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const showing = shownBib === r.bib;
+              return (
+                <tr
+                  key={r.bib}
+                  className={`border-t border-line/60${showing ? " bg-accent/10" : ""}${
+                    selectedLane === r.lane ? " bg-sand/5" : ""
+                  }`}
+                >
+                  <td
+                    className="cursor-pointer px-1 py-2 text-center font-mono font-bold sm:px-2"
+                    onClick={() => {
+                      setSelectedLane(r.lane);
+                      showRow(r);
+                    }}
+                  >
+                    {r.lane}
+                  </td>
+                  <td className="px-1 py-1.5 sm:px-2">
+                    {r.snapshotDataUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.snapshotDataUrl}
+                        alt={`Lane ${r.lane}`}
+                        className="h-10 w-12 cursor-pointer rounded object-cover ring-1 ring-line"
+                        onClick={() => showRow(r)}
+                      />
+                    ) : (
+                      <div className="grid h-10 w-12 place-items-center rounded bg-void text-[10px] text-dim ring-1 ring-line">
+                        —
+                      </div>
+                    )}
+                  </td>
+                  <td
+                    className="cursor-pointer px-2 py-2"
+                    onClick={() => {
+                      setSelectedLane(r.lane);
+                      showRow(r);
+                    }}
+                  >
+                    <div className="truncate font-semibold">{r.name || "—"}</div>
+                    <div className="text-[10px] text-dim">
+                      {r.source === "manual"
+                        ? "manual"
+                        : r.source === "yolo"
+                          ? "YOLO"
+                          : "—"}
+                      {r.accepted ? " · saved" : ""}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-1 py-2 font-mono tabular sm:px-2">
+                    {r.finishMs != null ? formatClock(r.finishMs, 2) : "—"}
+                  </td>
+                  <td className="w-0 px-1 py-2 whitespace-nowrap sm:px-2">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="rounded-lg bg-panel px-2 py-1 text-xs font-bold ring-1 ring-line disabled:opacity-40"
+                        disabled={
+                          busy ||
+                          viewingSnapshot ||
+                          (r.finishMs == null && !r.accepted)
+                        }
+                        onClick={() => editRow(r)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-panel px-2 py-1 text-xs font-bold ring-1 ring-line disabled:opacity-40"
+                        disabled={
+                          busy ||
+                          viewingSnapshot ||
+                          r.finishMs == null ||
+                          (r.locked && r.accepted)
+                        }
+                        onClick={() => clearRow(r)}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg bg-go/20 px-2 py-1 text-xs font-bold text-go ring-1 ring-go/50 disabled:opacity-40"
+                        disabled={
+                          busy ||
+                          viewingSnapshot ||
+                          r.finishMs == null ||
+                          r.accepted
+                        }
+                        onClick={() => void acceptOne(r)}
+                      >
+                        Accept
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

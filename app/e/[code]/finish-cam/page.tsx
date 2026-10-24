@@ -503,6 +503,12 @@ function FinishCamInner({ code }: { code: string }) {
     !analyseStarted && (phase === "ended" || phase === "error");
   const showRaceEndOverlay = phase === "ended" && !analyseStarted;
 
+  // Analyse / editing: never stay in fullscreen (no FS trigger in the top bar either).
+  useEffect(() => {
+    if (!analyseStarted) return;
+    void exitFullscreenUnlockOrientation();
+  }, [analyseStarted]);
+
   function downloadFullClip() {
     if (!clipBlob) return;
     const ext = clipExtFromMime(clipBlob.type);
@@ -556,7 +562,9 @@ function FinishCamInner({ code }: { code: string }) {
                 >
                   <ResetIcon />
                 </button>
-              ) : (
+              ) : null}
+              {/* No fullscreen control while Analyse / editing — avoids accidental FS + system toast */}
+              {!analyseStarted && !showReset ? (
                 <button
                   type="button"
                   className={ICON_BTN}
@@ -574,7 +582,7 @@ function FinishCamInner({ code }: { code: string }) {
                     />
                   </svg>
                 </button>
-              )}
+              ) : null}
             </>
           }
           info="Finish camera — portrait or landscape. Continuous record. Two-press: Mark 1 enter / Mark 2 exit (Space advances). Single-press: one press per sprinter (Space logs each). Mark 2 / stop ends the race clock; Analyse is review only."
