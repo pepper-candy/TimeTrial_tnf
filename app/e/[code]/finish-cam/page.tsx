@@ -526,12 +526,16 @@ function FinishCamInner({ code }: { code: string }) {
                 <button
                   type="button"
                   className={ICON_BTN}
-                  aria-label="Download full clip"
+                  aria-label={
+                    clipBlob
+                      ? `Download as ${clipExtFromMime(clipBlob.type).toUpperCase()}`
+                      : "Download clip"
+                  }
                   disabled={!clipBlob}
                   onClick={downloadFullClip}
                   title={
                     clipBlob
-                      ? `Download .${clipExtFromMime(clipBlob.type)}`
+                      ? `Download as ${clipExtFromMime(clipBlob.type).toUpperCase()}`
                       : "Download"
                   }
                 >
@@ -611,6 +615,11 @@ function FinishCamInner({ code }: { code: string }) {
                   {snapshotPreview.finishMs != null
                     ? ` · ${formatClock(snapshotPreview.finishMs, 2)}`
                     : ""}
+                </div>
+                <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center px-4">
+                  <p className="rounded-xl bg-black/65 px-3 py-2 text-center text-sm font-bold text-stop shadow-lg">
+                    Tap to continue editing
+                  </p>
                 </div>
               </div>
             ) : scrubberUrl ? (

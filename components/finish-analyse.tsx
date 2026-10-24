@@ -728,17 +728,19 @@ export function FinishAnalysePanel({
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {err ? <p className="shrink-0 text-sm font-semibold text-stop">{err}</p> : null}
 
-      {/* Orange: plain two-line status (same type), not a chip */}
+      {/* Orange: M1→M2 hidden while athlete snapshot grey-out; YOLO stays */}
       <div
         className="shrink-0 space-y-0.5 text-xs font-bold tabular-nums tracking-wide text-sand"
         role="status"
         aria-live="polite"
       >
-        <p>
-          {markIn != null && markOut != null
-            ? `M1 ${Math.round(markIn)}ms → M2 ${Math.round(markOut)}ms`
-            : "M1 — → M2 —"}
-        </p>
+        {!viewingSnapshot ? (
+          <p>
+            {markIn != null && markOut != null
+              ? `M1 ${Math.round(markIn)}ms → M2 ${Math.round(markOut)}ms`
+              : "M1 — → M2 —"}
+          </p>
+        ) : null}
         <p
           className={
             yoloChip === "done"
@@ -752,12 +754,7 @@ export function FinishAnalysePanel({
         </p>
       </div>
 
-      {/* Green: scrubber enabled on video; disabled + red cue on athlete snapshot */}
-      {viewingSnapshot ? (
-        <p className="shrink-0 text-sm font-bold text-stop">
-          Tap preview to continue editing
-        </p>
-      ) : null}
+      {/* Green scrubber/controls: grey-out only (opacity); no layout change; tap cue is on preview */}
 
       <div
         className={`shrink-0 rounded-2xl bg-panel ring-1 ring-line p-2 ${
