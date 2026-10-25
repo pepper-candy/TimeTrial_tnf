@@ -210,3 +210,5 @@ export const BANG_SOUNDTRACK_TODO =
 /** YOLO / Analyse uses Mark1…Mark2 (or single-press ±0.5s buffer) — no extra pad. */
 export const YOLO_SLICE_NOTE =
   "YOLO window = Mark1…Mark2 (or single-press ±0.5s buffer); no post-Mark2 pad";
+
+export { makeGalleryFriendlyClip } from "@/lib/client/webm-seekable";

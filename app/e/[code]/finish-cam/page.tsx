@@ -19,6 +19,7 @@ import {
   exitFullscreenUnlockOrientation,
   openFinishStream,
   clipExtFromMime,
+  makeGalleryFriendlyClip,
   pickRecorderMime,
   readZoomCaps,
   startZoomPipeline,
@@ -232,10 +233,9 @@ function FinishCamInner({ code }: { code: string }) {
         const markIn = markInRef.current;
         const markOut = markOutRef.current;
         const presses = [...pressesRef.current];
-        const blob = new Blob(chunksRef.current, {
+        const rawBlob = new Blob(chunksRef.current, {
           type: recorder.mimeType || "video/webm",
         });
-        blobRef.current = blob;
         const durationMs = performance.now() - recStartedPerfRef.current;
         const lastPress = presses.length
           ? Math.round(presses[presses.length - 1]!)
@@ -256,11 +256,23 @@ function FinishCamInner({ code }: { code: string }) {
           note: `${BANG_SOUNDTRACK_TODO}. ${YOLO_SLICE_NOTE}.`,
         };
         metaRef.current = meta;
-        setClipBlob(blob);
-        setClipMeta(meta);
-        setPhase("ended");
-        setStatus("Stopped · RACE END");
-        setAnalyseShow(true);
+        // Rebuild WebM Duration+Cues so Android Gallery shows real length and can scrub.
+        void (async () => {
+          let blob = rawBlob;
+          try {
+            blob = await makeGalleryFriendlyClip(rawBlob);
+          } catch (e) {
+            console.debug(
+              `webm seekable fix skipped: ${e instanceof Error ? e.message : e}`,
+            );
+          }
+          blobRef.current = blob;
+          setClipBlob(blob);
+          setClipMeta(meta);
+          setPhase("ended");
+          setStatus("Stopped · RACE END");
+          setAnalyseShow(true);
+        })();
       };
 
       // One GET ping right before Record: `recServerAt` must land in the same
@@ -269,7 +281,8 @@ function FinishCamInner({ code }: { code: string }) {
       if (freshServerNow != null) serverNowRef.current = freshServerNow;
       recStartedPerfRef.current = performance.now();
       recServerAtRef.current = serverNowRef.current || Date.now();
-      recorder.start(250);
+      // No timeslice: chunked WebM omits Duration (Gallery shows ~1s). Cues still added on stop.
+      recorder.start();
       setPhase("recording");
       setStatus("Recording…");
     } catch (e) {
