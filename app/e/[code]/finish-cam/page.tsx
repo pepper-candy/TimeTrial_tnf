@@ -497,7 +497,8 @@ function FinishCamInner({ code }: { code: string }) {
   /** Calibrated lane bands — same count Analyse / YOLO will use. */
   const laneGuideCount = Math.max(1, sprintersForAnalyse(event).length);
 
-  // recording → fullscreen; ended before analyse → ↻; analysing/results → download (no reset)
+  // recording → fullscreen; race end / analyse → download (outer top-right when clip exists);
+  // race end also keeps alert Reset (left of download). After Analyse, Reset hides.
   const showDownload = Boolean(clipBlob) && (phase === "ended" || analyseStarted);
   const showReset =
     !analyseStarted && (phase === "ended" || phase === "error");
@@ -522,6 +523,16 @@ function FinishCamInner({ code }: { code: string }) {
           title="Finish Cam"
           extra={
             <>
+              {showReset ? (
+                <button
+                  type="button"
+                  className={RESET_ICON_BTN}
+                  aria-label={phase === "error" ? "Reset" : "Record again"}
+                  onClick={() => void startSession()}
+                >
+                  <ResetIcon />
+                </button>
+              ) : null}
               {showDownload ? (
                 <button
                   type="button"
@@ -549,16 +560,6 @@ function FinishCamInner({ code }: { code: string }) {
                       strokeLinejoin="round"
                     />
                   </svg>
-                </button>
-              ) : null}
-              {showReset ? (
-                <button
-                  type="button"
-                  className={RESET_ICON_BTN}
-                  aria-label={phase === "error" ? "Reset" : "Record again"}
-                  onClick={() => void startSession()}
-                >
-                  <ResetIcon />
                 </button>
               ) : null}
               {/* No fullscreen control while Analyse / editing — avoids accidental FS + system toast */}
@@ -615,11 +616,6 @@ function FinishCamInner({ code }: { code: string }) {
                   {snapshotPreview.finishMs != null
                     ? ` · ${formatClock(snapshotPreview.finishMs, 2)}`
                     : ""}
-                </div>
-                <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center px-4">
-                  <p className="rounded-xl bg-black/65 px-3 py-2 text-center text-sm font-bold text-stop shadow-lg">
-                    Tap to continue editing
-                  </p>
                 </div>
               </div>
             ) : scrubberUrl ? (
