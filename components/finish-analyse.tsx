@@ -44,6 +44,8 @@ export type FinishSnapshotPreview = {
   name: string;
   snapshotDataUrl: string;
   finishMs: number | null;
+  /** Video offset (ms) — scrubber seeks here when leaving the snapshot. */
+  snapshotVideoMs: number | null;
 };
 
 function emptyRows(event: EventState): LaneFinishState[] {
@@ -567,6 +569,32 @@ export function FinishAnalysePanel({
     onStatus(`Lane ${row.lane} cleared`);
   }
 
+  function snapshotResumeVideoMs(row: LaneFinishState): number | null {
+    if (row.snapshotVideoMs != null) return row.snapshotVideoMs;
+    if (row.finishMs != null && event.startedAt != null) {
+      return videoMsFromFinishMs({
+        startedAt: event.startedAt,
+        recServerAt,
+        finishMs: row.finishMs,
+      });
+    }
+    return null;
+  }
+
+  /** Leave snapshot preview and park scrubber on that finish frame for fine adjust. */
+  function resumeEditingFromSnapshot(row?: LaneFinishState | null) {
+    const target =
+      row ??
+      (shownBib != null ? rows.find((r) => r.bib === shownBib) ?? null : null);
+    const ms = target ? snapshotResumeVideoMs(target) : null;
+    if (ms != null) seekToMs(ms);
+    onShowSnapshot?.(null);
+    if (target) {
+      setSelectedLane(target.lane);
+      onStatus(`Editing lane ${target.lane} · at finish frame`);
+    }
+  }
+
   function showRow(row: LaneFinishState) {
     if (!row.snapshotDataUrl) {
       if (row.snapshotVideoMs != null) {
@@ -583,6 +611,7 @@ export function FinishAnalysePanel({
       name: row.name,
       snapshotDataUrl: row.snapshotDataUrl,
       finishMs: row.finishMs,
+      snapshotVideoMs: snapshotResumeVideoMs(row),
     });
     setSelectedLane(row.lane);
     onStatus(`Showing lane ${row.lane} finish frame`);
@@ -754,9 +783,13 @@ export function FinishAnalysePanel({
 
       {/* Green: scrubber enabled on video; disabled + red cue on athlete snapshot */}
       {viewingSnapshot ? (
-        <p className="shrink-0 text-sm font-bold text-stop">
+        <button
+          type="button"
+          className="tap shrink-0 text-left text-sm font-bold text-stop"
+          onClick={() => resumeEditingFromSnapshot()}
+        >
           Tap preview to continue editing
-        </p>
+        </button>
       ) : null}
 
       <div

@@ -616,11 +616,21 @@ function FinishCamInner({ code }: { code: string }) {
                   className="max-h-full max-w-full cursor-pointer object-contain"
                   role="button"
                   tabIndex={0}
-                  onClick={() => setSnapshotPreview(null)}
+                  onClick={() => {
+                    const ms = snapshotPreview.snapshotVideoMs;
+                    setSnapshotPreview(null);
+                    if (ms != null && scrubVideoRef.current) {
+                      scrubVideoRef.current.currentTime = ms / 1000;
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
+                      const ms = snapshotPreview.snapshotVideoMs;
                       setSnapshotPreview(null);
+                      if (ms != null && scrubVideoRef.current) {
+                        scrubVideoRef.current.currentTime = ms / 1000;
+                      }
                     }
                   }}
                 />
