@@ -401,7 +401,7 @@ function SprintBoardRow({
   const src = r.photoVer ? photoPath(eventId, r.id, r.photoVer, "thumb") : null;
   let time: React.ReactNode = "—";
   if (dnf) time = <span className="text-stop">DNF</span>;
-  else if (race.finished && race.finishMs != null) time = formatClock(race.finishMs, 1);
+  else if (race.finished && race.finishMs != null) time = formatClock(race.finishMs, 2);
   const tone = [odd ? "sb-odd" : "", dnf ? "sb-dnf" : race.finished ? "sb-fin" : ""].join(" ");
   return (
     <div
@@ -453,7 +453,7 @@ function SprintDetail({
     r.dnfAt != null
       ? "DNF"
       : race.finished && race.finishMs != null
-        ? formatClock(race.finishMs, 1)
+        ? formatClock(race.finishMs, 2)
         : "—";
   return (
     <Sheet title={`Lane ${r.bib || "—"}`} onClose={onClose}>
@@ -846,6 +846,7 @@ function Footer({
       <RaceClock
         startedAt={event.startedAt}
         now={now}
+        digits={sprint ? 2 : 1}
         className="text-right text-4xl sm:text-5xl lg:text-7xl"
       />
     </footer>

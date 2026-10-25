@@ -25,8 +25,8 @@ function row(partial: Partial<LaneFinishState> = {}): LaneFinishState {
 }
 
 describe("finishTimeFromVideoMs", () => {
-  it("maps video offset via recServerAt to race elapsed", () => {
-    // Recording began 2s after bang; athlete crosses 5s into the WebM → 7s race time
+  it("maps video offset via recServerAt to race elapsed (minus calibration)", () => {
+    // Recording began 2s after bang; athlete crosses 5s into the WebM → raw 7s, shown 6.90s
     const startedAt = 1_000_000;
     const recServerAt = 1_002_000;
     const { finishMs, tapT } = finishTimeFromVideoMs({
@@ -34,8 +34,8 @@ describe("finishTimeFromVideoMs", () => {
       recServerAt,
       videoMs: 5_000,
     });
-    expect(tapT).toBe(1_007_000);
-    expect(finishMs).toBe(7_000);
+    expect(tapT).toBe(1_006_900);
+    expect(finishMs).toBe(6_900);
   });
 
   it("clamps negative elapsed when video is before bang", () => {
@@ -53,6 +53,19 @@ describe("finishTimeFromVideoMs", () => {
     const videoMs = 3_250;
     const { finishMs } = finishTimeFromVideoMs({ startedAt, recServerAt, videoMs });
     expect(videoMsFromFinishMs({ startedAt, recServerAt, finishMs })).toBe(videoMs);
+  });
+
+  it("subtracts FINISH_TIME_CALIBRATION_MS (100) from raw elapsed", () => {
+    const startedAt = 1_000_000;
+    const recServerAt = 1_000_000;
+    const { finishMs, tapT } = finishTimeFromVideoMs({
+      startedAt,
+      recServerAt,
+      videoMs: 8_630,
+    });
+    // Raw would be 8.63s; after −0.10s calibration → 8.53s
+    expect(finishMs).toBe(8_530);
+    expect(tapT).toBe(1_008_530);
   });
 
   it("an earlier corrected bang lengthens the finish by the correction", () => {

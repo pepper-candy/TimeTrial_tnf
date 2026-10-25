@@ -3,15 +3,17 @@
  *
  * Finish-time formula (server clock is source of truth):
  *
- *   tapT     = recServerAt + videoMs
+ *   tapT     = recServerAt + videoMs − FINISH_TIME_CALIBRATION_MS
  *   finishMs = max(0, tapT − startedAt)
  *
  * where:
  *   - startedAt   = Starter bang server time (event.startedAt from POST /start)
  *   - recServerAt = wall/server ms when Finish Cam recording began
  *   - videoMs     = offset into the WebM (ms from recording start), e.g. scrubber currentTime
+ *   - FINISH_TIME_CALIBRATION_MS = flat subtract so shown times match an external timer
+ *     (25 Oct 2026 mic+Space calibration: record was ~0.10s late; mean ~0.096s)
  *
- * Equivalent: finishMs = max(0, (recServerAt − startedAt) + videoMs)
+ * Equivalent: finishMs = max(0, (recServerAt − startedAt) + videoMs − FINISH_TIME_CALIBRATION_MS)
  *
  * Soundtrack bang in the WebM never overrides this clock.
  * Manual Set / Accept always beats YOLO proposals (see canProposeLaneFinish).
@@ -44,6 +46,13 @@ export type LaneFinishState = {
   accepted: boolean;
 };
 
+/**
+ * Flat subtract from raw finish times (ms). Recorded times ran ~0.10s late vs
+ * an external timer (Space-mic calibration, 25 Oct 2026). Applied in
+ * finishTimeFromVideoMs so Set / Accept / YOLO / live scrubber stay consistent.
+ */
+export const FINISH_TIME_CALIBRATION_MS = 100;
+
 /** Map recording video offset → race elapsed ms + absolute tap epoch. */
 export function finishTimeFromVideoMs(opts: {
   startedAt: number;
@@ -51,7 +60,7 @@ export function finishTimeFromVideoMs(opts: {
   videoMs: number;
 }): { finishMs: number; tapT: number } {
   const { startedAt, recServerAt, videoMs } = opts;
-  const tapT = Math.round(recServerAt + videoMs);
+  const tapT = Math.round(recServerAt + videoMs) - FINISH_TIME_CALIBRATION_MS;
   const finishMs = Math.max(0, tapT - startedAt);
   return { finishMs, tapT };
 }
@@ -63,7 +72,7 @@ export function videoMsFromFinishMs(opts: {
   finishMs: number;
 }): number {
   const { startedAt, recServerAt, finishMs } = opts;
-  return Math.round(startedAt + finishMs - recServerAt);
+  return Math.round(startedAt + finishMs + FINISH_TIME_CALIBRATION_MS - recServerAt);
 }
 
 /**

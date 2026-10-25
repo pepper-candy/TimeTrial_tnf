@@ -186,6 +186,7 @@ function StarterInner({ code }: { code: string }) {
             <RaceClock
               startedAt={event.startedAt ?? null}
               now={serverNow}
+              digits={2}
               className="text-3xl sm:text-4xl"
             />
             <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">

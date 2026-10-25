@@ -497,9 +497,9 @@ function FinishCamInner({ code }: { code: string }) {
   /** Calibrated lane bands — same count Analyse / YOLO will use. */
   const laneGuideCount = Math.max(1, sprintersForAnalyse(event).length);
 
-  // recording → fullscreen; race end / analyse → download (outer top-right when clip exists);
-  // race end also keeps alert Reset (left of download). After Analyse, Reset hides.
-  const showDownload = Boolean(clipBlob) && (phase === "ended" || analyseStarted);
+  // recording → fullscreen; race end → alert Reset only (NO download).
+  // After Analyse → download outer top-right (Reset hides).
+  const showDownload = Boolean(clipBlob) && analyseStarted;
   const showReset =
     !analyseStarted && (phase === "ended" || phase === "error");
   const showRaceEndOverlay = phase === "ended" && !analyseStarted;
