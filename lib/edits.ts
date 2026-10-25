@@ -642,11 +642,38 @@ export function applyEdit(event: EventState, body: EditInput, at = Date.now()): 
       }
     }
     if (existingTapId) {
-      return applyEdit(
+      // Find the mark currently paired with this tap. Changing tap.t re-sorts
+      // liveTaps but leaves liveMarks in place — without moving the mark, the
+      // Board would show another lane's time on this bib (and vice versa).
+      let existingMarkId: string | null = null;
+      let oldMarkIdx = -1;
+      for (const pair of zipPairs(event.taps, event.marks, event.syncs)) {
+        if (pair.tap?.id === existingTapId && pair.mark && isLive(pair.mark)) {
+          existingMarkId = pair.mark.id;
+          oldMarkIdx = pair.index;
+          break;
+        }
+      }
+      let next = applyEdit(
         event,
         { actor, action: "tap-set-time", id: existingTapId, t, estimated: false },
         at,
       );
+      if (existingMarkId != null && oldMarkIdx >= 0) {
+        const newTapIdx = liveIndexOfTap(next.taps, existingTapId);
+        const curMarkIdx = liveIndexOfMark(next.marks, existingMarkId);
+        if (
+          newTapIdx >= 0 &&
+          curMarkIdx >= 0 &&
+          newTapIdx !== curMarkIdx
+        ) {
+          next = {
+            ...next,
+            marks: moveLiveMark(next.marks, curMarkIdx, newTapIdx),
+          };
+        }
+      }
+      return next;
     }
     const tapId = newId();
     const taps = appendTap(event.taps, { id: tapId, t, estimated: false });
