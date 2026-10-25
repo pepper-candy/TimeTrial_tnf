@@ -25,7 +25,7 @@ export type LaneGuidesOverlayProps = {
   laneCount: number;
   /** When false, bands are visible but not interactive (e.g. during snapshot). */
   interactive?: boolean;
-  /** Show side-on / head-on chips under the overlay (default true). */
+  /** Show side-on / head-on chips (default false — sprint Finish Cam is side-on only). */
   showPresetToggle?: boolean;
   className?: string;
   /** Notify parent when guides change (optional; storage is already written). */
@@ -43,7 +43,10 @@ export function useLaneGuides(
 
   useEffect(() => {
     const loaded = loadLaneGuides(eventCode, n);
-    setGuidesState(loaded);
+    // Sprint Finish Cam is side-on only — migrate any saved head-on.
+    setGuidesState(
+      loaded.preset === "side-on" ? loaded : applyPreset(loaded, "side-on"),
+    );
   }, [eventCode, n]);
 
   const setGuides = useCallback(
@@ -66,7 +69,7 @@ export function LaneGuidesOverlay({
   eventCode,
   laneCount,
   interactive = true,
-  showPresetToggle = true,
+  showPresetToggle = false,
   className = "",
   onChange,
 }: LaneGuidesOverlayProps) {

@@ -756,7 +756,7 @@ function FinishCamInner({ code }: { code: string }) {
             />
           ) : (
             <div className="flex flex-col gap-2">
-              {/* Mark mode switch (A two-press / B single-press) — locked during recording. */}
+              {/* Mark mode: switchable until first Mark/press (recording alone must not lock it). */}
               <div
                 className="grid shrink-0 grid-cols-2 gap-1 rounded-xl bg-panel2 p-1 ring-1 ring-line"
                 role="tablist"
@@ -766,7 +766,12 @@ function FinishCamInner({ code }: { code: string }) {
                   type="button"
                   role="tab"
                   aria-selected={markMode === "two-press"}
-                  disabled={phase === "recording"}
+                  disabled={
+                    markInMs != null ||
+                    markOutMs != null ||
+                    pressesMs.length > 0 ||
+                    stopping
+                  }
                   className={`tap rounded-lg px-2 py-1.5 text-xs font-black uppercase tracking-wide ring-1 ${
                     markMode === "two-press"
                       ? "bg-accent text-ink ring-accent/60"
@@ -780,7 +785,12 @@ function FinishCamInner({ code }: { code: string }) {
                   type="button"
                   role="tab"
                   aria-selected={markMode === "single-press"}
-                  disabled={phase === "recording"}
+                  disabled={
+                    markInMs != null ||
+                    markOutMs != null ||
+                    pressesMs.length > 0 ||
+                    stopping
+                  }
                   className={`tap rounded-lg px-2 py-1.5 text-xs font-black uppercase tracking-wide ring-1 ${
                     markMode === "single-press"
                       ? "bg-accent text-ink ring-accent/60"
