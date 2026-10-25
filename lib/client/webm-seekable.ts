@@ -1,6 +1,5 @@
 /** Make MediaRecorder WebM playable/scrubbable in Android Gallery (duration + cues). */
 import { Buffer } from "buffer";
-import { Decoder, Reader, tools } from "ts-ebml";
 
 function ensureBuffer(): void {
   const g = globalThis as typeof globalThis & { Buffer?: typeof Buffer };
@@ -18,6 +17,9 @@ export async function makeGalleryFriendlyClip(blob: Blob): Promise<Blob> {
   if (blob.size < 64) return blob;
 
   ensureBuffer();
+  // Dynamic import after Buffer polyfill — Turbopack has no webpack ProvidePlugin.
+  const { Decoder, Reader, tools } = await import("ts-ebml");
+
   const buf = await blob.arrayBuffer();
   const decoder = new Decoder();
   const reader = new Reader();
