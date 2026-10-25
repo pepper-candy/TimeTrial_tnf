@@ -820,26 +820,25 @@ export function FinishAnalysePanel({
               →
             </button>
           </div>
-          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-            {rows.map((r) => (
-              <button
-                key={r.bib}
-                type="button"
-                className={`tap shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold ring-1 ${
-                  selectedLane === r.lane
-                    ? "bg-accent/25 text-accent ring-accent/60"
-                    : "bg-void text-sand ring-line"
-                }`}
-                disabled={viewingSnapshot}
-                onClick={() => {
-                  setSelectedLane(r.lane);
-                  onShowSnapshot?.(null);
-                }}
-              >
-                L{r.lane}
-              </button>
-            ))}
-          </div>
+          <button
+            type="button"
+            className="tap grid shrink-0 place-items-center rounded-lg bg-accent/25 px-2.5 py-1.5 text-xs font-bold text-accent ring-1 ring-accent/60 disabled:opacity-40"
+            aria-label={`Lane ${selectedLane}, tap to switch lane`}
+            disabled={viewingSnapshot || rows.length === 0}
+            onClick={() => {
+              if (rows.length === 0) return;
+              const idx = rows.findIndex((r) => r.lane === selectedLane);
+              const next = rows[(idx + 1) % rows.length] ?? rows[0];
+              if (!next) return;
+              setSelectedLane(next.lane);
+              onShowSnapshot?.(null);
+            }}
+          >
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              <span>L{selectedLane}</span>
+              <span aria-hidden>⇌</span>
+            </span>
+          </button>
           <button
             type="button"
             className="tap shrink-0 rounded-lg bg-go/20 px-2.5 py-1.5 text-xs font-bold text-go ring-1 ring-go/50 disabled:opacity-40"
