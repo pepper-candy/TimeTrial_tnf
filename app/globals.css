@@ -29,7 +29,8 @@ body {
   background: #05060a;
   color: #fff8ec;
   min-height: 100%;
-  min-height: 100dvh;
+  min-height: 100dvh; /* older engines */
+  min-height: 100svh; /* visible area after reload — wins when supported */
 }
 
 body {

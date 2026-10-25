@@ -58,7 +58,7 @@ export default function RolePage() {
       <Screen>
         <TopBar backHref="/" title="Missing" />
         <EmptyState title="No event" hint="That code is missing or expired." />
-        <div className="px-4 pb-8">
+        <div className="px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           <BigBtn href="/" tone="plain" className="w-full">
             Home
           </BigBtn>
@@ -100,21 +100,29 @@ export default function RolePage() {
         }
         info={sprint ? SPRINT_INFO : TT_INFO}
       />
-      <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-3 px-4 pb-8">
+      <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-3 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {roles.map((r) => {
           const hot = r.href === "admin" ? admin : false;
           return (
             <Link
               key={r.href}
               href={`/e/${code}/${r.href}`}
-              className={`tap flex min-h-40 flex-col justify-between rounded-3xl p-5 ring-1 active:scale-[0.99] ${
+              className={`tap flex h-full min-h-0 flex-col justify-between rounded-3xl p-4 ring-1 active:scale-[0.99] sm:p-5 ${
                 hot ? "bg-accent text-ink ring-accent" : "bg-panel ring-line"
               }`}
             >
-              <span className={`text-4xl font-black ${hot ? "text-ink" : "text-accent"}`}>{r.icon}</span>
+              <span className={`text-3xl font-black sm:text-4xl ${hot ? "text-ink" : "text-accent"}`}>
+                {r.icon}
+              </span>
               <span>
-                <span className="block text-3xl font-black tracking-tight sm:text-4xl">{r.label}</span>
-                <span className={`text-xs font-bold uppercase tracking-wider ${hot ? "text-ink/70" : "text-dim"}`}>
+                <span className="block text-2xl font-black tracking-tight sm:text-4xl">
+                  {r.label}
+                </span>
+                <span
+                  className={`text-xs font-bold uppercase tracking-wider ${
+                    hot ? "text-ink/70" : "text-dim"
+                  }`}
+                >
                   {hot ? "Yours" : r.hint}
                 </span>
               </span>

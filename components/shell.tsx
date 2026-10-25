@@ -13,8 +13,10 @@ export function Screen({
   children: React.ReactNode;
   className?: string;
 }) {
+  // svh = visible viewport when browser chrome is showing (typical after reload).
+  // dvh often overshoots into status/home bars on first paint after reload.
   return (
-    <div className={`mx-auto flex min-h-dvh w-full max-w-3xl flex-col ${className}`}>
+    <div className={`mx-auto flex min-h-svh w-full max-w-3xl flex-col ${className}`}>
       {children}
     </div>
   );
@@ -35,8 +37,8 @@ export const BOTTOM_TRAY =
  * Three-slot header. Equal 1fr wings keep the title on the true centre of
  * the bar even when Back+Sync sit on the left. Right-hand controls (menu,
  * extra, info) pack against the trailing edge.
- * The bar is h-16 in normal flow, plus a 20px margin, so the first control
- * starts a header-height plus that gap below the top of the screen.
+ * The bar is min-h-16 plus safe-area-inset-top, then mb-5, so controls clear
+ * the status bar after reload without forcing a taller full-bleed layout.
  */
 export function TopBar({
   backHref,
@@ -72,7 +74,7 @@ export function TopBar({
     );
   return (
     <header
-      className={`sticky top-0 z-30 mb-5 grid h-16 shrink-0 grid-cols-[1fr_auto_1fr] items-center bg-void/90 px-3 backdrop-blur ${className}`}
+      className={`sticky top-0 z-30 mb-5 grid min-h-16 shrink-0 grid-cols-[1fr_auto_1fr] items-center bg-void/90 px-3 pt-[env(safe-area-inset-top)] backdrop-blur ${className}`}
     >
       <div className="flex items-center gap-2 justify-self-start">
         {backHref ? (

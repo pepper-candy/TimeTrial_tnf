@@ -1013,14 +1013,6 @@ export function FinishAnalysePanel({
                     }}
                   >
                     <div className="truncate font-semibold">{r.name || "—"}</div>
-                    <div className="text-[10px] text-dim">
-                      {r.source === "manual"
-                        ? "manual"
-                        : r.source === "yolo"
-                          ? "YOLO"
-                          : "—"}
-                      {r.accepted ? " · saved" : ""}
-                    </div>
                   </td>
                   <td className="whitespace-nowrap px-1 py-2 font-mono tabular sm:px-2">
                     {r.finishMs != null ? formatClock(r.finishMs, 2) : "—"}

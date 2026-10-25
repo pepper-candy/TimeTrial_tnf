@@ -8,7 +8,7 @@ import { useEvent } from "@/lib/client/hooks";
 import { SPRINT_COMPLETE_FLOW_URL } from "@/lib/share";
 
 const BTN =
-  "launch tap flex min-h-36 w-full flex-1 items-center justify-center rounded-[10px] px-4 text-4xl font-black uppercase tracking-[0.14em]";
+  "launch tap flex h-full min-h-0 w-full flex-1 items-center justify-center rounded-[10px] px-4 text-3xl font-black uppercase tracking-[0.14em] sm:text-4xl";
 
 const SPRINT_FLOW_INFO = (
   <>
@@ -36,7 +36,7 @@ export default function HelperPage() {
       <Screen>
         <TopBar backHref="/" title="Missing" />
         <EmptyState title="No event" hint="That code is missing or expired." />
-        <div className="px-4 pb-8">
+        <div className="px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           <BigBtn href="/" tone="plain" className="w-full">
             Home
           </BigBtn>
@@ -68,7 +68,7 @@ export default function HelperPage() {
         }
         info={sprint ? SPRINT_FLOW_INFO : undefined}
       />
-      <div className="flex flex-1 flex-col gap-3 px-4 pb-8">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {sprint ? (
           <>
             <Link href={`/e/${code}/starter`} className={`${BTN} launch-solid bg-accent text-ink`}>
