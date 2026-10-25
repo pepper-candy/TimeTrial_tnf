@@ -8,7 +8,7 @@
  * Agent 3 — point → lane API (same polygons as the overlay)
  * ---------------------------------------------------------------------------
  * Persistence: localStorage key `tt.finishCam.laneGuides.${eventCode}`
- * Shape: { version: 1, preset, laneCount, boundaries }  // boundaries length = N+1
+ * Shape: { version: 1, preset, laneCount, boundaries }  // N+1; [0]/[N] = court edges
  *
  *   import {
  *     loadLaneGuides,
@@ -35,8 +35,11 @@ export type LaneGuides = {
   laneCount: number;
   /**
    * Normalised 0…1 cuts along the stack axis (Y for side-on, X for head-on).
-   * Length = laneCount + 1; always boundaries[0] === 0 and boundaries[N] === 1.
+   * Length = laneCount + 1.
+   * boundaries[0] / boundaries[N] are the race-court top/bottom (or left/right)
+   * edges — may be inset from 0/1 so grassland / off-track walkers are ignored.
    * Lane k (1-based) occupies [boundaries[k-1], boundaries[k]).
+   * Feet outside [boundaries[0], boundaries[N]] → mapFeetToLane returns null.
    */
   boundaries: number[];
 };
@@ -126,36 +129,78 @@ export function resizeLaneGuides(guides: LaneGuides, laneCount: number): LaneGui
 
 export function sanitizeBoundaries(raw: number[], laneCount: number): number[] {
   const n = Math.max(1, Math.floor(laneCount));
-  if (n === 1) return [0, 1];
+  const spanMin = MIN_BAND * n;
+
+  // Race-court outer edges (may be inset from 0 / 1).
+  let courtLo = Number.isFinite(Number(raw[0])) ? Number(raw[0]) : 0;
+  let courtHi = Number.isFinite(Number(raw[raw.length - 1]))
+    ? Number(raw[raw.length - 1])
+    : 1;
+  courtLo = clamp(courtLo, 0, 1 - spanMin);
+  courtHi = clamp(courtHi, courtLo + spanMin, 1);
+
+  if (n === 1) return [round01(courtLo), round01(courtHi)];
 
   const mid = raw
     .slice(1, -1)
     .map((v) => clamp01(v))
     .filter((v) => Number.isFinite(v));
 
-  const cuts: number[] = [0];
+  const cuts: number[] = [courtLo];
   for (const v of mid) {
     const prev = cuts[cuts.length - 1]!;
     const minNext = prev + MIN_BAND;
-    const maxAllowed = 1 - MIN_BAND * (n - cuts.length);
+    const maxAllowed = courtHi - MIN_BAND * (n - cuts.length);
     if (minNext >= maxAllowed) break;
     cuts.push(clamp(v, minNext, maxAllowed));
   }
   while (cuts.length < n) {
     const prev = cuts[cuts.length - 1]!;
     const remaining = n - cuts.length + 1;
-    cuts.push(prev + (1 - prev) / remaining);
+    cuts.push(prev + (courtHi - prev) / remaining);
   }
   cuts.length = n;
-  cuts.push(1);
-  cuts[0] = 0;
-  cuts[n] = 1;
+  cuts.push(courtHi);
+  cuts[0] = courtLo;
+  cuts[n] = courtHi;
   return cuts.map(round01);
 }
 
 /**
- * Move an interior boundary (index 1…N-1) during drag.
- * Returns a new guides object.
+ * Remap all cuts into a new race-court span, keeping relative lane ratios.
+ */
+function remapCourtSpan(
+  boundaries: number[],
+  laneCount: number,
+  courtLo: number,
+  courtHi: number,
+): number[] {
+  const n = laneCount;
+  const oldLo = boundaries[0]!;
+  const oldHi = boundaries[n]!;
+  const oldSpan = Math.max(1e-9, oldHi - oldLo);
+  const spanMin = MIN_BAND * n;
+  let lo = clamp(courtLo, 0, 1 - spanMin);
+  let hi = clamp(courtHi, lo + spanMin, 1);
+  if (hi - lo < spanMin) {
+    hi = Math.min(1, lo + spanMin);
+    lo = Math.max(0, hi - spanMin);
+  }
+  const out = [lo];
+  for (let i = 1; i < n; i++) {
+    const frac = (boundaries[i]! - oldLo) / oldSpan;
+    out.push(lo + frac * (hi - lo));
+  }
+  out.push(hi);
+  return sanitizeBoundaries(out, n);
+}
+
+/**
+ * Move a boundary during drag.
+ * Index 0 / N = race-court top & bottom (or left & right) — may leave
+ * grassland / off-track outside the court so YOLO ignores those feet.
+ * Moving a court edge remaps interior cuts to keep lane ratios.
+ * Index 1…N-1 = interior lane cuts.
  */
 export function moveBoundary(
   guides: LaneGuides,
@@ -163,8 +208,20 @@ export function moveBoundary(
   value: number,
 ): LaneGuides {
   const n = guides.laneCount;
-  if (boundaryIndex <= 0 || boundaryIndex >= n) return guides;
+  if (boundaryIndex < 0 || boundaryIndex > n) return guides;
   const next = guides.boundaries.slice();
+  if (boundaryIndex === 0) {
+    return {
+      ...guides,
+      boundaries: remapCourtSpan(next, n, value, next[n]!),
+    };
+  }
+  if (boundaryIndex === n) {
+    return {
+      ...guides,
+      boundaries: remapCourtSpan(next, n, next[0]!, value),
+    };
+  }
   const lo = next[boundaryIndex - 1]! + MIN_BAND;
   const hi = next[boundaryIndex + 1]! - MIN_BAND;
   if (lo >= hi) return guides;
@@ -188,8 +245,13 @@ export function mapFeetToLane(point: NormPoint, guides: LaneGuides): number | nu
   const n = guides.laneCount;
   if (n < 1 || guides.boundaries.length !== n + 1) return null;
   const t = guideAxis(guides.preset) === "y" ? point.y : point.x;
-  const v = clamp01(t);
+  if (!Number.isFinite(t)) return null;
   const b = guides.boundaries;
+  const courtLo = b[0]!;
+  const courtHi = b[n]!;
+  // Outside race court (grassland / off-track) — do not assign to L1 or LN.
+  if (t < courtLo || t > courtHi) return null;
+  const v = clamp(t, courtLo, courtHi);
   for (let i = 0; i < n; i++) {
     const a = b[i]!;
     const c = b[i + 1]!;
@@ -199,7 +261,7 @@ export function mapFeetToLane(point: NormPoint, guides: LaneGuides): number | nu
       return i + 1;
     }
   }
-  return n;
+  return null;
 }
 
 /** True if the point falls inside lane’s band polygon (full-frame strip). */
@@ -307,10 +369,28 @@ export function drawLaneGuideBands(
       ctx.fillRect(x, y, w, h);
     }
   }
+  // Interior lane cuts
   ctx.strokeStyle = "rgba(255,255,255,0.32)";
   ctx.lineWidth = 1;
   for (let i = 1; i < n; i++) {
     const t = guides.boundaries[i]!;
+    ctx.beginPath();
+    if (guideAxis(guides.preset) === "y") {
+      const y = t * height;
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+    } else {
+      const x = t * width;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+    }
+    ctx.stroke();
+  }
+  // Race-court outer edges (top of L1 / bottom of LN) — brighter so officials
+  // can see the grassland / off-track exclusion zone.
+  ctx.strokeStyle = "rgba(250, 204, 21, 0.85)";
+  ctx.lineWidth = Math.max(2, Math.round(Math.min(width, height) * 0.003));
+  for (const t of [guides.boundaries[0]!, guides.boundaries[n]!]) {
     ctx.beginPath();
     if (guideAxis(guides.preset) === "y") {
       const y = t * height;

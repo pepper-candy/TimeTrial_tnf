@@ -161,6 +161,14 @@ export function FinishAnalysePanel({
   eventRef.current = event;
   const onLogRef = useRef(onLog);
   onLogRef.current = onLog;
+  const onEventRef = useRef(onEvent);
+  onEventRef.current = onEvent;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
 
   /** Single-press mode: one press per sprinter, resolved within a ±0.5s buffer. */
   const presses = meta?.pressesMs ?? null;
@@ -414,23 +422,91 @@ export function FinishAnalysePanel({
         const detected = suggestions.filter(
           (s) => s.finishMs != null && s.tapT != null,
         ).length;
-        setRows((prev) =>
-          prev.map((row) => {
-            const sug = suggestions.find((s) => s.lane === row.lane);
-            if (!sug || sug.finishMs == null || sug.tapT == null) return row;
-            // Manual / Accepted / locked lanes unchanged (canProposeLaneFinish).
-            return applyLaneProposal(row, {
-              finishMs: sug.finishMs,
-              tapT: sug.tapT,
-              snapshotDataUrl: sug.snapshotDataUrl,
-              snapshotVideoMs: sug.snapshotVideoMs,
-            });
-          }),
-        );
+        const base = rowsRef.current;
+        const nextRows = base.map((row) => {
+          const sug = suggestions.find((s) => s.lane === row.lane);
+          if (!sug || sug.finishMs == null || sug.tapT == null) return row;
+          // Manual / Accepted / locked lanes unchanged (canProposeLaneFinish).
+          return applyLaneProposal(row, {
+            finishMs: sug.finishMs,
+            tapT: sug.tapT,
+            snapshotDataUrl: sug.snapshotDataUrl,
+            snapshotVideoMs: sug.snapshotVideoMs,
+          });
+        });
+        setRows(nextRows);
         setYoloChip("done");
         onLogRef.current(
           `YOLO done · ${detected} detection(s) → empty/unlocked lanes only`,
         );
+
+        // Auto-accept every fresh YOLO proposal (officials can still Edit).
+        const toAccept = nextRows.filter(
+          (r) =>
+            r.source === "yolo" &&
+            r.finishMs != null &&
+            r.tapT != null &&
+            !r.accepted &&
+            !r.locked,
+        );
+        if (toAccept.length > 0) {
+          setBusy(true);
+          let saved = 0;
+          try {
+            for (const row of toAccept) {
+              if (runId !== yoloRunIdRef.current) return;
+              try {
+                const evt = await acceptSprintFinish(
+                  codeRef.current,
+                  row.bib,
+                  row.tapT!,
+                );
+                onEventRef.current(evt);
+                if (row.snapshotDataUrl && row.runnerId) {
+                  void uploadFinishSnapshot(
+                    codeRef.current,
+                    row.runnerId,
+                    row.snapshotDataUrl,
+                  ).catch((e) => {
+                    onLogRef.current(
+                      `snapshot upload failed: ${
+                        e instanceof Error ? e.message : e
+                      }`,
+                    );
+                  });
+                }
+                setRows((prev) =>
+                  prev.map((r) =>
+                    r.bib === row.bib
+                      ? {
+                          ...r,
+                          accepted: true,
+                          locked: true,
+                          source: "manual",
+                        }
+                      : r,
+                  ),
+                );
+                saved += 1;
+                onLogRef.current(
+                  `Auto-accepted lane ${row.lane} · ${formatClock(row.finishMs!, 2)}`,
+                );
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                onLogRef.current(
+                  `Auto-accept lane ${row.lane} failed: ${msg}`,
+                );
+              }
+            }
+            if (saved > 0) {
+              onStatusRef.current(
+                `YOLO saved ${saved} lane${saved === 1 ? "" : "s"} · Board updated`,
+              );
+            }
+          } finally {
+            if (runId === yoloRunIdRef.current) setBusy(false);
+          }
+        }
       } catch (e) {
         if (ac.signal.aborted || runId !== yoloRunIdRef.current) return;
         const msg = e instanceof Error ? e.message : String(e);

@@ -62,7 +62,7 @@ export function useLaneGuides(
 
 /**
  * Full-bleed overlay: N translucent bands + draggable boundary handles
- * across the red finishing line. Parent must be `position: relative` and
+ * (incl. court top/bottom) across the red finishing line. Parent must be `position: relative` and
  * match the video frame box.
  */
 export function LaneGuidesOverlay({
@@ -140,6 +140,50 @@ export function LaneGuidesOverlay({
       className={`pointer-events-none absolute inset-0 z-[1] ${className}`}
       aria-label="Lane guides"
     >
+      {/* Off-court (grassland / outside LN) dim — feet here are ignored by YOLO */}
+      {guides.boundaries[0]! > 0.001 ? (
+        <div
+          className="absolute bg-black/35"
+          style={
+            axis === "y"
+              ? {
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: `${guides.boundaries[0]! * 100}%`,
+                }
+              : {
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: `${guides.boundaries[0]! * 100}%`,
+                }
+          }
+          aria-hidden
+        />
+      ) : null}
+      {guides.boundaries[n]! < 0.999 ? (
+        <div
+          className="absolute bg-black/35"
+          style={
+            axis === "y"
+              ? {
+                  top: `${guides.boundaries[n]! * 100}%`,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                }
+              : {
+                  left: `${guides.boundaries[n]! * 100}%`,
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                }
+          }
+          aria-hidden
+        />
+      ) : null}
+
       {/* Band fills */}
       {Array.from({ length: n }, (_, i) => {
         const lane = i + 1;
@@ -163,34 +207,44 @@ export function LaneGuidesOverlay({
         );
       })}
 
-      {/* Boundary handles */}
+      {/* Boundary handles — index 0 / N = race-court top & bottom (exclude grassland) */}
       {interactive
-        ? Array.from({ length: n - 1 }, (_, i) => {
-            const index = i + 1;
+        ? Array.from({ length: n + 1 }, (_, index) => {
             const t = guides.boundaries[index]!;
+            const isCourtEdge = index === 0 || index === n;
             const style =
               axis === "y"
                 ? {
                     top: `${t * 100}%`,
                     left: 0,
                     right: 0,
-                    height: 20,
-                    marginTop: -10,
+                    height: isCourtEdge ? 24 : 20,
+                    marginTop: isCourtEdge ? -12 : -10,
                     cursor: "ns-resize" as const,
                   }
                 : {
                     left: `${t * 100}%`,
                     top: 0,
                     bottom: 0,
-                    width: 20,
-                    marginLeft: -10,
+                    width: isCourtEdge ? 24 : 20,
+                    marginLeft: isCourtEdge ? -12 : -10,
                     cursor: "ew-resize" as const,
                   };
+            const label =
+              index === 0
+                ? axis === "y"
+                  ? "Court top (above = off-track)"
+                  : "Court start (outside = off-track)"
+                : index === n
+                  ? axis === "y"
+                    ? "Court bottom (below = off-track)"
+                    : "Court end (outside = off-track)"
+                  : `Lane boundary ${index}`;
             return (
               <div
                 key={`h-${index}`}
                 role="slider"
-                aria-label={`Lane boundary ${index}`}
+                aria-label={label}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(t * 100)}
@@ -206,15 +260,31 @@ export function LaneGuidesOverlay({
                 <div
                   className={
                     axis === "y"
-                      ? "absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-sand/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
-                      : "absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-sand/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)]"
+                      ? `absolute inset-x-0 top-1/2 -translate-y-1/2 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] ${
+                          isCourtEdge
+                            ? "h-1 bg-amber-300/90"
+                            : "h-0.5 bg-sand/70"
+                        }`
+                      : `absolute inset-y-0 left-1/2 -translate-x-1/2 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] ${
+                          isCourtEdge
+                            ? "w-1 bg-amber-300/90"
+                            : "w-0.5 bg-sand/70"
+                        }`
                   }
                 />
                 <div
                   className={
                     axis === "y"
-                      ? "absolute top-1/2 left-1/2 h-3 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-panel2 ring-1 ring-line"
-                      : "absolute top-1/2 left-1/2 h-8 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-panel2 ring-1 ring-line"
+                      ? `absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ${
+                          isCourtEdge
+                            ? "h-3.5 w-10 bg-amber-300 ring-amber-200"
+                            : "h-3 w-8 bg-panel2 ring-line"
+                        }`
+                      : `absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 ${
+                          isCourtEdge
+                            ? "h-10 w-3.5 bg-amber-300 ring-amber-200"
+                            : "h-8 w-3 bg-panel2 ring-line"
+                        }`
                   }
                 />
               </div>

@@ -1,6 +1,9 @@
 # HKUST T&F Time Trial
 
-Mobile-first web app for distance time trials. Two or three helpers: **Timer** (tap the line), **Marker** (assign bibs), **Board** (live dashboard). Built for the HKUST track & field club.
+Mobile-first web app for the HKUST track & field club. Supports two event types on the same stack:
+
+- **Distance time trial** — Timer (tap the line), Marker (assign bibs), Board (live dashboard).
+- **Sprint** — Starter (arm → bang → server race start) + Finish Cam (record → marks → Analyse with optional on-device YOLO).
 
 ## Stack
 
@@ -8,7 +11,8 @@ Mobile-first web app for distance time trials. Two or three helpers: **Timer** (
 - **Upstash Redis only** for event state and runner photos (no Vercel Blob)
 - Live updates via ~1s polling: one cheap version-key read per tick; full state only when it changed
 - Serverless functions pinned to **Hong Kong (`hkg1`)**
-- Vitest for lap / pairing / ranking / results-text / miss-guess / grouping logic
+- Vitest for lap / pairing / ranking / results-text / miss-guess / grouping / sprint timing logic
+- Sprint Finish Cam: **MediaRecorder** + optional **YOLOv8n** (ONNX) in the browser via **onnxruntime-web**
 
 ## Local
 
@@ -18,7 +22,7 @@ npm test
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Tap **Demo** to seed an 18-runner 5000 m (no Redis required locally; state is stored in `.data/`). The Board is public; Timer / Marker / Admin use helper PIN `1234` (remembered on that device). Play at **10x** (default) or **1x** from Admin.
+Open [http://localhost:3000](http://localhost:3000). Tap **Demo** to seed an 18-runner 5000 m (no Redis required locally; state is stored in `.data/`). The Board is public; Timer / Marker / Admin / Starter / Finish Cam helpers use helper PIN `1234` (remembered on that device). Distance demo play is **10x** (default) or **1x** from Admin.
 
 ## Vercel + Upstash setup
 
@@ -46,7 +50,9 @@ For when an organiser forgets the helper PIN and the creating phone is gone.
 
 The key is only read from the environment. It is never stored in the repo or sent to other clients. Leave it unset to disable master unlock.
 
-## How a race works
+---
+
+## How a distance race works
 
 1. **Admin** creates an event (default **5000 m / 400 m track** = 12.5 laps, start at the 200 m mark, **13 finish-line crossings**) and sets a **helper PIN**. Share:
    - **Board** — public read-only `/e/{code}/board` (no PIN). Spectators can open this on any phone.
@@ -62,9 +68,111 @@ The key is only read from the environment. It is never stored in the repo or sen
 
 On a default 5000 m / 200 m start, 1K is crossing #3 and 3K is crossing #8. Other distances include whichever whole-km marks land on a crossing; Admin can pick which km appear in the **Summary** paste. **Copy** has Summary (coach format) and Detailed (every km, ~ if estimated, fast/slow lap, half-split, consistency).
 
-## Sprint events (additive)
+---
 
-Sprint is a **variant of New Event**, not a replacement for Time Trial. Distance create, Timer, Marker, Board, and the steps above stay as documented. A sprint event reuses the same create / PIN / share-helper pattern with short flat distances and two roles on `/e/{code}/help`: **Starter** (arm → bang → server race start) and **Finish Cam** (landscape record + Mark 1 / Mark 2). The race clock stays server-authoritative; YOLO (later) runs only on the marked slice `[Mark1 … Mark2+1s]`, not the whole roll.
+## Sprint events
+
+Sprint is an **additive** create mode, not a replacement for distance Time Trial. Same create / PIN / share-helper pattern; helper hub `/e/{code}/help` exposes **Starter** and **Finish Cam**. Sprint Board shows lane · photo · name/SID · finish time (`—` until set). Sprint clocks display **2 decimal places**.
+
+### Roles
+
+| Role | Route | Job |
+| ---- | ----- | --- |
+| **Starter** | `/e/{code}/starter` | Arm → bang → POST `/start` with client `startedAt` in server-ms domain; race clock runs until Finish Cam ends the heat; **ENDED** + Reset for the next heat (no re-Arm after finished). |
+| **Finish Cam** | `/e/{code}/finish-cam` | Continuous camera record; mark athletes; stop ends the race clock; **Analyse** is review-only (scrub + Set/Accept + optional YOLO). |
+| **Board** | `/e/{code}/board` | Live sprint results. |
+
+Portrait and landscape both work on Finish Cam (no rotate-phone gate).
+
+### Clock sync (why bang and video share one timeline)
+
+Phones disagree on wall clock. `useEvent` **pings** the server (half-RTT) and builds:
+
+`offset ≈ serverNow + RTT/2 − localNow` → `serverNow ≈ Date.now() + offset`
+
+- **Starter** stamps the bang as `bangAt = Date.now() + offset`, POSTs `{ startedAt: bangAt }`; server **clamps** then stores. Optimistic UI on bang; rollback on fail.
+- **Finish Cam** calls `refresh()` immediately before `MediaRecorder.start()` and stores **`recServerAt`** in that same server-ms domain (never bare `Date.now()` alone).
+
+Marks / scrubber times are **video-local offsets** (`videoMs`). Race elapsed time is derived, not read from the clip soundtrack.
+
+### Finish time formula
+
+In `lib/client/analyse-time.ts`:
+
+```text
+tapT     = recServerAt + videoMs − FINISH_TIME_CALIBRATION_MS
+finishMs = max(0, tapT − startedAt)
+```
+
+- `startedAt` — Starter bang (server)
+- `recServerAt` — Finish Cam record start (server-ms)
+- `videoMs` — offset into the recording (scrubber / mark / YOLO cross)
+- `FINISH_TIME_CALIBRATION_MS = 100` — flat **−0.10 s** so shown times match an external timer (mic+Space calibration: record was ~0.09–0.10 s late; mean ~0.096 s)
+
+`videoMsFromFinishMs` adds the 100 ms back when seeking to a saved finish. **Set / Accept / YOLO / live scrubber label** all use the same helpers.
+
+### Finish Cam mark modes
+
+Switchable until the first Mark / passer press (recording alone does not lock the mode):
+
+| Mode | Behaviour |
+| ---- | --------- |
+| **Two-press** | Mark 1 = enter window; Mark 2 = exit and **stop recording immediately** (no extra wait after Mark 2). Race timer ends on Mark 2. |
+| **Single-press** | One press per sprinter (lane order). Stop ends the heat. Analyse uses a **±0.5 s** buffer around presses. **YOLO is skipped** in this mode. |
+
+Hardware **Space** (and configured keys) advance marks the same as the on-screen buttons.
+
+### Side-on lane guides
+
+Sprint Finish Cam is **side-on only** (head-on preset hidden; any saved head-on guides migrate on load).
+
+- Lanes = **horizontal bands** (far / top thinner → near / bottom taller — never equal 1/N as the only side-on default).
+- One **vertical** red finishing line at frame centre (`FINISH_LINE_X = 0.5`).
+- Drag blue handles on the line to match painted lanes; guides persist in `localStorage` per event.
+
+YOLO does **not** crop the video to a band. It detects people on full Mark1…Mark2 frames, then maps each box by **feet / bottom-centre** into a band. A body whose feet land in the wrong band can be assigned to the wrong lane — calibrate guides carefully. Manual Set/Accept always wins.
+
+### Analyse UX
+
+1. After RACE END, **Analyse** opens the Mark1…Mark2 scrubber **immediately** (no YOLO wait).
+2. Scrub / frame-step / Play; pick lane with a single **L# ⇌** cycle switch; **Set finish here**.
+3. Per-lane table: thumb · athlete · time · Edit / Clear / Accept. Accept writes the Board and uploads a **finish-frame snapshot only** (never the full video).
+4. Tap a row thumb → snapshot fills the preview (**Lane N · time**). Scrubber greys out. **Tap preview / continue editing** dismisses the still and **seeks the scrubber to that snapshot’s video time** so officials can fine-adjust from the same frame.
+5. Download (MP4 when recorder supports it, else WEBM) appears **only after Analyse has started**, outermost top-right.
+
+### YOLO helper (background)
+
+- Model: **YOLOv8n** ONNX at `/models/yolov8n.onnx`
+- Runtime: **onnxruntime-web**, providers **WebGPU → WebGL → WASM**
+- Lazy-load on first Analyse; progress chip `YOLO scanning…` / `YOLO done a/b`
+- Samples ~every **80 ms** on Mark1…Mark2 only (not the whole roll; not the +pad when present)
+- Per lane: track box **mid-X (`chestX`)** vs the finish line; interpolate the cross; fallback = closest-to-line sample within ~8% of frame width
+- Proposes only into **empty / unlocked** lanes (`canProposeLaneFinish`); never overwrites Accepted or manual Set
+
+### Seekable download (Android Gallery)
+
+Chunked `MediaRecorder` WebM often lacks **Duration + Cues**, so Gallery shows ~1 s and cannot scrub. Finish Cam:
+
+- Starts the recorder **without timeslice**
+- Runs **`ts-ebml`** post-process to inject Duration/Cues before download (`makeGalleryFriendlyClip`)
+
+Renaming `.webm` → `.mp4` alone does **not** fix this.
+
+### Key sprint files
+
+| Path | Role |
+| ---- | ---- |
+| `app/e/[code]/starter/page.tsx` | Bang UI, ENDED + Reset |
+| `app/e/[code]/finish-cam/page.tsx` | Record, marks, stage preview, download gate |
+| `components/finish-analyse.tsx` | Scrubber, lane switch, table, YOLO orchestration |
+| `components/lane-guides.tsx` + `lib/client/lane-guides.ts` | Side-on bands, load/migrate, draw on snapshots |
+| `lib/client/analyse-time.ts` | `finishTimeFromVideoMs` / calibration / propose gates |
+| `lib/client/analyse-finish.ts` | YOLO sample loop + cross detection |
+| `lib/client/yolo-person.ts` | ONNX session + person boxes |
+| `lib/client/hooks.ts` | Half-RTT `offset` / `refresh` |
+| `lib/start-clock.ts` | Server clamp for client `startedAt` |
+
+---
 
 ## Demo race
 
@@ -72,8 +180,8 @@ Sprint is a **variant of New Event**, not a replacement for Time Trial. Distance
 
 ## Scripts
 
-| Command        | Purpose              |
-| -------------- | -------------------- |
-| `npm run dev`  | Dev server           |
-| `npm test`     | Core timing tests    |
-| `npm run build`| Production build     |
+| Command         | Purpose           |
+| --------------- | ----------------- |
+| `npm run dev`   | Dev server        |
+| `npm test`      | Core timing tests |
+| `npm run build` | Production build  |

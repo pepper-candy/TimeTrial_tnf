@@ -51,6 +51,17 @@ describe("mapFeetToLane / pointInLane", () => {
     expect(p.x).toBeCloseTo(0.3, 10);
     expect(p.y).toBe(0.8);
   });
+
+  it("returns null for feet above court top or below court bottom", () => {
+    const guides = createLaneGuides(4, "side-on");
+    const inset = moveBoundary(moveBoundary(guides, 0, 0.1), 4, 0.9);
+    expect(inset.boundaries[0]).toBeCloseTo(0.1, 5);
+    expect(inset.boundaries[4]).toBeCloseTo(0.9, 5);
+    expect(mapFeetToLane({ x: 0.5, y: 0.05 }, inset)).toBeNull(); // grassland
+    expect(mapFeetToLane({ x: 0.5, y: 0.95 }, inset)).toBeNull(); // past LN
+    const midL1 = (inset.boundaries[0]! + inset.boundaries[1]!) / 2;
+    expect(mapFeetToLane({ x: 0.5, y: midL1 }, inset)).toBe(1);
+  });
 });
 
 describe("moveBoundary / applyPreset", () => {
@@ -67,5 +78,15 @@ describe("moveBoundary / applyPreset", () => {
     const head = applyPreset(side, "head-on");
     expect(head.preset).toBe("head-on");
     expect(head.boundaries).toEqual(defaultBoundaries(4, "head-on"));
+  });
+
+  it("drags court top/bottom without collapsing lanes", () => {
+    const g = createLaneGuides(3, "side-on");
+    const top = moveBoundary(g, 0, 0.08);
+    expect(top.boundaries[0]).toBeCloseTo(0.08, 5);
+    expect(top.boundaries[3]).toBe(1);
+    const both = moveBoundary(top, 3, 0.92);
+    expect(both.boundaries[3]).toBeCloseTo(0.92, 5);
+    expect(both.boundaries[0]!).toBeLessThan(both.boundaries[1]!);
   });
 });

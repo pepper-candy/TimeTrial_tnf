@@ -9,7 +9,7 @@
  * Propose only into empty/unlocked lanes via `canProposeLaneFinish` / `applyLaneProposal`.
  */
 
-import { FINISH_LINE_X, laneFromY, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+import { FINISH_LINE_X, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
 import { finishTimeFromVideoMs } from "@/lib/client/analyse-time";
 import {
   drawLaneGuideBands,
@@ -396,9 +396,10 @@ function applyFrame(
     () => ({ box: null as unknown as PersonBox, score: -1 }),
   );
   for (const box of boxes) {
+    // Feet outside race-court top/bottom → ignore (no L1/LN grassland miss).
     const mapped = mapFeetToLane(feetPointFromBox(box), guides);
-    const lane = mapped ?? laneFromY(box.chestY, laneCount);
-    const i = lane - 1;
+    if (mapped == null) continue;
+    const i = mapped - 1;
     if (box.score > best[i]!.score) best[i] = { box, score: box.score };
   }
 
