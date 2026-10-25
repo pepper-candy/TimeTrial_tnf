@@ -1,8 +1,8 @@
 /**
  * Finish Cam lane perspective guides (Agent 2).
  *
- * Side-on: horizontal bands; near (bottom of frame) taller — never equal-split only.
- * Head-on: vertical bands; equal-ish 1/N.
+ * Side-on only (Finish Cam): horizontal bands; near (bottom) taller — never equal-split.
+ * Head-on (vertical bands) is legacy — loadLaneGuides migrates it to side-on.
  *
  * ---------------------------------------------------------------------------
  * Agent 3 — point → lane API (same polygons as the overlay)
@@ -237,20 +237,27 @@ export function loadLaneGuides(
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<LaneGuides>;
     if (parsed?.version !== 1) return fallback;
-    const preset: LaneGuidePreset =
-      parsed.preset === "head-on" ? "head-on" : "side-on";
+    // Sprint Finish Cam is side-on only. Old head-on saves drew vertical
+    // cuttings on YOLO / Set-finish snapshots — migrate + persist.
+    const storedWasHeadOn = parsed.preset === "head-on";
     const n = Math.max(1, Math.floor(laneCount));
     const storedN = Math.max(1, Math.floor(Number(parsed.laneCount) || n));
-    const boundaries = Array.isArray(parsed.boundaries)
-      ? sanitizeBoundaries(parsed.boundaries.map(Number), storedN)
-      : defaultBoundaries(storedN, preset);
-    let guides: LaneGuides = {
-      version: 1,
-      preset,
-      laneCount: storedN,
-      boundaries,
-    };
+    let guides: LaneGuides;
+    if (storedWasHeadOn) {
+      guides = createLaneGuides(storedN, "side-on");
+    } else {
+      const boundaries = Array.isArray(parsed.boundaries)
+        ? sanitizeBoundaries(parsed.boundaries.map(Number), storedN)
+        : defaultBoundaries(storedN, "side-on");
+      guides = {
+        version: 1,
+        preset: "side-on",
+        laneCount: storedN,
+        boundaries,
+      };
+    }
     if (storedN !== n) guides = resizeLaneGuides(guides, n);
+    if (storedWasHeadOn) saveLaneGuides(eventCode, guides);
     return guides;
   } catch {
     return fallback;
