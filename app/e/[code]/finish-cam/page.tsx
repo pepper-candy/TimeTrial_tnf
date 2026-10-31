@@ -11,7 +11,7 @@ import {
   type FinishSnapshotPreview,
 } from "@/components/finish-analyse";
 import { LaneGuidesOverlay } from "@/components/lane-guides";
-import { sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+import { sprintLaneCount } from "@/lib/client/analyse-lanes";
 import { formatClock } from "@/lib/format";
 import {
   applyHardwareZoom,
@@ -508,7 +508,7 @@ function FinishCamInner({ code }: { code: string }) {
       ? "Waiting for start…"
       : status;
   /** Calibrated lane bands — same count Analyse / YOLO will use. */
-  const laneGuideCount = Math.max(1, sprintersForAnalyse(event).length);
+  const laneGuideCount = sprintLaneCount(event);
 
   // recording → fullscreen; race end → alert Reset only (NO download).
   // After Analyse → download outer top-right (Reset hides).

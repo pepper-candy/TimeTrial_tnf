@@ -44,7 +44,12 @@ export type LaneFinishState = {
    */
   locked: boolean;
   accepted: boolean;
-};
+  /**
+   * Empty placeholder lane (no name and no SID) — keeps its grid slot for
+   * lane↔band pairing but must not be accepted to the Board.
+   */
+  hidden?: boolean;
+  };
 
 /**
  * Flat subtract from raw finish times (ms). Recorded times ran ~0.10s late vs

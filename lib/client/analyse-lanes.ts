@@ -25,14 +25,32 @@ export {
   type NormPoint,
 } from "@/lib/client/lane-guides";
 
+function byBib(a: Runner, b: Runner): number {
+  const la = Number(a.bib);
+  const lb = Number(b.bib);
+  if (Number.isFinite(la) && Number.isFinite(lb) && la !== lb) return la - lb;
+  return a.bib.localeCompare(b.bib, undefined, { numeric: true });
+}
+
+/**
+ * Every seeded lane, bib-sorted. Lane i+1 is the i-th grid position — the
+ * camera sees the FULL lane grid, so empty placeholder lanes (name + SID
+ * blank) must keep their slot. Deriving geometry/pairing from the filtered
+ * valid-sprinter list compresses the grid and shifts every band one lane,
+ * which lands YOLO times/snapshots on the wrong board rows.
+ */
+export function sprintLanes(event: EventState): { lane: number; runner: Runner }[] {
+  return event.runners.slice().sort(byBib).map((runner, i) => ({ lane: i + 1, runner }));
+}
+
+/** Camera lane-band / YOLO track count = all seeded lanes, not just valid ones. */
+export function sprintLaneCount(event: EventState): number {
+  return Math.max(1, event.runners.length);
+}
+
+/** Valid sprinters only (name or SID), in lane order — for display/analysis rows. */
 export function sprintersForAnalyse(event: EventState): Runner[] {
-  return event.runners
-    .filter(isValidSprinter)
-    .slice()
-    .sort((a, b) => {
-      const la = Number(a.bib);
-      const lb = Number(b.bib);
-      if (Number.isFinite(la) && Number.isFinite(lb) && la !== lb) return la - lb;
-      return a.bib.localeCompare(b.bib, undefined, { numeric: true });
-    });
+  return sprintLanes(event)
+    .filter(({ runner }) => isValidSprinter(runner))
+    .map(({ runner }) => runner);
 }

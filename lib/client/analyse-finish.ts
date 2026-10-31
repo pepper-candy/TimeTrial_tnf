@@ -9,7 +9,7 @@
  * Propose only into empty/unlocked lanes via `canProposeLaneFinish` / `applyLaneProposal`.
  */
 
-import { FINISH_LINE_X, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+import { FINISH_LINE_X, sprintLanes } from "@/lib/client/analyse-lanes";
 import { finishTimeFromVideoMs } from "@/lib/client/analyse-time";
 import {
   drawLaneGuideBands,
@@ -235,7 +235,9 @@ export async function analyseFinishClip(opts: {
 }): Promise<LaneSuggestion[]> {
   const { blob, markInMs, markOutMs, recServerAt, event, onProgress, signal } =
     opts;
-  const runners = sprintersForAnalyse(event);
+  // Full seeded lane grid — an empty placeholder lane keeps its band slot so
+  // YOLO tracks (media lane order) pair with the right bibs.
+  const lanes = sprintLanes(event);
   const startedAt = event.startedAt;
   if (startedAt == null) {
     throw new Error("Race has no start time — wait for Starter bang");
@@ -269,7 +271,7 @@ export async function analyseFinishClip(opts: {
     for (let t = from; t <= to; t += SAMPLE_EVERY_MS) times.push(t);
     if (times[times.length - 1] !== to) times.push(to);
 
-    const laneCount = Math.max(1, runners.length);
+    const laneCount = lanes.length;
     /** Same polygons as Finish Cam overlay (Agent 2). */
     const guides = loadLaneGuides(event.code, laneCount);
     const tracks: LaneTrack[] = Array.from({ length: laneCount }, () => ({
@@ -351,11 +353,11 @@ export async function analyseFinishClip(opts: {
 
     onProgress?.({ phase: "done", message: "Done", done: times.length, total: times.length });
 
-    return runners.map((runner, idx) => {
+    return lanes.map(({ lane, runner }, idx) => {
       const track = tracks[idx]!;
       const crossVideoMs = track.crossVideoMs;
       if (crossVideoMs == null) {
-        return emptySuggestion(runner, idx + 1);
+        return emptySuggestion(runner, lane);
       }
       const { finishMs, tapT } = finishTimeFromVideoMs({
         startedAt,
@@ -363,7 +365,7 @@ export async function analyseFinishClip(opts: {
         videoMs: crossVideoMs,
       });
       return {
-        lane: idx + 1,
+        lane,
         bib: runner.bib,
         runnerId: runner.id,
         name: runner.name || runner.studentId || runner.bib,

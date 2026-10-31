@@ -13,7 +13,12 @@ import {
   downloadBlob,
   type AnalyseProgress,
 } from "@/lib/client/analyse-finish";
-import { FINISH_LINE_X, sprintersForAnalyse } from "@/lib/client/analyse-lanes";
+import {
+  FINISH_LINE_X,
+  sprintLaneCount,
+  sprintLanes,
+} from "@/lib/client/analyse-lanes";
+import { isValidSprinter } from "@/lib/board";
 import {
   drawLaneGuideBands,
   loadLaneGuides,
@@ -49,8 +54,8 @@ export type FinishSnapshotPreview = {
 };
 
 function emptyRows(event: EventState): LaneFinishState[] {
-  return sprintersForAnalyse(event).map((runner, idx) => ({
-    lane: idx + 1,
+  return sprintLanes(event).map(({ lane, runner }) => ({
+    lane,
     bib: runner.bib,
     runnerId: runner.id,
     name: runner.name || runner.studentId || runner.bib,
@@ -61,6 +66,7 @@ function emptyRows(event: EventState): LaneFinishState[] {
     source: "none",
     locked: false,
     accepted: false,
+    hidden: !isValidSprinter(runner),
   }));
 }
 
@@ -193,7 +199,7 @@ export function FinishAnalysePanel({
     ? windowFor(selectedLane).out
     : meta?.markOutMs ?? markOutMs;
   const recServerAt = meta?.recServerAt ?? event.startedAt ?? 0;
-  const laneCount = Math.max(1, sprintersForAnalyse(event).length);
+  const laneCount = sprintLaneCount(event);
 
   const sliceReady = isSinglePress
     ? blob != null && event.startedAt != null
@@ -314,7 +320,7 @@ export function FinishAnalysePanel({
       });
       for (const s of seeds) {
         const row = next.find((r) => r.lane === s.lane);
-        if (!row) continue;
+        if (!row || row.hidden) continue;
         row.finishMs = s.finishMs;
         row.tapT = s.tapT;
         row.source = "manual";
@@ -447,7 +453,8 @@ export function FinishAnalysePanel({
             r.finishMs != null &&
             r.tapT != null &&
             !r.accepted &&
-            !r.locked,
+            !r.locked &&
+            !r.hidden,
         );
         if (toAccept.length > 0) {
           setBusy(true);
@@ -560,6 +567,10 @@ export function FinishAnalysePanel({
       videoMs: ms,
     });
     const target = rows.find((r) => r.lane === selectedLane);
+    if (target?.hidden) {
+      setErr(`Lane ${selectedLane}: empty lane — no sprinter to set`);
+      return;
+    }
     if (target?.locked && target.accepted) {
       setErr(`Lane ${selectedLane}: tap Edit before re-setting`);
       return;
@@ -722,6 +733,7 @@ export function FinishAnalysePanel({
 
   async function acceptOne(row: LaneFinishState) {
     if (!event.startedAt) return;
+    if (row.hidden) return;
     if (row.finishMs == null || row.tapT == null) {
       setErr(`Lane ${row.lane}: Set finish here first`);
       return;
@@ -935,9 +947,10 @@ export function FinishAnalysePanel({
             aria-label={`Lane ${selectedLane}, tap to switch lane`}
             disabled={viewingSnapshot || rows.length === 0}
             onClick={() => {
-              if (rows.length === 0) return;
-              const idx = rows.findIndex((r) => r.lane === selectedLane);
-              const next = rows[(idx + 1) % rows.length] ?? rows[0];
+              const visible = rows.filter((r) => !r.hidden);
+              if (visible.length === 0) return;
+              const idx = visible.findIndex((r) => r.lane === selectedLane);
+              const next = visible[(idx + 1) % visible.length] ?? visible[0];
               if (!next) return;
               setSelectedLane(next.lane);
               onShowSnapshot?.(null);
@@ -972,7 +985,7 @@ export function FinishAnalysePanel({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {rows.filter((r) => !r.hidden).map((r) => {
               const showing = shownBib === r.bib;
               return (
                 <tr
